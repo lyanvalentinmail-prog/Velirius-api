@@ -1,5 +1,5 @@
 /* Velirius API — interfaz idéntica a Delirius (api.delirius.online): fondo de puntos,
-   tarjeta blanca con borde negro, tipografía mono y botones VIEW/RUN negros. */
+   tarjeta blanca con borde negro, tipografía mono y botones VIEW/TEST negros. */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap');
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -75,6 +75,8 @@ h1.title {
   align-items: center;
   justify-content: space-between;
   margin: 30px 0 14px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #e7e7e7;
 }
 .icons .left { display: flex; align-items: center; gap: 24px; }
 .icons a, .icons button {
@@ -151,7 +153,7 @@ h1.title {
   border-bottom: 1px solid #e7e7e7;
 }
 .row .folder svg { width: 31px; height: 31px; display: block; }
-.row .info { flex: 1; min-width: 0; cursor: pointer; }
+.row .info { flex: 1; min-width: 0; }
 .row h3 {
   font-size: 21px;
   font-weight: 800;
@@ -182,22 +184,32 @@ h1.title {
   white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
-.btn:hover { background: #ffffff; color: #000000; }
+.btn:hover, .btn.active { background: #ffffff; color: #000000; }
 .btn.ghost { background: #ffffff; color: #000000; }
 .btn.ghost:hover { background: #000000; color: #ffffff; }
 .btn.small { padding: 8px 16px; font-size: 12px; }
 
-/* Probador RUN con parámetros modificables (se despliega al tocar un endpoint) */
+/* Probador TEST con parámetros modificables: se despliega hacia abajo al tocar TEST */
 .tester {
-  display: none;
-  border: 2px solid #111111;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  border: 0 solid #111111;
   border-radius: 13px;
   background: #ffffff;
-  padding: 16px;
+  margin: 0;
+  transition: grid-template-rows 0.38s ease, opacity 0.3s ease, margin 0.38s ease, border-width 0.2s ease;
+}
+.tester.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  border-width: 2px;
   margin: 4px 0 18px;
 }
-.tester.open { display: block; }
+.tester-inner { overflow: hidden; min-height: 0; }
+.tester .t-pad { padding: 16px; }
 .tester .t-title { font-size: 12px; letter-spacing: 1.6px; font-weight: 800; text-transform: uppercase; margin-bottom: 10px; }
+.tester .t-desc { color: #8a8a8a; font-size: 12px; margin: -4px 0 4px; }
 .tester label { display: block; font-size: 12px; color: #555; margin: 10px 0 5px; }
 .tester label b { color: #111; }
 .tester .field-row { display: flex; gap: 8px; }

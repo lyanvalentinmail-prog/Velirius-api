@@ -37,8 +37,12 @@ async function main() {
 
     for (const cat of CATEGORIES) {
       const page = await get(port, `/${cat.id}`);
-      ok(`GET /${cat.id} lista ${cat.endpoints.length}`, page.status === 200 && page.body.toString().includes(`List:`) && page.body.toString().includes('You can do <strong>fetching</strong>'));
+      const html = page.body.toString();
+      ok(`GET /${cat.id} lista ${cat.endpoints.length} con botón TEST`, page.status === 200 && html.includes(`List:`) && html.includes('clicking on the test') && html.includes('data-test-btn=') && html.includes('>Test</button>') && !html.includes('>Run</a>'));
     }
+    const catJs = (await get(port, '/js/category.js')).body.toString();
+    const catCss = (await get(port, '/css/style.css')).body.toString();
+    ok('Panel TEST desplegable hacia abajo con parámetros', catJs.includes("data-act=\"exec\"") && catJs.includes('function setOpen') && catJs.includes('tester-inner') && catCss.includes('grid-template-rows: 0fr') && catCss.includes('.tester.open'));
 
     const docs = JSON.parse((await get(port, '/docs')).body.toString());
     ok('GET /docs catálogo completo', docs.status === true && docs.endpoints === t.endpoints && docs.categories.length === 5);

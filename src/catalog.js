@@ -1,4 +1,4 @@
-// src/catalog.js — Catálogo único: alimenta /home, las categorías, /docs y el probador RUN.
+// src/catalog.js — Catálogo único: alimenta /home, las categorías, /docs y el probador TEST.
 // AVATAR se reemplaza en tiempo de render por la URL absoluta de /img/default-avatar.jpg
 const AV = '__AVATAR__';
 const AV2 = '__AVATAR2__';
@@ -113,7 +113,7 @@ function exampleQuery(endpoint, avatarUrl, avatar2Url) {
     let v = String(p.example);
     if (v === AV) { if (!avatarUrl) continue; v = avatarUrl; }
     if (v === AV2) { if (!avatar2Url) continue; v = avatar2Url; }
-    // En ejemplos RUN evitamos direct vacío y parámetros opcionales sin ejemplo
+    // En los ejemplos del probador evitamos direct vacío y parámetros opcionales sin ejemplo
     qs.set(p.name, v);
   }
   const s = qs.toString();
