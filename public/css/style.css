@@ -1,0 +1,257 @@
+/* Velirius API — interfaz idéntica a Delirius (api.delirius.online): fondo de puntos,
+   tarjeta blanca con borde negro, tipografía mono y botones VIEW/RUN negros. */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  background-color: #ffffff;
+  background-image: radial-gradient(#d8d8d8 1.3px, transparent 1.3px);
+  background-size: 24px 24px;
+  color: #111111;
+  min-height: 100vh;
+}
+
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 16px;
+}
+
+.card {
+  width: min(680px, 100%);
+  background-color: #ffffff;
+  background-image: radial-gradient(#e3e3e3 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+  border: 2px solid #111111;
+  border-radius: 26px;
+  padding: 42px 38px 28px;
+  box-shadow: 10px 10px 0 #efefef, 0 24px 48px rgba(0, 0, 0, 0.05);
+}
+
+h1.title {
+  text-align: center;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 7px;
+  text-transform: uppercase;
+}
+
+.sync {
+  text-align: center;
+  margin-top: 8px;
+  color: #8a8a8a;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.intro {
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.75;
+  margin: 28px auto 10px;
+  max-width: 540px;
+}
+.intro strong { font-weight: 800; }
+
+.follow {
+  text-align: center;
+  margin-top: 8px;
+}
+.follow a {
+  color: #111111;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.icons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 30px 0 14px;
+}
+.icons .left { display: flex; align-items: center; gap: 24px; }
+.icons a, .icons button {
+  color: #111111;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 2px;
+}
+.icons svg { width: 27px; height: 27px; display: block; }
+.icons a:hover, .icons button:hover { opacity: 0.6; }
+
+.searchbox { display: none; margin: 4px 0 14px; }
+.searchbox.open { display: block; }
+.searchbox input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 11px 14px;
+  border: 2px solid #111111;
+  border-radius: 9px;
+  background: #ffffff;
+  outline: none;
+}
+.search-results { margin-top: 8px; }
+.search-results a {
+  display: block;
+  color: #111;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+  margin-top: 6px;
+  text-decoration: none;
+  background: #fff;
+}
+.search-results a:hover { border-color: #111; }
+
+.status {
+  background: #000000;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 11px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.status .right { display: flex; align-items: center; gap: 20px; }
+.status .stat { display: inline-flex; align-items: center; gap: 7px; }
+.status svg { width: 16px; height: 16px; }
+
+.list {
+  margin-top: 4px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #111111 transparent;
+}
+.list::-webkit-scrollbar { width: 5px; }
+.list::-webkit-scrollbar-track { background: transparent; }
+.list::-webkit-scrollbar-thumb { background: #111111; border-radius: 4px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 2px;
+  border-bottom: 1px solid #e7e7e7;
+}
+.row .folder svg { width: 31px; height: 31px; display: block; }
+.row .info { flex: 1; min-width: 0; cursor: pointer; }
+.row h3 {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.row h3 .bullet { font-size: 11px; }
+.row .meta { color: #8a8a8a; font-size: 13px; margin-top: 4px; word-break: break-word; }
+.row .meta .get { color: #111111; font-weight: 700; }
+.row .desc { color: #8a8a8a; font-size: 12px; margin-top: 3px; }
+
+.btn {
+  background: #000000;
+  color: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  padding: 11px 27px;
+  cursor: pointer;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.btn:hover { background: #ffffff; color: #000000; }
+.btn.ghost { background: #ffffff; color: #000000; }
+.btn.ghost:hover { background: #000000; color: #ffffff; }
+.btn.small { padding: 8px 16px; font-size: 12px; }
+
+/* Probador RUN con parámetros modificables (se despliega al tocar un endpoint) */
+.tester {
+  display: none;
+  border: 2px solid #111111;
+  border-radius: 13px;
+  background: #ffffff;
+  padding: 16px;
+  margin: 4px 0 18px;
+}
+.tester.open { display: block; }
+.tester .t-title { font-size: 12px; letter-spacing: 1.6px; font-weight: 800; text-transform: uppercase; margin-bottom: 10px; }
+.tester label { display: block; font-size: 12px; color: #555; margin: 10px 0 5px; }
+.tester label b { color: #111; }
+.tester .field-row { display: flex; gap: 8px; }
+.tester input[type="text"] {
+  flex: 1; min-width: 0;
+  font: inherit; font-size: 13px;
+  padding: 9px 11px;
+  border: 1.5px solid #111111; border-radius: 8px;
+  background: #fff; outline: none;
+}
+.tester .upload {
+  font-size: 11px; letter-spacing: 1px;
+  border: 1.5px solid #111; border-radius: 8px;
+  padding: 9px 10px; cursor: pointer; background: #fff; white-space: nowrap;
+}
+.tester .url-line {
+  font-size: 11.5px; color: #555; word-break: break-all;
+  border: 1px dashed #bbb; border-radius: 8px; padding: 9px 11px; margin-top: 13px; background: #fafafa;
+}
+.tester .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.tester .result { margin-top: 14px; }
+.tester .result img, .tester .result video { max-width: 100%; border: 1.5px solid #111; border-radius: 10px; display: block; }
+.tester .result audio { width: 100%; }
+.tester .result pre {
+  font-size: 11.5px; line-height: 1.55;
+  border: 1.5px solid #111; border-radius: 10px;
+  padding: 12px; overflow: auto; max-height: 360px; background: #fff;
+  white-space: pre-wrap; word-break: break-word;
+}
+.tester .result .dl { display: inline-block; margin-top: 9px; font-size: 12px; color: #111; font-weight: 700; }
+.tester .loading { font-size: 12.5px; letter-spacing: 1px; color: #555; }
+
+.footer {
+  border-top: 2px solid #111111;
+  margin-top: 28px;
+  padding-top: 17px;
+  text-align: center;
+  color: #7a7a7a;
+  font-size: 13px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+
+.info-block { font-size: 13.5px; line-height: 2; margin-top: 18px; }
+.info-block b { text-transform: uppercase; letter-spacing: 1px; }
+.info-block a { color: #111; }
+
+@media (max-width: 560px) {
+  .wrap { padding: 26px 12px; align-items: flex-start; }
+  .card { padding: 30px 20px 22px; border-radius: 22px; }
+  h1.title { font-size: 28px; letter-spacing: 4px; }
+  .intro { font-size: 13.5px; }
+  .row h3 { font-size: 17px; }
+  .btn { padding: 10px 18px; }
+  .status { font-size: 10.5px; letter-spacing: 0.7px; }
+  .list { max-height: 400px; padding-right: 10px; }
+}

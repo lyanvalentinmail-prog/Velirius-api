@@ -1,0 +1,18 @@
+{
+  "name": "Velirius-api",
+  "version": "1.0.0",
+  "description": "Velirius API — REST API estilo Delirius: Canvas, Anime, Download, Search y Tools sin token.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node scripts/smoke.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "sharp": "^0.33.5",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0"
+  }
+}
