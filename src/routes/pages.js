@@ -98,7 +98,7 @@ router.get('/information', (req, res) => {
   const body = `
     <h1 class="title">Information</h1>
     <div class="sync">Database Synced</div>
-    <p class="intro">You can do <strong>fetching</strong> just by clicking on the run</p>
+    <p class="intro">You can do <strong>fetching</strong> just by clicking on the test</p>
     <div class="icons">
       <div class="left">
         <a href="/home" title="Home">${I.home}</a>
@@ -158,15 +158,13 @@ router.get('/:category(anime|canvas|download|search|tools)', (req, res) => {
 
   const rows = cat.endpoints.map(e => {
     const paramsLine = e.params.length ? e.params.map(p => p.name).join(', ') : 'no params';
-    const runUrl = `/${cat.id}/${e.id}${exampleQuery(e, a1, a2)}`;
     return `
     <div class="row" data-endpoint="${esc(e.id)}" id="row-${esc(e.id)}">
       <div class="info">
         <h3><span class="bullet">■</span> ${esc(e.id.toUpperCase())}</h3>
         <div class="meta"><span class="get">GET</span> - ${esc(paramsLine)}</div>
-        <div class="desc">${esc(e.desc)} · toca para probar ✎</div>
       </div>
-      <a class="btn" href="${esc(runUrl)}" target="_blank" rel="noopener">Run</a>
+      <button type="button" class="btn" data-test-btn="${esc(e.id)}" aria-expanded="false" aria-controls="tester-${esc(e.id)}">Test</button>
     </div>`;
   }).join('');
 
@@ -174,6 +172,7 @@ router.get('/:category(anime|canvas|download|search|tools)', (req, res) => {
     category: cat.id,
     endpoints: cat.endpoints.map(e => ({
       id: e.id,
+      desc: e.desc || '',
       params: e.params.map(p => ({
         name: p.name,
         desc: p.desc || '',
@@ -186,7 +185,7 @@ router.get('/:category(anime|canvas|download|search|tools)', (req, res) => {
   const body = `
     <h1 class="title">${esc(cat.name)}</h1>
     <div class="sync">Database Synced</div>
-    <p class="intro">You can do <strong>fetching</strong> just by clicking on the run</p>
+    <p class="intro">You can do <strong>fetching</strong> just by clicking on the test</p>
     <div class="icons">
       <div class="left">
         <a href="/home" title="Home">${I.home}</a>

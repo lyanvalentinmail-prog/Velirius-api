@@ -1,10 +1,10 @@
 # Velirius API
 
-Web **idéntica a [api.delirius.online/home](https://api.delirius.online/home)** (tarjeta blanca punteada, borde negro, tipografía mono, botones `VIEW` / `RUN`, barra de estado y buscador) con **57 endpoints REST sin token** en 5 categorías, lista para **Vercel** o **Render**.
+Web **idéntica a [api.delirius.online/home](https://api.delirius.online/home)** (tarjeta blanca punteada, borde negro, tipografía mono, botones `VIEW` / `TEST`, barra de estado y buscador) con **57 endpoints REST sin token** en 5 categorías, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (PokeAPI, Jikan, TikWM, YouTube InnerTube/Invidious, LRCLIB, Aptoide, Sticker.ly…).
-- Tocando el nombre de cualquier endpoint en la web se abre el **probador con parámetros modificables** (editar valores, subir una foto desde la galería, ejecutar sin salir de la página y copiar la URL). El botón `RUN` abre el endpoint directo, igual que en Delirius.
+- El botón **`TEST`** de cada endpoint **despliega hacia abajo el probador con parámetros modificables**: editar valores, subir una foto desde la galería, ejecutar sin salir de la página, abrir el endpoint directo y copiar la URL final. Tocando `TEST` de nuevo el panel se cierra.
 
 ---
 
@@ -125,8 +125,8 @@ Requiere Node ≥ 18. Los canvas en video (`bratvideo`, `attp`) usan el binario 
 ```
 assets/templates/   Plantillas Canvas originales de Drive (CategoriaCanvas)
 assets/defaults/    Avatares por defecto (FotoPredeterminada / FotoShipGirlPred)
-public/             CSS + JS de la web (home.js buscador global, category.js probador RUN)
-src/catalog.js      Fuente única: alimenta /home, categorías, /docs y ejemplos RUN
+public/             CSS + JS de la web (home.js buscador global, category.js probador TEST desplegable)
+src/catalog.js      Fuente única: alimenta /home, categorías, /docs y ejemplos de prueba
 src/routes/         pages (web Delirius) · canvas · anime · tools · download · search
 src/utils/          http · response (JSON + Range 206) · image (sharp) · canvasEngine (33) · video (ffmpeg) · providers ( APIs públicas)
 scripts/smoke.js    Pruebas (npm test)

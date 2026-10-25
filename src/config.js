@@ -8,6 +8,6 @@ module.exports = {
   mainWebsite: '/',
   supportUrl: 'https://github.com/lyanvalentinmail-prog/Velirius-api',
   port: process.env.PORT || 3000,
-  // Imagen de ejemplo pública usada en los RUN de Canvas (avatar por defecto del repo)
+  // Imagen de ejemplo pública usada en las pruebas de Canvas (avatar por defecto del repo)
   defaultAvatarPath: '/img/default-avatar.jpg'
 };

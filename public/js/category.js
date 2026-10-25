@@ -1,7 +1,7 @@
-// public/js/category.js — Buscador + probador RUN con parámetros modificables.
-// El botón RUN abre el endpoint directo (como Delirius). Tocando el nombre del
-// endpoint se despliega el probador: edita parámetros (o sube una foto), ejecuta
-// sin salir de la página y copia la URL final.
+// public/js/category.js — Buscador + probador TEST con parámetros modificables.
+// El botón TEST de cada endpoint despliega hacia abajo el probador: edita los
+// parámetros (o sube una foto), ejecuta sin salir de la página y copia la URL.
+// Tocando TEST de nuevo el panel se vuelve a cerrar (uno abierto a la vez).
 (function () {
   const data = window.VELIRIUS || { category: '', endpoints: [] };
   const byId = {};
@@ -26,7 +26,7 @@
       });
       document.querySelectorAll('.tester').forEach(t => {
         const row = t.previousElementSibling;
-        if (row && row.style.display === 'none') t.classList.remove('open');
+        if (row && row.style.display === 'none') setOpen(t, false);
       });
     });
   }
@@ -84,7 +84,7 @@
     return null;
   }
 
-  async function runTest(tester) {
+  async function executeTest(tester) {
     const result = tester.querySelector('.result');
     const path = buildPath(tester);
     result.innerHTML = '<div class="loading">CARGANDO…</div>';
@@ -114,6 +114,25 @@
     }
   }
 
+  // ---------- Abrir / cerrar el panel TEST (se despliega hacia abajo) ----------
+  function setOpen(tester, open) {
+    if (open) {
+      document.querySelectorAll('.tester.open').forEach(other => {
+        if (other !== tester) setOpen(other, false);
+      });
+    }
+    tester.classList.toggle('open', open);
+    tester.setAttribute('aria-hidden', String(!open));
+    if ('inert' in tester) tester.inert = !open;
+    const row = tester.previousElementSibling;
+    const btn = row ? row.querySelector('[data-test-btn]') : null;
+    if (btn) {
+      btn.classList.toggle('active', open);
+      btn.setAttribute('aria-expanded', String(open));
+    }
+    if (open) setTimeout(() => tester.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 400);
+  }
+
   // ---------- Construir probadores ----------
   document.querySelectorAll('.row[data-endpoint]').forEach(row => {
     const id = row.dataset.endpoint;
@@ -121,8 +140,11 @@
     if (!ep) return;
     const tester = document.createElement('div');
     tester.className = 'tester';
+    tester.id = `tester-${id}`;
     tester.dataset.category = data.category;
     tester.dataset.endpoint = id;
+    tester.setAttribute('aria-hidden', 'true');
+    if ('inert' in tester) tester.inert = true;
 
     let fields = '';
     if (!ep.params.length) fields = '<label>Este endpoint no necesita parámetros.</label>';
@@ -135,15 +157,18 @@
     });
 
     tester.innerHTML = `
-      <div class="t-title">▶ Probar · GET /${esc(data.category)}/${esc(id)}</div>
+    <div class="tester-inner"><div class="t-pad">
+      <div class="t-title">▶ Test · GET /${esc(data.category)}/${esc(id)}</div>
+      ${ep.desc ? `<div class="t-desc">${esc(ep.desc)}</div>` : ''}
       ${fields}
       <div class="url-line"></div>
       <div class="actions">
-        <button type="button" class="btn small" data-act="run">Run</button>
+        <button type="button" class="btn small" data-act="exec">Ejecutar</button>
         <button type="button" class="btn small ghost" data-act="open">Abrir</button>
         <button type="button" class="btn small ghost" data-act="copy">Copiar URL</button>
       </div>
-      <div class="result"></div>`;
+      <div class="result"></div>
+    </div></div>`;
 
     row.insertAdjacentElement('afterend', tester);
     refreshUrlLine(tester);
@@ -159,18 +184,17 @@
         });
       });
     });
-    tester.querySelector('[data-act="run"]').addEventListener('click', () => runTest(tester));
+    tester.querySelector('[data-act="exec"]').addEventListener('click', () => executeTest(tester));
     tester.querySelector('[data-act="open"]').addEventListener('click', () => window.open(buildPath(tester), '_blank', 'noopener'));
     tester.querySelector('[data-act="copy"]').addEventListener('click', async ev => {
       try { await navigator.clipboard.writeText(location.origin + buildPath(tester)); ev.target.textContent = '¡Copiada!'; setTimeout(() => { ev.target.textContent = 'Copiar URL'; }, 1400); }
       catch (_) { window.prompt('Copia la URL:', location.origin + buildPath(tester)); }
     });
 
-    const info = row.querySelector('.info');
-    if (info) {
-      info.title = 'Toca para probar con parámetros modificables';
-      info.addEventListener('click', () => tester.classList.toggle('open'));
+    const testBtn = row.querySelector('[data-test-btn]');
+    if (testBtn) {
+      testBtn.addEventListener('click', () => setOpen(tester, !tester.classList.contains('open')));
     }
-    if (location.hash === '#' + id) tester.classList.add('open');
+    if (location.hash === '#' + id) setOpen(tester, true);
   });
 })();
