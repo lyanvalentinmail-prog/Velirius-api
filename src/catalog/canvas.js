@@ -75,8 +75,8 @@ module.exports = {
       P('text', 'Welcome to Velirius API', 'Texto del cartel'),
       ...textStyle()
     ] },
-    { id: 'bratcoyote', group: 'brats', desc: 'El Coyote sosteniendo tu texto', params: [
-      P('text', 'WELCOME TO VELIRIUS API', 'Texto del cartel'),
+    { id: 'bratcoyote', group: 'brats', desc: 'El Coyote sosteniendo tu cartel (letra a mano, igual que la plantilla)', params: [
+      P('text', 'Welcome to Velirius API', 'Texto del cartel (sale en MAYÚSCULAS, como la plantilla)'),
       ...textStyle()
     ] },
     { id: 'bratpinguino', group: 'brats', desc: 'Gunter (pingüino) con cartel: texto o imagen', params: [

@@ -104,8 +104,13 @@ El texto **no** se dibuja con `<text font-family="…">`. Cada letra se traduce 
 | Familia (`font=`) | Fuente incluida | Pesos |
 |---|---|---|
 | `sans` (por defecto) | Inter | 400 / 700 / 900 |
+| `hand` | Caveat Brush (letra a mano) | 400 (es la única que tiene) |
 | `serif` | Playfair Display | 400 / 700 / 900 |
 | `mono` | JetBrains Mono | 400 / 700 |
+
+`hand` es la tipografía del cartel de **`bratcoyote`**: el original de Drive está escrito a mano, así que
+la canvas usa exactamente esa letra (y `?font=` sigue funcionando para cambiarla). Las licencias están
+al lado de cada fuente (`assets/fonts/*-OFL.txt`).
 
 Los emojis y símbolos que no están en esas fuentes se dibujan con **NotoEmoji** (también incluida), así que
 tampoco aparecen cuadrados en textos como `hola 🐱🔥`. Todo el render es idéntico en local, Render o Vercel
@@ -190,7 +195,7 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/bratvideo` | (generado, MP4) | `text`, `words` (5 por pantalla), `size`, `bg`, `color`, `uppercase` |
 | `/canvas/bratestirado` | (generado) | `text`, `color`, `size` + lente esférica (`lens.stretch`, `lens.aspect`, `lens.radius`, `lens.y`) |
 | `/canvas/bratanime` | `bratanime.png` | `text` + estilo |
-| `/canvas/bratcoyote` | `bratcoyote.png` | `text` + estilo |
+| `/canvas/bratcoyote` | `bratcoyote.png` | `text` en letra a mano (familia `hand`) + estilo (`font=sans` para cambiarla) |
 | `/canvas/bratpinguino` | `BratPinguino.jpg` | `text` o `image`, `mode` + estilo |
 | `/canvas/ttp` | (generado) | `text`, `color`, `bg`, `size` |
 | `/canvas/attp` | (generado, WebM) | `text`, `size` |

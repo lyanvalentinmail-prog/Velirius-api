@@ -343,10 +343,13 @@ function placeTextArea(W, H, area, text, opts = {}) {
   const y0 = Math.round(area.y0 * H) + shiftY;
   const w = Math.max(8, Math.round((area.x1 - area.x0) * W));
   const h = Math.max(8, Math.round((area.y1 - area.y0) * H));
-  const pad = opts.pad ?? Math.round(Math.min(w, h) * 0.06);
+  const pad = opts.pad ?? Math.round(Math.min(w, h) * (opts.padFrac ?? 0.06));
+  // `lowercase` = mismo criterio que /canvas/brat (minúsculas salvo ?uppercase=true)
+  const upper = Boolean(opts.uppercase || ov.uppercase);
+  const body = opts.lowercase && !upper ? String(text).toLowerCase() : text;
 
   const layer = textLayer({
-    text,
+    text: body,
     width: w,
     height: h,
     family: ov.font || opts.family || 'sans',
@@ -358,12 +361,14 @@ function placeTextArea(W, H, area, text, opts = {}) {
     letterSpacing: (opts.letterSpacing ?? 0) + (ov.spacing || 0),
     fill: ov.fill || opts.fill || '#111111',
     align: opts.align || 'middle',
-    uppercase: opts.uppercase || ov.uppercase,
+    uppercase: upper,
     italic: !!opts.italic,
     padding: pad,
     rotate: ov.rotate || opts.rotate || 0,
     stroke: opts.stroke || null,
-    strokeWidth: opts.strokeWidth || 0
+    strokeWidth: opts.strokeWidth || 0,
+    // `offsetY` (fracción del alto del área) baja/sube el bloque sin mover la caja
+    offsetY: Math.round((opts.offsetY ?? 0) * h)
   });
 
   const cover = opts.cover
