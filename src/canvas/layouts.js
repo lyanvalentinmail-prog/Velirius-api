@@ -36,7 +36,7 @@ const LAYOUTS = {
       },
       // lente esférico: cuánto se agranda el centro (1 = plano), cuánto acompaña
       // el eje horizontal y a qué altura está el centro de la lente
-      lens: { stretch: 1.32, bulge: 0.55, y: 0.5 }
+      lens: { stretch: 1.4, bulge: 0.8, y: 0.5 }
     }
   },
 
