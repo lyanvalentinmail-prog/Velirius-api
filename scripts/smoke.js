@@ -37,7 +37,7 @@ async function main() {
     const t = totals();
     const home = await get(port, '/home');
     const homeHtml = home.body.toString();
-    ok('GET /home', home.status === 200 && homeHtml.includes('Velirius API') && homeHtml.includes('Sync Complete'));
+    ok('GET /home', home.status === 200 && homeHtml.includes('Velirius API') && /Sincronizaci/i.test(homeHtml));
     ok(`Home muestra ${t.routers} routers / ${t.endpoints} endpoints`, homeHtml.includes(String(t.endpoints)));
     ok('Home lista las 6 categorías', CATEGORIES.every(c => homeHtml.includes(`/${c.id}`)));
 
@@ -50,23 +50,21 @@ async function main() {
     const catJs = (await get(port, '/js/category.js')).body.toString();
     const catCss = (await get(port, '/css/style.css')).body.toString();
     ok('Botón TEST despliega el panel hacia abajo', catJs.includes('function setOpen') && catJs.includes('tester-inner') && catCss.includes('grid-template-rows: 0fr') && catCss.includes('.tester.open'));
-    ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('SUBIR FOTO'));
+    ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('Subir foto'));
+    ok('Panel con CÓMO USAR EL ENDPOINT + URL + fetch', catJs.includes('Cómo usar el endpoint') && catJs.includes('code-url') && catJs.includes('code-fetch'));
+    ok('Chips REQUERIDO/OPCIONAL por parámetro', catJs.includes('chip-opt') && catJs.includes('Requerido') && catJs.includes('Opcional'));
+    ok('Resultado con 200 OK, ms y DESCARGAR', catJs.includes('chip-status') && catJs.includes('res-meta') && catJs.includes('Descargar'));
 
     // ---- Portada (landing) estilo Delirius, con botón al dashboard ----
     const landing = await get(port, '/');
     const landingHtml = landing.body.toString();
-    ok('GET / (portada con INITIALIZE DASHBOARD)', landing.status === 200 && landingHtml.includes('INITIALIZE DASHBOARD') && landingHtml.includes('href="/home"'));
-    ok('La portada no es un redirect: es la primera pantalla', !landing.type.includes('text/html') === false && landingHtml.includes('landing'));
+    ok('GET / (portada con Initialize dashboard)', landing.status === 200 && landingHtml.includes('Initialize dashboard') && landingHtml.includes('href="/home"'));
+    ok('La portada no es un redirect: es la primera pantalla', landing.type.includes('text/html') && landingHtml.includes('paper'));
 
-    // ---- Nuevas capturas de Drive en la portada + video del dashboard ----
-    const mediaStatus = JSON.parse((await get(port, '/media/status')).body.toString());
-    ok(`Multimedia de Drive (${mediaStatus.result.captures.length} capturas + video)`,
-      mediaStatus.status === true && mediaStatus.result.captures.length === 4 && /drive\.usercontent\.google\.com/.test(mediaStatus.result.video.direct));
-    ok('Portada con la galería de capturas nuevas', landingHtml.includes('class="shots"') && mediaStatus.result.captures.every(c => landingHtml.includes(c.id)));
-    const homeVid = homeHtml.includes('demo-video') && homeHtml.includes('/media/dashboardvid.mp4');
-    ok('Dashboard con el video DashboardVid.mp4', homeVid);
-    ok('El video tiene fallback al enlace directo de Drive', homeHtml.includes('drive.usercontent.google.com/download'));
-    ok('Preview del canvas sin marco (sin borde)', catCss.includes('.tester .result img') && /\.tester \.result img[^{]*\{[^}]*border: 0/.test(catCss));
+    // ---- Portada con el video y probador sin marco ----
+    ok('Portada con el video del dashboard', landingHtml.includes('/media/dashboardvid.mp4') && landingHtml.includes('class="hero"'));
+    ok('Portada con la caja SECURITY ALERT y el CTA', landingHtml.includes('alert-tag') && landingHtml.includes('Initialize dashboard'));
+    ok('La pieza del canvas se ve sin marco (damero)', catCss.includes('.preview') && /\.preview img[^{]*\{[^}]*border: 0/.test(catCss));
 
     // ---- Opciones avanzadas plegadas en el probador ----
     const advCount = CATEGORIES.reduce((n, c) => n + c.endpoints.reduce((m, e) => m + e.params.filter(p => p.advanced).length, 0), 0);

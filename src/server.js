@@ -26,9 +26,6 @@ app.use((req, res, next) => {
 // Deben ir ANTES de los routers API para que GET /canvas sirva la web y /canvas/:id el PNG.
 app.use(require('./routes/pages'));
 
-// Multimedia de la web (video del dashboard desde Drive, con caché)
-app.use(require('./routes/media').router);
-
 // API
 app.use('/canvas', require('./routes/canvas'));
 app.use('/anime', require('./routes/anime'));
