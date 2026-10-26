@@ -82,20 +82,68 @@ const kerningOf = (font, a, b) => {
   } catch (_) { return 0; }
 };
 
+// ---- emojis ----
+// Los emojis se tratan como UN bloque (👨‍👩‍👧 no se parte por dentro) y se
+// miden con la fuente de emojis. Si el generador pasa `emojiImages` (ver
+// src/utils/emoji.js) además se dibujan a COLOR como PNG en línea.
+const EMOJI_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
+const ASCII_RE = /^[\x20-\x7e\n\t]*$/;
+const segmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
+  ? new Intl.Segmenter('es', { granularity: 'grapheme' })
+  : null;
+
+/** Separa el texto en "caracteres visibles" (un emoji compuesto = uno). */
+function graphemes(text) {
+  const value = String(text ?? '');
+  if (ASCII_RE.test(value) || !segmenter) return Array.from(value);
+  return Array.from(segmenter.segment(value), s => s.segment);
+}
+
+/**
+ * Convierte el texto en piezas dibujables: cada una con su fuente.
+ * Los emojis salen como una sola pieza ({ emoji: true }) para poder pintarlos
+ * como imagen; el resto son caracteres normales, igual que antes.
+ */
+function tokensOf(text, primary) {
+  const out = [];
+  for (const g of graphemes(text)) {
+    const isEmoji = EMOJI_RE.test(g) && (g.length > 1 || !hasGlyph(primary, g));
+    if (isEmoji) {
+      const emo = emojiFont();
+      const font = hasGlyph(emo, g) ? emo : (hasGlyph(primary, g) ? primary : null);
+      out.push({ text: g, font, emoji: true });
+      continue;
+    }
+    for (const ch of g) out.push({ text: ch, font: pickFont(ch, primary) });
+  }
+  return out;
+}
+
+// Los emojis ocupan siempre el mismo cuadrado (1,2 × el tamaño de letra), así
+// los compuestos (familias, banderas, 1️⃣) no quedan angostos aunque la fuente
+// no tenga la ligadura, y el texto respira igual con emoji a color o monocromo.
+const EMOJI_RATIO = 1.2;
+const advanceFor = (font, token, size) => {
+  if (!font) return 0;
+  return token.emoji ? size * EMOJI_RATIO : advanceOf(font, token.text, size);
+};
+
 /** Ancho real (en px) de una línea de texto, con letter-spacing y kerning. */
 function measure(text, { family = 'sans', weight = 700, size = 48, letterSpacing = 0 } = {}) {
   const primary = fontFor(family, weight);
-  const chars = Array.from(String(text ?? ''));
+  const tokens = tokensOf(text, primary);
   let width = 0;
   let prev = null;
-  for (const ch of chars) {
-    const font = pickFont(ch, primary);
+  for (const token of tokens) {
+    const font = token.font;
     if (!font) continue;
-    if (prev && font === prev.font) width += kerningOf(font, prev.ch, ch) * size;
-    width += advanceOf(font, ch, size) + letterSpacing;
-    prev = { font, ch };
+    if (prev && !prev.emoji && !token.emoji && font === prev.font) {
+      width += kerningOf(font, prev.text, token.text) * size;
+    }
+    width += advanceFor(font, token, size) + letterSpacing;
+    prev = token;
   }
-  return Math.max(0, width - (chars.length ? letterSpacing : 0));
+  return Math.max(0, width - (tokens.length ? letterSpacing : 0));
 }
 
 /** Parte el texto en líneas que caben en maxWidth (por palabras, y por letras si hace falta). */
@@ -156,29 +204,49 @@ function fitText(text, { width, height, maxFont = 72, minFont = 14, maxLines = 6
   return best;
 }
 
-/** Construye el atributo `d` (path) de una línea de texto, en coordenadas absolutas. */
-function lineToPath(line, { family, weight, size, x, baselineY, letterSpacing = 0 }) {
+/**
+ * Construye el atributo `d` (path) de una línea de texto, en coordenadas
+ * absolutas. Si la línea tiene emojis y se recibió `emojiImages`, esos emojis
+ * salen como imágenes a color en `images` (en vez de un path monocromo).
+ */
+function lineToPath(line, { family, weight, size, x, baselineY, letterSpacing = 0, emojiImages = null }) {
   const primary = fontFor(family, weight);
-  const chars = Array.from(String(line));
+  const tokens = tokensOf(line, primary);
   const parts = [];
+  const images = [];
   let cursor = x;
   let prev = null;
   let missing = 0;
-  for (const ch of chars) {
-    const font = pickFont(ch, primary);
+  for (const token of tokens) {
+    const font = token.font;
     if (!font) { missing++; continue; }
-    if (prev && font === prev.font) cursor += kerningOf(font, prev.ch, ch) * size;
-    if (ch !== ' ') {
+    if (prev && !prev.emoji && !token.emoji && font === prev.font) {
+      cursor += kerningOf(font, prev.text, token.text) * size;
+    }
+    const advance = advanceFor(font, token, size);
+    if (token.emoji) {
+      const href = emojiImages && (emojiImages.get(token.text) || emojiImages.get(token.text.replace(/\uFE0F/g, '')));
+      if (href) {
+        // El emoji se apoya en la línea de base, como el resto de las letras.
+        images.push({ href, x: cursor, y: baselineY - advance * 0.87, w: advance, h: advance });
+      } else {
+        // Sin imagen: se dibuja el glifo monocromo de NotoEmoji (nunca falta).
+        try {
+          const d = font.getPath(token.text, cursor, baselineY, size).toPathData(2);
+          if (d) parts.push(d);
+        } catch (_) { missing++; }
+      }
+    } else if (token.text !== ' ') {
       try {
-        const p = font.getPath(ch, cursor, baselineY, size);
+        const p = font.getPath(token.text, cursor, baselineY, size);
         const d = p.toPathData(2);
         if (d) parts.push(d);
       } catch (_) { /* glifo problemático: se omite */ }
     }
-    cursor += advanceOf(font, ch, size) + letterSpacing;
-    prev = { font, ch };
+    cursor += advance + letterSpacing;
+    prev = token;
   }
-  return { d: parts.join(' '), advance: cursor - x - letterSpacing, missing };
+  return { d: parts.join(' '), images, advance: cursor - x - letterSpacing, missing };
 }
 
 /**
@@ -209,6 +277,7 @@ function textLayer({
   rotate = 0,
   opacity = 1,
   autoFit = true,
+  emojiImages = null,
   fontSize: fixedSize = null
 }) {
   const W = Math.max(2, Math.round(width));
@@ -227,6 +296,7 @@ function textLayer({
   const firstBaseline = padding + (availH - totalH) / 2 + fontSize * 0.84 + offsetY;
 
   const paths = [];
+  const images = [];
   let missing = 0;
   lines.forEach((line, i) => {
     const lineW = measure(line, { ...opts, size: fontSize });
@@ -234,9 +304,10 @@ function textLayer({
     if (align === 'middle' || align === 'center') x = padding + (availW - lineW) / 2;
     else if (align === 'end' || align === 'right') x = padding + (availW - lineW);
     x += offsetX;
-    const res = lineToPath(line, { family, weight, size: fontSize, x, baselineY: firstBaseline + i * fontSize * lineHeight, letterSpacing });
+    const res = lineToPath(line, { family, weight, size: fontSize, x, baselineY: firstBaseline + i * fontSize * lineHeight, letterSpacing, emojiImages });
     missing += res.missing;
     if (res.d) paths.push(res.d);
+    if (res.images && res.images.length) images.push(...res.images);
   });
 
   const transform = rotate ? ` transform="rotate(${rotate} ${W / 2} ${H / 2})"` : '';
@@ -247,9 +318,14 @@ function textLayer({
     opacity < 1 ? `opacity="${opacity}"` : ''
   ].filter(Boolean).join(' ');
 
+  const emojiTag = img => `<image x="${img.x.toFixed(2)}" y="${img.y.toFixed(2)}" width="${img.w.toFixed(2)}" height="${img.h.toFixed(2)}" xlink:href="${img.href}"/>`;
+  const body = (paths.length ? `<g${transform}><path ${style} d="${paths.join(' ')}"/></g>` : '') +
+    (images.length
+      ? `<g${transform} opacity="${opacity}">${images.map(emojiTag).join('')}</g>`
+      : '');
   const svg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
-    (paths.length ? `<g${transform}><path ${style} d="${paths.join(' ')}"/></g>` : '') +
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    body +
     `</svg>`
   );
 
