@@ -43,10 +43,11 @@ async function main() {
     const home = await get(port, '/home');
     const homeHtml = home.body.toString();
     ok('GET /home', home.status === 200 && homeHtml.includes('Velirius API') && homeHtml.includes('Aquí están las carpetas'));
-    ok('Home con las píldoras de Apireon', homeHtml.includes('Información del Sistema') && homeHtml.includes('Catálogo JSON (/docs)') && homeHtml.includes('Cuenta de GitHub'));
+    ok('Home con la fila de iconos de Apireon', /class="icons"/.test(homeHtml) && homeHtml.includes('href="/information"')
+      && homeHtml.includes('data-search-btn') && homeHtml.includes('Sigue mi cuenta de GitHub'));
     ok('Home con barra de estado (ESTADO / RUTAS / ENDPOINTS)', /Estado:/i.test(homeHtml) && /Rutas:/i.test(homeHtml) && /Endpoints:/i.test(homeHtml));
     ok(`Home muestra ${t.routers} routers / ${t.endpoints} endpoints`, homeHtml.includes(String(t.endpoints)));
-    ok('Home lista las 6 categorías en tarjetas', CATEGORIES.every(c => homeHtml.includes(`/${c.id}`)) && (homeHtml.match(/cat-card/g) || []).length === CATEGORIES.length);
+    ok('Home lista las 6 categorías como carpetas (VER)', CATEGORIES.every(c => homeHtml.includes(`/${c.id}`)) && (homeHtml.match(/class="row folder"/g) || []).length === CATEGORIES.length && homeHtml.includes('cat-ver'));
 
     for (const cat of CATEGORIES) {
       const page = await get(port, `/${cat.id}`);

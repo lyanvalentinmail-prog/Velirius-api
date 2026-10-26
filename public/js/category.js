@@ -10,7 +10,9 @@
 
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const IMAGE_PARAMS = ['url', 'image', 'img', 'avatar', 'image1', 'image2', 'url1', 'url2', 'url3'];
-  const LONG_PARAMS = ['text', 'caption', 'quote', 'message', 'desc', 'query'];
+  // Sólo las frases largas van en <textarea>; el resto (incluido `text`) es un
+  // campo de una línea, como en la captura de referencia.
+  const LONG_PARAMS = ['quote', 'caption', 'description', 'message'];
   const isImageParam = name => IMAGE_PARAMS.includes(String(name).toLowerCase());
   const isLongParam = name => LONG_PARAMS.includes(String(name).toLowerCase());
 
@@ -218,7 +220,7 @@
     return withParams(path, 'direct=true&download=true');
   }
   const btnDescargar = (href, nombre) =>
-    `<a class="chip-btn dl" href="${esc(href)}" download="${esc(nombre || 'velirius')}" rel="noopener">⤓ Descargar</a>`;
+    `<a class="chip-btn dl" href="${esc(href)}" download="${esc(nombre || 'velirius')}" rel="noopener" title="Descargar ${esc(nombre || 'archivo')}">Descargar</a>`;
 
   /** Reproductor con sonido: sin `muted` para que se escuche al darle play. */
   function playerHtml(p) {
@@ -249,7 +251,7 @@
         const kb = Math.round(blob.size / 1024);
         const ext = (type.split('/')[1] || 'png').split(';')[0].replace('jpeg', 'jpg');
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">Imagen · ${ms} ms · ${kb} KB</span>
+          <div class="res-bar">${okChip}<span class="res-meta">Imagen HD · ${ms} ms</span>
             ${btnDescargar(downloadHref(path, null, type), `${tester.dataset.endpoint}.${ext}`)}</div>
           <div class="preview"><img src="${url}" alt="resultado de ${esc(tester.dataset.endpoint)}"></div>`;
       } else if (type.startsWith('video/')) {
@@ -257,7 +259,7 @@
         // rangos y pueda buscar dentro del video. Sin `muted`: con sonido.
         const kb = Math.round(Number(res.headers.get('content-length') || 0) / 1024);
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">Video · ${ms} ms${kb ? ' · ' + kb + ' KB' : ''}</span>
+          <div class="res-bar">${okChip}<span class="res-meta">Video HD · ${ms} ms${kb ? ' · ' + kb + ' KB' : ''}</span>
             <a class="chip-btn" href="${path}" target="_blank" rel="noopener">Abrir</a>
             ${btnDescargar(downloadHref(path, null, type), `${tester.dataset.endpoint}.mp4`)}</div>
           <div class="preview"><video src="${path}" controls autoplay playsinline preload="metadata"></video></div>`;
@@ -337,7 +339,7 @@
         control = `<select data-param="${esc(p.name)}">${p.options.map(o =>
           `<option value="${esc(o)}"${String(o) === String(p.value || '') ? ' selected' : ''}>${esc(o === '' ? 'automático' : o)}</option>`).join('')}</select>`;
       } else if (isLongParam(p.name)) {
-        control = `<textarea data-param="${esc(p.name)}" rows="${p.name === 'text' ? 3 : 2}" spellcheck="false" placeholder="${esc(p.value || '')}">${esc(p.value || '')}</textarea>`;
+        control = `<textarea data-param="${esc(p.name)}" rows="2" spellcheck="false" placeholder="${esc(p.value || '')}">${esc(p.value || '')}</textarea>`;
       } else {
         control = `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
       }
