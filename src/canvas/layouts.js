@@ -19,7 +19,7 @@ const LAYOUTS = {
       canvas: { width: 512, height: 512, bg: '#ffffff' },
       text: {
         box: { x0: 0.04, y0: 0.06, x1: 0.96, y1: 0.94 },
-        font: { family: 'sans', weight: 400, maxFont: 78, lineHeight: 1.12, maxLines: 8, spacing: -0.5 },
+        font: { family: 'sans', weight: 700, maxFont: 78, lineHeight: 1.08, maxLines: 8, spacing: -0.5, align: 'start' },
         fill: '#000000'
       }
     }

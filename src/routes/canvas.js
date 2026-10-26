@@ -15,10 +15,18 @@ router.get('/:id', async (req, res) => {
   }
   try {
     if (id === 'bratvideo') {
+      // Mismas opciones que /canvas/brat (tipografía y colores) + `words`
+      // (cuántas palabras entran por pantalla, 5 por defecto).
+      const ov = styleOf(req.query);
       const buf = await bratVideo(txt(req.query, 'Welcome to Velirius API'), {
-        size: styleOf(req.query).scale,
-        bg: styleOf(req.query).bg,
-        color: styleOf(req.query).fill
+        size: ov.scale,
+        bg: ov.bg,
+        color: ov.fill,
+        font: ov.font,
+        uppercase: ov.uppercase,
+        spacing: ov.spacing,
+        words: req.query.words,
+        canvasSize: req.query['canvas.size']
       });
       return sendMedia(res, buf, 'video/mp4', 'velirius-bratvideo.mp4');
     }

@@ -144,11 +144,28 @@ El texto se maqueta más chico de lo que se ve (`fitLines` + el margen que la le
 que la deformación **nunca recorta** ni deja el texto pegado al borde, y con `lens.stretch=1&lens.aspect=1`
 queda el brat normal, plano.
 
+### Brat y bratvideo (palabras por pantalla)
+
+`brat` y `bratvideo` usan **la misma tipografía** (`src/canvas/layouts.js` → `brat`): minúsculas,
+Inter 700, interlineado apretado, texto alineado arriba a la izquierda y grano sutil. Comparten los
+mismos parámetros, así el video se ve igual que la imagen:
+
+- `text` — la frase (en el video, palabra por palabra).
+- `bg`, `color`, `size`, `uppercase`, `spacing`, `font`, `canvas.size`.
+
+`bratvideo` además pagina el texto:
+
+- **Máximo 5 palabras por pantalla** (`?words=1..8` para cambiarlo).
+- Las palabras de la página aparecen **de a una** y, cuando la página se completa, se queda quieta un
+  instante y aparece la siguiente tanda. Nunca se ven más de 5 palabras a la vez.
+- El tamaño de letra se calcula **una sola vez** (el que entra en la página más larga), así el texto
+  no baila ni cambia de tamaño entre frames.
+
 | Endpoint | Plantilla (Drive) | Parámetros propios |
 |---|---|---|
 | `/canvas/quotly` | `quotly.png` | `image`, `username`, `text`, `bg` + estilo |
-| `/canvas/brat` | (generado) | `text`, `bg`, `color`, `size`, `rotate` |
-| `/canvas/bratvideo` | (generado, MP4) | `text`, `size`, `bg`, `color` |
+| `/canvas/brat` | (generado) | `text`, `bg`, `color`, `size`, `rotate`, `uppercase` + tipografía (`text.*`) |
+| `/canvas/bratvideo` | (generado, MP4) | `text`, `words` (5 por pantalla), `size`, `bg`, `color`, `uppercase` |
 | `/canvas/bratestirado` | (generado) | `text`, `color`, `size` + lente esférica (`lens.stretch`, `lens.aspect`, `lens.radius`, `lens.y`) |
 | `/canvas/bratanime` | `bratanime.png` | `text` + estilo |
 | `/canvas/bratcoyote` | `bratcoyote.png` | `text` + estilo |
@@ -185,6 +202,7 @@ para pegar la foto en el cartel. También acepta imágenes `data:` (así funcion
 
 ```bash
 curl "https://<host>/canvas/brat?text=hola%20mundo&color=ff2d55&size=1.4&rotate=-6" -o brat.png
+curl "https://<host>/canvas/bratvideo?text=uno%20dos%20tres%20cuatro%20cinco%20seis&words=5" -o brat.mp4
 curl "https://<host>/canvas/bratanime?text=Velirius%20API&uppercase=true&font=serif" -o anime.png
 ```
 
