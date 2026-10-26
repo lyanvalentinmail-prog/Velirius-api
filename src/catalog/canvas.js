@@ -103,6 +103,24 @@ module.exports = {
       O('time', '7:32 p. m.', 'Hora mostrada en la burbuja'),
       ...textStyle()
     ] },
+    { id: 'iqcblue', group: 'textos', desc: 'Captura de iMessage (fondo azul): globo que crece, barra de reacciones y menú Reply / Copy / Report.', params: [
+      P('text', 'what if I’m in love with you?', 'Mensaje del globo'),
+      ...textStyle()
+    ] },
+    { id: 'iqcpink', group: 'textos', desc: 'Captura de iMessage en rosa: globo que crece, reacciones con corazones y menú contextual.', params: [
+      P('text', 'Ur so pretty!!💗', 'Mensaje del globo'),
+      ...textStyle()
+    ] },
+    { id: 'messengerquote', group: 'textos', desc: 'Captura de Messenger: globo que crece, barra de reacciones (❤ 👍 👎 HAHA !!) y menú Reply / Copy / Translate / Speak.', params: [
+      P('text', 'You are literally the most unique item in this universe', 'Mensaje del globo'),
+      ...textStyle()
+    ] },
+    { id: 'profilenote', group: 'textos', desc: 'Nota de perfil de WhatsApp ("Tu nota"): globo oscuro que crece, avatar circular y etiqueta.', params: [
+      P('text', 'Welcome to Velirius API', 'Texto de la nota'),
+      O('image', AV, 'Foto del avatar (URL o imagen de tu galería)'),
+      O('label', 'Tu nota', 'Etiqueta de abajo'),
+      ...textStyle()
+    ] },
     { id: 'pov', group: 'textos', desc: 'Meme POV: tu texto aparece como "pov: …" sobre tu imagen.', params: [
       P('text', 'cuando abres la api y ya funciona todo', 'Lo que va después de "pov:"'),
       O('image', AV, 'Imagen de fondo (URL o imagen de tu galería)'),

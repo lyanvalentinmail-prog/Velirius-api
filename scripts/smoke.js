@@ -152,6 +152,19 @@ async function main() {
     const hLargo = (await sharp(iqcLargo).metadata()).height;
     ok(`canvas/iqc crece con el texto (${hCorto} → ${hLargo})`, isPng(iqcCorto) && isPng(iqcLargo) && hLargo > hCorto + 200);
 
+    // ---- Globos nuevos (iMessage / Messenger / nota): crecen y no recortan ----
+    const largoGlobo = 'Esto es una prueba larga de verdad para comprobar que el globo se estira, el menú de abajo baja y el texto entra completo sin recortarse nunca.';
+    for (const id of ['iqcblue', 'iqcpink', 'messengerquote', 'profilenote']) {
+      const corto = await generateCanvas(id, { text: 'Hola' });
+      // el globo de `profilenote` ya es alto (es el de la plantilla): necesita más texto
+      const largo = await generateCanvas(id, { text: id === 'profilenote' ? `${largoGlobo} ${largoGlobo} ${largoGlobo}` : largoGlobo });
+      const h1 = (await sharp(corto).metadata()).height;
+      const h2 = (await sharp(largo).metadata()).height;
+      ok(`canvas/${id} crece con el texto (${h1} → ${h2})`, isPng(corto) && isPng(largo) && h2 > h1);
+    }
+    const nota = await generateCanvas('profilenote', { text: 'disponible', label: 'Mi nota' });
+    ok('canvas/profilenote acepta ?label=', isPng(nota) && (await sharp(nota).metadata()).height === (await sharp(await generateCanvas('profilenote', {})).metadata()).height);
+
     // ---- Canvas por HTTP, con parámetros de estilo ----
     const via = await get(port, '/canvas/brat?text=Hola%20Velirius&color=ff2d55&size=1.4');
     ok('GET /canvas/brat?color&size PNG', via.status === 200 && via.type.includes('image/png') && isPng(via.body));
