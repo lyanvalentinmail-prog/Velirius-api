@@ -23,18 +23,18 @@ module.exports = {
   id: 'anime',
   name: 'ANIME',
   endpoints: [
-    { id: 'neko', desc: 'Imagen aleatoria de neko (chica gato). Proveedores: nekos.best, waifu.pics, waifu.im, nekos.life', media: 'image', params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'waifu.im', 'nekos.life']),
+    { id: 'neko', desc: 'Imagen aleatoria de neko (chica gato). Proveedores: nekos.best, danbooru, purrbot, safebooru, konachan', media: 'image', params: [
+      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'danbooru', 'purrbot', 'safebooru', 'konachan']),
       O('amount', '1', 'Cantidad de imágenes (1-10)'),
       O('direct', 'false', 'true = devuelve la imagen directamente')
     ] },
-    { id: 'waifu', desc: 'Imagen aleatoria de waifu. Proveedores: nekos.best, waifu.pics, waifu.im', media: 'image', params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'waifu.im']),
+    { id: 'waifu', desc: 'Imagen aleatoria de waifu. Proveedores: nekos.best, danbooru, safebooru, pic.re, konachan', media: 'image', params: [
+      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'danbooru', 'safebooru', 'pic.re', 'konachan']),
       O('amount', '1', 'Cantidad de imágenes (1-10)'),
       O('direct', 'false', 'true = devuelve la imagen directamente')
     ] },
-    { id: 'maid', desc: 'Imagen aleatoria de maid (sirvienta). Proveedores: nekos.best, waifu.im', media: 'image', params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.im']),
+    { id: 'maid', desc: 'Imagen aleatoria de maid (sirvienta). Proveedores: danbooru, safebooru, konachan', media: 'image', params: [
+      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'danbooru', 'safebooru', 'konachan']),
       O('amount', '1', 'Cantidad de imágenes (1-10)'),
       O('direct', 'false', 'true = devuelve la imagen directamente')
     ] },

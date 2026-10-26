@@ -10,7 +10,9 @@ const { generateCanvas, CANVAS_IDS } = require('../src/utils/canvasEngine');
 const { sharp } = require('../src/utils/image');
 const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
 const { textLayer, measure, FAMILIES, FONTS_DIR } = require('../src/utils/textEngine');
-const { REACTION_LIST } = require('../src/utils/providers');
+const {
+  REACTION_LIST, ANIME_KINDS, ANIME_SOURCES, mapDanbooru, mapSafebooru, mapKonachan
+} = require('../src/utils/providers');
 
 function get(port, p) {
   return new Promise((resolve, reject) => {
@@ -251,6 +253,39 @@ async function main() {
 
     const urlMala = await get(port, '/canvas/sebusca?url=no-es-una-url');
     ok('URL inválida → 400 (no foto por defecto)', urlMala.status === 400 && /no es una URL válida/i.test(urlMala.body.toString()));
+
+    // ---- Anime: respaldo de proveedores y filtro SFW ----
+    ok(`Anime: tipos ${ANIME_KINDS.join('/')}`, ANIME_KINDS.join(',') === 'neko,waifu,maid');
+    for (const kind of ANIME_KINDS) {
+      const names = Object.keys(ANIME_SOURCES[kind] || {});
+      const fns = names.every(n => typeof ANIME_SOURCES[kind][n] === 'function');
+      ok(`Anime ${kind}: ${names.length} proveedores`, names.length >= 2 && fns, names.join(' · '));
+      const ficha = CATEGORIES.flatMap(c => c.endpoints).find(e => e.id === kind && e.category === 'anime')
+        || CATEGORIES.find(c => c.id === 'anime').endpoints.find(e => e.id === kind);
+      const param = (ficha?.params || []).find(p => p.name === 'provider');
+      const opciones = ((param && param.options) || []).filter(Boolean);
+      ok(`Anime ${kind}: ?provider= coincide con las fuentes`, opciones.length === names.length && opciones.every(o => names.includes(o)),
+        opciones.join(' · '));
+    }
+
+    // Ningún post no-seguro debe sobrevivir al normalizador de los boorus.
+    const limpios = [
+      mapDanbooru([
+        { rating: 'q', file_url: 'https://x/a.jpg', large_file_url: 'https://x/a.jpg' },
+        { rating: 'e', file_url: 'https://x/b.jpg' },
+        { rating: 'g', file_url: 'https://x/d.jpg', large_file_url: 'https://x/d.jpg' }
+      ]),
+      mapKonachan([
+        { rating: 's', file_url: 'https://x/c.png', sample_url: 'https://x/c.png' },
+        { rating: 'e', file_url: 'https://x/e.png' }
+      ]),
+      mapSafebooru([
+        { rating: 'general', file_url: 'https://x/f.jpg', sample_url: 'https://x/f.jpg' },
+        { rating: 'explicit', file_url: 'https://x/g.jpg' }
+      ])
+    ];
+    ok('Anime: los boorus descartan rating q/e/s', limpios[0].length === 1 && limpios[1].length === 1 && limpios[2].length === 1);
+    ok('Anime: cada imagen trae url + full', limpios.every(l => l.every(i => /^https?:/.test(i.image) && /^https?:/.test(i.full))));
 
     // ---- Ping ----
     const ping = JSON.parse((await get(port, '/ping')).body.toString());

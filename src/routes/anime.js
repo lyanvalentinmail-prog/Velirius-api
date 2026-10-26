@@ -36,7 +36,16 @@ for (const kind of ['neko', 'waifu', 'maid']) {
       provider: data.provider,
       count: data.count,
       image: first?.image || null,
-      images: data.images.map(i => ({ url: i.image, artist: i.artist || null, artistUrl: i.artistUrl || null }))
+      images: data.images.map(i => ({
+        url: i.image,
+        full: i.full || i.image,
+        artist: i.artist || null,
+        artistUrl: i.artistUrl || null,
+        source: i.sourceUrl || null,
+        width: i.width || null,
+        height: i.height || null,
+        ...(i.tags && i.tags.length ? { tags: i.tags } : {})
+      }))
     };
   }));
 }
