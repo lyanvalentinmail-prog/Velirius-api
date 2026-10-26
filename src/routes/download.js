@@ -3,7 +3,7 @@
 // ?direct= devuelve el archivo en streaming (con Range 206) en lugar de JSON.
 const express = require('express');
 const P = require('../utils/providers');
-const { sendSuccess, sendError, sendText, proxyStream } = require('../utils/response');
+const { sendSuccess, sendError, sendText, proxyStream, sendFile } = require('../utils/response');
 const { absoluteUrl } = require('../utils/http');
 
 const router = express.Router();
@@ -26,6 +26,43 @@ const handle = fn => async (req, res) => {
     }
   }
 };
+
+/**
+ * Envía un video reproducible: URL remota (con Range) o el MP4 ya pegado con
+ * ffmpeg cuando YouTube sólo publicaba video y audio por separado.
+ */
+async function enviarVideo(req, res, playable, filename) {
+  if (playable.file) return sendFile(res, playable.file, { mime: playable.mime || 'video/mp4', filename });
+  if (!playable.url) throw new Error('La fuente no devolvió una URL de video');
+  return proxyStream(req, res, playable.url, { filename });
+}
+
+/**
+ * Elige el formato de video para descargar/reproducir.
+ * Si ya hay un formato progresivo (video + audio en el mismo archivo) se usa
+ * directo; si no, `youtubePlayable` lo arma pegando las dos pistas con ffmpeg.
+ * Así el modo automático (sin `quality`) siempre se reproduce con sonido.
+ */
+async function videoConAudio(info, quality) {
+  const q = P.normalizarCalidad(quality);
+  const candidato = P.pickVideo(info.formats, q || 720);
+  // El progresivo sirve si ya trae audio y, cuando se pidió una calidad concreta,
+  // si llega a esa altura. Si no, youtubePlayable arma el MP4 de esa calidad.
+  const alcanza = !q || (candidato?.height || 0) >= q;
+  if (candidato?.url && candidato.hasAudio && alcanza) {
+    return { ...candidato, hasAudio: true, muxed: false, source: info.source || null };
+  }
+  return P.youtubePlayable(info.id, q);
+}
+
+/** Audio reproducible: primero el formato adaptativo ya resuelto, si no youtubeAudio. */
+async function audioDe(info) {
+  const audio = P.pickAudio(info.formats);
+  if (audio?.url) return { ...audio, source: info.source || null };
+  return P.youtubeAudio(info.id);
+}
+
+const extAudio = (mime = '') => (/webm/i.test(mime) ? 'webm' : /mpeg|mp3/i.test(mime) ? 'mp3' : 'm4a');
 
 // ---------- TikTok sin marca de agua ----------
 router.get('/tiktok', handle(async (req, res) => {
@@ -53,26 +90,43 @@ router.get('/tiktok', handle(async (req, res) => {
 // ---------- YouTube (info + formatos) ----------
 router.get(['/youtube', '/yt'], handle(async (req, res) => {
   const info = await P.resolveYoutubeTarget({ url: req.query.url, query: req.query.query || req.query.q });
-  const quality = parseInt(req.query.quality || '720', 10) || 720;
-  const audio = P.pickAudio(info.formats);
-  const video = P.pickVideo(info.formats, quality);
+  const quality = P.normalizarCalidad(req.query.quality);
   const direct = wantDirect(req, ['true', 'mp4', 'mp3', 'video', 'audio']);
+  const watch = `https://www.youtube.com/watch?v=${info.id}`;
+
   if (direct === 'mp3' || direct === 'audio') {
-    if (!audio) throw new Error('Sin formato de audio disponible');
-    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.mp3` });
+    const audio = await audioDe(info);
+    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.${extAudio(audio.mime)}` });
   }
   if (direct) {
-    if (!video) throw new Error('Sin formato de video disponible');
-    return proxyStream(req, res, video.url, { filename: `${cleanName(info.title)}.mp4` });
+    const playable = await videoConAudio(info, quality);
+    return enviarVideo(req, res, playable, `${cleanName(info.title)}.mp4`);
   }
-  const watch = `https://www.youtube.com/watch?v=${info.id}`;
+
+  // JSON: se intenta resolver el video reproducible; si falla, igual devuelve la info.
+  let playable = null;
+  let audio = P.pickAudio(info.formats);
+  try { playable = await videoConAudio(info, quality); } catch (e) { console.error('[downloader/youtube]', e.message); }
+  try { if (!audio?.url) audio = await audioDe(info); } catch (_) { /* opcional */ }
+  const mp4 = absoluteUrl(req, `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=mp4&quality=${quality || 'auto'}`);
+  const mp3 = absoluteUrl(req, `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=mp3`);
+
   return sendSuccess(res, {
     id: info.id, title: info.title, author: info.author, duration: info.duration,
-    thumbnail: info.thumbnail, url: watch, audio, video, formats: info.formats,
-    directUrls: {
-      mp3: absoluteUrl(req, `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=mp3`),
-      mp4: absoluteUrl(req, `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=mp4&quality=${quality}`)
-    }
+    thumbnail: info.thumbnail, url: watch,
+    quality: quality || 'auto',
+    hasAudio: Boolean(playable?.hasAudio),
+    audio: audio ? { quality: audio.quality, mime: audio.mime, bitrate: audio.bitrate || null, url: mp3 } : null,
+    video: playable ? {
+      quality: playable.quality || null,
+      height: playable.height || null,
+      mime: playable.mime || 'video/mp4',
+      hasAudio: Boolean(playable.hasAudio),
+      mergedWithFfmpeg: Boolean(playable.muxed),
+      url: mp4
+    } : null,
+    formats: info.formats,
+    directUrls: { mp4, mp3 }
   });
 }));
 
@@ -111,31 +165,42 @@ router.get(['/instagram', '/ig'], handle(async (req, res) => {
 // ---------- MP3 ----------
 router.get(['/mp3', '/ytmp3'], handle(async (req, res) => {
   const info = await P.resolveYoutubeTarget({ url: req.query.url, query: req.query.query || req.query.q });
-  const audio = P.pickAudio(info.formats);
+  const audio = await audioDe(info);
+  const directUrl = absoluteUrl(req, `/downloader/mp3?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&direct=true`);
   if (wantDirect(req, ['true', 'mp3', 'audio', '1'])) {
-    if (!audio) throw new Error('Sin formato de audio disponible');
-    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.mp3` });
+    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.${extAudio(audio.mime)}` });
   }
   return sendSuccess(res, {
     id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
-    audio,
-    directUrl: absoluteUrl(req, `/downloader/mp3?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&direct=true`)
+    audio: { quality: audio.quality || null, mime: audio.mime || 'audio/mp4', bitrate: audio.bitrate || null, url: directUrl },
+    directUrl
   });
 }));
 
 // ---------- MP4 ----------
 router.get(['/mp4', '/ytmp4'], handle(async (req, res) => {
   const info = await P.resolveYoutubeTarget({ url: req.query.url, query: req.query.query || req.query.q });
-  const quality = parseInt(String(req.query.quality || req.query.format || '360').replace(/[^0-9]/g, ''), 10) || 360;
-  const video = P.pickVideo(info.formats, quality);
+  const quality = P.normalizarCalidad(req.query.quality || req.query.format);
+  const directUrl = absoluteUrl(req, `/downloader/mp4?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&quality=${quality || 'auto'}&direct=true`);
   if (wantDirect(req, ['true', 'mp4', 'video', '1'])) {
-    if (!video) throw new Error('Sin formato de video disponible');
-    return proxyStream(req, res, video.url, { filename: `${cleanName(info.title)}.mp4` });
+    const playable = await videoConAudio(info, quality);
+    return enviarVideo(req, res, playable, `${cleanName(info.title)}.mp4`);
   }
+  let playable = null;
+  try { playable = await videoConAudio(info, quality); } catch (e) { console.error('[downloader/mp4]', e.message); }
   return sendSuccess(res, {
     id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
-    requestedQuality: quality, video, hasAudio: !!video?.hasAudio,
-    directUrl: absoluteUrl(req, `/downloader/mp4?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&quality=${quality}&direct=true`)
+    requestedQuality: quality || 'auto',
+    hasAudio: Boolean(playable?.hasAudio),
+    video: playable ? {
+      quality: playable.quality || null,
+      height: playable.height || null,
+      mime: playable.mime || 'video/mp4',
+      hasAudio: Boolean(playable.hasAudio),
+      mergedWithFfmpeg: Boolean(playable.muxed),
+      url: directUrl
+    } : null,
+    directUrl
   });
 }));
 
@@ -144,16 +209,16 @@ router.get('/play', handle(async (req, res) => {
   const query = String(req.query.query || req.query.q || req.query.text || '').trim();
   if (!query) return sendError(res, 400, 'Falta el parámetro query', 'Ejemplo: /downloader/play?query=Lisa+Money');
   const info = await P.resolveYoutubeTarget({ query });
-  const audio = P.pickAudio(info.formats);
+  const audio = await audioDe(info);
+  const playUrl = absoluteUrl(req, `/downloader/play?query=${encodeURIComponent(query)}&direct=true`);
   if (wantDirect(req, ['true', 'mp3', 'audio', '1'])) {
-    if (!audio) throw new Error('Sin formato de audio disponible');
-    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.mp3` });
+    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.${extAudio(audio.mime)}` });
   }
   return sendSuccess(res, {
     query, id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
     youtubeUrl: `https://www.youtube.com/watch?v=${info.id}`,
-    audio,
-    playUrl: absoluteUrl(req, `/downloader/play?query=${encodeURIComponent(query)}&direct=true`)
+    audio: { quality: audio.quality || null, mime: audio.mime || 'audio/mp4', bitrate: audio.bitrate || null, url: playUrl },
+    playUrl
   });
 }));
 

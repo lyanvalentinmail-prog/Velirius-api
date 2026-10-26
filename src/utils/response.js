@@ -1,4 +1,5 @@
 // src/utils/response.js — Formato de respuesta Velirius (JSON estilo Delirius + media con Range 206)
+const fs = require('fs');
 const config = require('../config');
 
 function formatValueClean(val, indent = '') {
@@ -116,6 +117,46 @@ async function proxyStream(req, res, upstreamUrl, { filename = 'media', headers 
   return res.end();
 }
 
+/**
+ * Envía un archivo LOCAL (por ejemplo un MP4 pegado con ffmpeg) con soporte de
+ * Range para que el reproductor pueda buscar dentro del video.
+ */
+function sendFile(res, filePath, { mime = 'video/mp4', filename = 'Velirius-video.mp4', cache = 'no-store' } = {}) {
+  const total = fs.statSync(filePath).size;
+  const rangeHeader = res.req?.headers?.range || null;
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Cache-Control', cache);
+  res.setHeader('Content-Disposition', `inline; filename="${safeHeaderFilename(filename)}"`);
+  let start = 0;
+  let end = total - 1;
+  let status = 200;
+  if (rangeHeader && /^bytes=/i.test(rangeHeader) && total > 0) {
+    const parts = rangeHeader.replace(/^bytes=/i, '').split('-');
+    start = parseInt(parts[0], 10);
+    if (Number.isNaN(start)) {
+      const ultimos = parseInt(parts[1], 10) || total;
+      start = Math.max(0, total - ultimos);
+      end = total - 1;
+    } else if (parts[1]) {
+      end = parseInt(parts[1], 10);
+    }
+    if (Number.isNaN(end) || end >= total) end = total - 1;
+    if (start >= total || start < 0 || start > end) {
+      res.setHeader('Content-Range', `bytes */${total}`);
+      return res.status(416).end();
+    }
+    status = 206;
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+  }
+  res.setHeader('Content-Length', String(end - start + 1));
+  if (res.req?.method === 'HEAD') return res.status(status).end();
+  const stream = fs.createReadStream(filePath, { start, end });
+  stream.on('error', () => { if (!res.headersSent) res.status(500); res.end(); });
+  res.status(status);
+  return stream.pipe(res);
+}
+
 function sendText(res, text, filename = null, asAttachment = false) {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -123,4 +164,4 @@ function sendText(res, text, filename = null, asAttachment = false) {
   return res.status(200).send(String(text ?? ''));
 }
 
-module.exports = { sendSuccess, sendError, sendPng, sendMedia, sendText, proxyStream, safeHeaderFilename, formatValueClean };
+module.exports = { sendSuccess, sendError, sendPng, sendMedia, sendFile, sendText, proxyStream, safeHeaderFilename, formatValueClean };

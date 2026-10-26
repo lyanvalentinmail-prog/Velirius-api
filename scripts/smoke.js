@@ -10,9 +10,10 @@ const { generateCanvas, CANVAS_IDS } = require('../src/utils/canvasEngine');
 const { sharp } = require('../src/utils/image');
 const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
 const { textLayer, measure, FAMILIES, FONTS_DIR } = require('../src/utils/textEngine');
+const P = require('../src/utils/providers');
 const {
   REACTION_LIST, ANIME_KINDS, ANIME_SOURCES, mapDanbooru, mapSafebooru, mapKonachan
-} = require('../src/utils/providers');
+} = P;
 
 function get(port, p) {
   return new Promise((resolve, reject) => {
@@ -286,6 +287,186 @@ async function main() {
     ];
     ok('Anime: los boorus descartan rating q/e/s', limpios[0].length === 1 && limpios[1].length === 1 && limpios[2].length === 1);
     ok('Anime: cada imagen trae url + full', limpios.every(l => l.every(i => /^https?:/.test(i.image) && /^https?:/.test(i.full))));
+
+    // ---- SEARCHER (parseadores offline) ----
+    const htmlGoogle = '<div><a href="https://ejemplo.com/uno" jsname="UWckNb"><br><h3 class="LC20lb">Ejemplo Uno</h3><div>Descripción del resultado uno.</div></a></div>'
+      + '<a href="/url?q=https%3A%2F%2Fejemplo.com%2Fdos&sa=U"><h3>Ejemplo Dos</h3></a>'
+      + '<a href="https://www.google.com/preferences"><h3>Preferencias</h3></a>';
+    const gModerno = P.parseGoogleModerno(htmlGoogle, 10);
+    const gViejo = P.parseGoogle(htmlGoogle, 10);
+    ok('Google: el parser nuevo lee el <h3> y descarta enlaces de Google',
+      gModerno.length === 1 && gModerno[0].url === 'https://ejemplo.com/uno' && gModerno[0].title === 'Ejemplo Uno',
+      gModerno.map(r => r.url).join(' · '));
+    ok('Google: el parser viejo sigue entendiendo /url?q=', gViejo.some(r => r.url === 'https://ejemplo.com/dos'));
+
+    const htmlLite = '<a rel="nofollow" href="https://ejemplo.com/tres" class=\'result-link\'>Ejemplo Tres</a>'
+      + '<td class=\'result-snippet\'>Un trozo de texto del resultado.</td>';
+    const lite = P.parseDuckDuckGoLite(htmlLite, 5);
+    ok('DuckDuckGo lite: título + URL + extracto', lite.length === 1 && lite[0].snippet.includes('trozo'));
+
+    const htmlBing = '<ol><li class="b_algo"><h2><a href="https://ejemplo.com/cuatro">Ejemplo Cuatro</a></h2><p>Resumen de Bing.</p></li></ol>';
+    const bing = P.parseBing(htmlBing, 5);
+    ok('Bing: lee b_algo → h2 → a', bing.length === 1 && bing[0].url === 'https://ejemplo.com/cuatro' && bing[0].snippet.includes('Bing'));
+
+    for (const ep of ['tiktok', 'youtube', 'google', 'wikipedia']) {
+      const r = await get(port, `/searcher/${ep}`);
+      ok(`/searcher/${ep} sin query → 400`, r.status === 400 && /query/i.test(r.body.toString()));
+    }
+
+    // ---- YOUTUBE: formatos y video con audio ----
+    const YT = require('../src/utils/youtube');
+    const fake = (o) => ({ mime_type: 'video/mp4', has_video: true, has_audio: true, height: 360, quality_label: '360p', bitrate: 1000, ...o });
+    const progresivos = [fake({ height: 360, quality_label: '360p' }), fake({ height: 720, quality_label: '720p' })];
+    const elegido = YT.mejorProgresivo(progresivos, 0);
+    ok('YouTube: en automático elige el progresivo más alto', elegido?.height === 720);
+    ok('YouTube: respeta la calidad pedida', YT.mejorProgresivo(progresivos, 480)?.height === 360);
+    const dash = [fake({ has_audio: false, height: 1080, quality_label: '1080p' }), fake({ has_audio: false, height: 720, quality_label: '720p' })];
+    ok('YouTube: sin progresivo baja el DASH de la calidad pedida', YT.mejorVideoDash(dash, 720)?.height === 720);
+    const audios = [fake({ has_video: false, mime_type: 'audio/webm', bitrate: 900 }), fake({ has_video: false, mime_type: 'audio/mp4', bitrate: 128000 })];
+    ok('YouTube: para pegar prefiere audio mp4a', /mp4a|mp4/.test(YT.mejorAudioDash(audios)?.mime_type));
+
+    // ---- YOUTUBE con cliente simulado: búsqueda, formatos y pegado con audio ----
+    {
+      const { execFileSync } = require('child_process');
+      const os = require('os');
+      const ffmpegBin = require('@ffmpeg-installer/ffmpeg').path;
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'smoke-yt-'));
+      const vFile = path.join(dir, 'v.mp4');
+      const aFile = path.join(dir, 'a.m4a');
+      execFileSync(ffmpegBin, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x120:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', vFile]);
+      execFileSync(ffmpegBin, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'aac', aFile]);
+
+      const fmt = o => ({
+        itag: o.itag || 18, mime_type: o.mime || 'video/mp4',
+        has_video: o.v !== false, has_audio: o.a !== false,
+        height: o.h || 360, quality_label: `${o.h || 360}p`, bitrate: o.br || 1000,
+        decipher: async () => o.url || vFile
+      });
+      const falso = {
+        Innertube: {
+          create: async () => ({
+            session: { player: { falso: true } },
+            search: async () => ({
+              videos: [{
+                video_id: 'abc12345678',
+                title: { toString: () => 'Video de prueba' },
+                thumbnails: [{ url: 'https://i.ytimg.com/vi/abc12345678/hq.jpg' }],
+                duration: { text: '1:02', seconds: 62 },
+                author: { name: 'Canal de prueba' },
+                view_count: { toString: () => '1200 visitas' },
+                published: { toString: () => 'hace 1 día' }
+              }]
+            }),
+            getInfo: async () => globalThis.__smokeYtInfo
+          })
+        }
+      };
+      const resolver = require.resolve('youtubei.js');
+      const previo = require.cache[resolver];
+      require.cache[resolver] = { id: resolver, filename: resolver, loaded: true, exports: falso };
+      YT.reiniciar();
+
+      const encontrados = await YT.buscar('prueba', 3);
+      ok('YouTube: la búsqueda devuelve id, título, canal y vistas',
+        encontrados.length === 1 && encontrados[0].id === 'abc12345678' && encontrados[0].title === 'Video de prueba'
+        && encontrados[0].author === 'Canal de prueba' && encontrados[0].duration === '1:02',
+        encontrados[0] && encontrados[0].url);
+
+      // 1) Con formato progresivo: devuelve la URL y ya trae audio.
+      globalThis.__smokeYtInfo = {
+        playability_status: { status: 'OK' },
+        basic_info: { title: 'Video de prueba', author: 'Canal', duration: 62 },
+        streaming_data: {
+          formats: [fmt({ h: 360, url: 'https://cdn.ejemplo/360.mp4' })],
+          adaptive_formats: [fmt({ h: 1080, a: false, url: 'https://cdn.ejemplo/1080.mp4' }), fmt({ v: false, mime: 'audio/mp4', br: 128000, url: 'https://cdn.ejemplo/a.m4a' })]
+        }
+      };
+      const progresivo = await YT.videoReproducible('abc12345678', 0);
+      ok('YouTube: en automático devuelve el progresivo con audio',
+        progresivo.hasAudio === true && progresivo.url === 'https://cdn.ejemplo/360.mp4' && !progresivo.muxed);
+
+      // 2) Sin progresivo (sólo DASH): pega las dos pistas con ffmpeg.
+      globalThis.__smokeYtInfo = {
+        playability_status: { status: 'OK' },
+        basic_info: { title: 'Video de prueba', author: 'Canal', duration: 62 },
+        streaming_data: {
+          formats: [],
+          adaptive_formats: [fmt({ h: 720, a: false, url: vFile }), fmt({ v: false, mime: 'audio/mp4', br: 128000, url: aFile })]
+        }
+      };
+      const pegado = await YT.videoReproducible('zzz99999999', 0);
+      const pistas = pegado.file && fs.existsSync(pegado.file)
+        ? require('child_process').spawnSync(ffmpegBin, ['-hide_banner', '-i', pegado.file], { encoding: 'utf8' }).stderr
+        : '';
+      ok('YouTube: sin progresivo pega video + audio con ffmpeg',
+        Boolean(pegado.file) && pegado.hasAudio === true && pegado.muxed === true
+        && /Video:/.test(pistas) && /Audio:/.test(pistas), pegado.file);
+
+      const playable = await P.youtubePlayable('zzz99999999', 0);
+      ok('providers.youtubePlayable devuelve un video con sonido',
+        playable.hasAudio === true && (playable.file || playable.url === 'https://cdn.ejemplo/360.mp4'), playable.source);
+
+      // 3) El endpoint real: en automático entrega un MP4 con pistas de video y audio.
+      const directo = await get(port, '/downloader/mp4?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dzzz99999999&direct=true');
+      ok('/downloader/mp4?direct=true entrega el video (con audio)',
+        directo.status === 200 && /^video\//.test(directo.type) && directo.body.length > 500,
+        `${directo.status} ${directo.type} ${directo.body.length} B`);
+
+      const rango = await new Promise(resolve => {
+        http.get(`http://127.0.0.1:${port}/downloader/mp4?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dzzz99999999&direct=true`,
+          { headers: { Range: 'bytes=0-99' } }, res => {
+            const chunks = [];
+            res.on('data', c => chunks.push(c));
+            res.on('end', () => resolve({ status: res.statusCode, range: res.headers['content-range'], len: Buffer.concat(chunks).length }));
+          }).on('error', () => resolve({ status: 0 }));
+      });
+      ok('/downloader/mp4 acepta Range (se puede buscar dentro del video)',
+        rango.status === 206 && /^bytes 0-99\//.test(String(rango.range)) && rango.len === 100,
+        `${rango.status} ${rango.range}`);
+
+      const asJson = await get(port, '/downloader/mp4?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dzzz99999999');
+      let asJsonBody = {};
+      try { asJsonBody = JSON.parse(asJson.body.toString()); } catch (_) { /* no-json */ }
+      ok('/downloader/mp4 en JSON avisa que el video trae audio',
+        asJsonBody?.result?.hasAudio === true && Boolean(asJsonBody?.result?.video?.url));
+
+      if (pegado.file) fs.unlinkSync(pegado.file);
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (previo) require.cache[resolver] = previo; else delete require.cache[resolver];
+      delete globalThis.__smokeYtInfo;
+      YT.reiniciar();
+    }
+
+    // ---- DOWNLOADER: el video sale con sonido ----
+    ok('ffmpeg disponible para pegar audio + video', require('fs').existsSync(require('@ffmpeg-installer/ffmpeg').path));
+    const formaMuxeada = { hasVideo: true, hasAudio: true, url: 'https://x/v.mp4', height: 720 };
+    const formaMuda = { hasVideo: true, hasAudio: false, url: 'https://x/v.mp4', height: 1080 };
+    ok('pickVideo prefiere el formato que ya trae audio', P.pickVideo([formaMuda, formaMuxeada], 1080)?.hasAudio === true);
+
+    // sendFile: sirve un archivo local con Range (lo usa el MP4 pegado con ffmpeg)
+    const { sendFile } = require('../src/utils/response');
+    const { Writable } = require('stream');
+    const tmpVideo = path.join(require('os').tmpdir(), `smoke-${Date.now()}.mp4`);
+    fs.writeFileSync(tmpVideo, Buffer.from('0123456789abcdef'));
+    class FakeRes extends Writable {
+      constructor() { super(); this.headers = {}; this.statusCode = 200; this.req = { headers: { range: 'bytes=4-7' }, method: 'GET' }; this.chunks = []; }
+      setHeader(k, v) { this.headers[k.toLowerCase()] = String(v); return this; }
+      status(c) { this.statusCode = c; return this; }
+      _write(c, _e, cb) { this.chunks.push(c); cb(); }
+    }
+    const fakeRes = new FakeRes();
+    sendFile(fakeRes, tmpVideo, { mime: 'video/mp4', filename: 'x.mp4' });
+    await new Promise(r => fakeRes.on('finish', r));
+    fs.unlinkSync(tmpVideo);
+    ok('sendFile: Range 206 con el trozo pedido',
+      fakeRes.statusCode === 206 && fakeRes.headers['content-range'] === 'bytes 4-7/16'
+      && Buffer.concat(fakeRes.chunks).toString() === '4567');
+
+    for (const ep of ['youtube', 'mp4']) {
+      const ficha = CATEGORIES.find(c => c.id === 'downloader').endpoints.find(e => e.id === ep);
+      const quality = (ficha?.params || []).find(p => p.name === 'quality');
+      ok(`/downloader/${ep}: quality incluye auto`, (quality?.options || []).includes('auto') && quality.example === 'auto');
+    }
 
     // ---- Ping ----
     const ping = JSON.parse((await get(port, '/ping')).body.toString());

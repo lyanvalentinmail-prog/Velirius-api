@@ -175,6 +175,40 @@
     return null;
   }
 
+  // Busca algo reproducible dentro del JSON (video con audio o audio suelto).
+  function findPlayable(json) {
+    try {
+      const r = json && json.result;
+      if (!r) return null;
+      const esUrl = v => typeof v === 'string' && /^(https?:|\/)/.test(v);
+      const video = [
+        r.video && r.video.url,
+        r.playable && r.playable.url,
+        r.video_nowatermark,
+        r.directUrls && r.directUrls.mp4,
+        r.media && Array.isArray(r.media) && r.media[0] && r.media[0].type === 'video' ? r.media[0].url : null,
+        r.formats && Array.isArray(r.formats) && (r.formats.find(f => f && f.hasVideo && f.hasAudio && f.url) || {}).url
+      ].find(esUrl);
+      if (video) return { type: 'video', url: video };
+      const audio = [
+        r.audio && r.audio.url,
+        r.playUrl,
+        r.directUrls && r.directUrls.mp3
+      ].find(esUrl);
+      if (audio) return { type: 'audio', url: audio };
+    } catch (_) { /* noop */ }
+    return null;
+  }
+
+  /** Reproductor con sonido: sin `muted` para que se escuche al darle play. */
+  function playerHtml(p) {
+    if (!p) return '';
+    if (p.type === 'audio') {
+      return `<div class="preview" style="padding:12px"><audio src="${esc(p.url)}" controls preload="metadata" style="width:100%"></audio></div>`;
+    }
+    return `<div class="preview"><video src="${esc(p.url)}" controls playsinline preload="metadata"></video></div>`;
+  }
+
   // ---------- Ejecutar ----------
   async function executeTest(tester) {
     const result = tester.querySelector('.result');
@@ -198,22 +232,24 @@
             <a class="chip-btn" href="${url}" download="${tester.dataset.endpoint}.png">Descargar</a></div>
           <div class="preview"><img src="${url}" alt="resultado de ${esc(tester.dataset.endpoint)}"></div>`;
       } else if (type.startsWith('video/')) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
+        // Se usa la URL del endpoint (no un blob) para que el navegador pida
+        // rangos y pueda buscar dentro del video. Sin `muted`: con sonido.
+        const kb = Math.round(Number(res.headers.get('content-length') || 0) / 1024);
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">Video · ${ms} ms</span>
+          <div class="res-bar">${okChip}<span class="res-meta">Video · ${ms} ms${kb ? ' · ' + kb + ' KB' : ''}</span>
             <a class="chip-btn" href="${path}" target="_blank" rel="noopener">Abrir</a></div>
-          <div class="preview"><video src="${url}" controls autoplay loop muted playsinline></video></div>`;
+          <div class="preview"><video src="${path}" controls autoplay playsinline preload="metadata"></video></div>`;
       } else if (type.startsWith('audio/')) {
         result.innerHTML = `
           <div class="res-bar">${okChip}<span class="res-meta">Audio · ${ms} ms</span></div>
           <div class="preview" style="padding:12px"><audio src="${path}" controls autoplay style="width:100%"></audio></div>`;
       } else if (type.includes('application/json')) {
         const json = await res.json();
+        const playable = findPlayable(json);
         const preview = findPreviewImage(json);
         result.innerHTML = `
           <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span></div>
-          ${preview ? `<div class="preview"><img src="${esc(preview)}" alt=""></div>` : ''}
+          ${playable ? playerHtml(playable) : preview ? `<div class="preview"><img src="${esc(preview)}" alt=""></div>` : ''}
           <pre>${esc(JSON.stringify(json, null, 2))}</pre>`;
       } else {
         const text = await res.text();

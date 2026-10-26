@@ -27,10 +27,10 @@ module.exports = {
       P('url', 'https://vt.tiktok.com/ZS43DntHW/', 'URL del TikTok'),
       S('direct', '', 'Devuelve el archivo en vez de JSON', ['', 'mp4', 'mp3'])
     ] },
-    { id: 'youtube', desc: 'Info y formatos de un video de YouTube', params: [
+    { id: 'youtube', desc: 'Info y formatos de un video de YouTube (siempre con audio)', params: [
       O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL del video'),
       O('query', '', 'O busca por nombre'),
-      O('quality', '720', 'Calidad preferida (360/480/720/1080)'),
+      S('quality', 'auto', 'Calidad preferida (auto = la mejor que traiga audio)', ['auto', '360', '480', '720', '1080']),
       S('direct', '', 'Devuelve el archivo en vez de JSON', ['', 'mp4', 'mp3'])
     ] },
     { id: 'facebook', desc: 'Descarga videos públicos de Facebook (HD/SD)', params: [
@@ -47,10 +47,10 @@ module.exports = {
       O('query', 'Twice I Cant Stop Me', 'O busca por nombre'),
       O('direct', 'true', 'true = audio directo en streaming')
     ] },
-    { id: 'mp4', desc: 'Video MP4 desde YouTube (URL o búsqueda)', media: 'video', params: [
+    { id: 'mp4', desc: 'Video MP4 con audio desde YouTube (URL o búsqueda)', media: 'video', params: [
       O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'),
       O('query', 'Twice', 'O busca por nombre'),
-      O('quality', '360', '360/480/720/1080'),
+      S('quality', 'auto', 'Calidad: auto = la mejor con audio', ['auto', '360', '480', '720', '1080']),
       O('direct', 'true', 'true = video directo en streaming')
     ] },
     { id: 'play', desc: 'Busca una canción y devuelve el audio listo para reproducir', media: 'audio', params: [
