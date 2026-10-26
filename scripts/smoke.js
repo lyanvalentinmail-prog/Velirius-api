@@ -7,6 +7,7 @@ const app = require('../src/server');
 const { CATEGORIES, totals } = require('../src/catalog');
 const { generateCanvas, CANVAS_IDS } = require('../src/utils/canvasEngine');
 const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
+const { textLayer, measure, FAMILIES, FONTS_DIR } = require('../src/utils/textEngine');
 const { REACTION_LIST } = require('../src/utils/providers');
 
 function get(port, p) {
@@ -67,6 +68,15 @@ async function main() {
     const reactList = JSON.parse((await get(port, '/reactions/list')).body.toString());
     ok(`GET /reactions/list (${REACTION_LIST.length} reacciones)`, reactList.status === true && reactList.result.count === REACTION_LIST.length);
     ok('Reactions no tiene nada NSFW', !/nsfw|hentai|porn|xxx/i.test(JSON.stringify(reactList.result)));
+
+    // ---- Tipografías empaquetadas: nunca cuadrados ▯▯▯ ----
+    const fontFiles = fs.readdirSync(FONTS_DIR);
+    ok(`Fuentes empaquetadas (${fontFiles.length})`, fontFiles.some(f => /Inter-Bold/.test(f)) && fontFiles.some(f => /Playfair/.test(f)) && fontFiles.some(f => /JetBrainsMono/.test(f)) && fontFiles.includes('NotoEmoji-Regular.ttf'));
+    const glyph = textLayer({ text: 'Ñandú áéíóú ✓ 🐱', width: 400, height: 90, maxFont: 40 });
+    ok('Texto en vectores (sin depender del sistema)', glyph.svg.toString().includes('<path') && glyph.missing === 0);
+    ok('Emoji/símbolos con NotoEmoji (sin tofu)', textLayer({ text: '🐱🔥', width: 120, height: 60, maxFont: 40 }).missing === 0);
+    ok('Medición real de anchos', Math.abs(measure('abc', { size: 40 }) - measure('abc', { size: 40 })) === 0 && measure('abc', { size: 40 }) > 0);
+    ok('Familias sans/serif/mono', Object.keys(FAMILIES).join(',') === 'sans,serif,mono');
 
     // ---- Canvas (render local con valores de ejemplo) ----
     const outDir = path.join(__dirname, '..', 'tmp-canvas');

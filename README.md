@@ -56,6 +56,21 @@ curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
 modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
 
+### Tipografías: nunca más cuadrados ▯▯▯
+
+El texto **no** se dibuja con `<text font-family="…">`. Cada letra se traduce a un **path vectorial**
+(`src/utils/textEngine.js` + `opentype.js`) usando las fuentes empaquetadas en `assets/fonts`:
+
+| Familia (`font=`) | Fuente incluida | Pesos |
+|---|---|---|
+| `sans` (por defecto) | Inter | 400 / 700 / 900 |
+| `serif` | Playfair Display | 400 / 700 / 900 |
+| `mono` | JetBrains Mono | 400 / 700 |
+
+Los emojis y símbolos que no están en esas fuentes se dibujan con **NotoEmoji** (también incluida), así que
+tampoco aparecen cuadrados en textos como `hola 🐱🔥`. Todo el render es idéntico en local, Render o Vercel
+porque **no depende de las tipografías del sistema** (fontconfig).
+
 **Parámetros de estilo válidos en cualquier canvas**
 
 | Parámetro | Qué hace |
@@ -67,8 +82,15 @@ modificables por query**. Sin parámetros usan los valores de ejemplo y el avata
 | `uppercase` | `true` = MAYÚSCULAS |
 | `x`, `y` | desplazamiento en % (-50 … 50) |
 | `rotate` | rotación en grados (-180 … 180) |
+| `spacing` | espacio extra entre letras en px |
 | `zoom` | zoom de la foto del usuario (0.5 … 3) |
 | `grayscale` | `true` = foto en blanco y negro |
+| `shadow` | `true` = sombra suave bajo el texto (mejor lectura sobre fotos) |
+
+Los canvas con plantilla de Drive están **calibrados con las coordenadas reales de cada imagen**
+(burbuja de cita de `iqc`, fila de `cuentatiktok`, cartel del pingüino, hoja de Bob Esponja, marco de
+`sebusca`…) y el texto de ejemplo de la plantilla se limpia antes de escribir el nuevo, para que el
+resultado se vea como la imagen original y no como un textbox encima.
 
 | Endpoint | Plantilla (Drive) | Parámetros propios |
 |---|---|---|
@@ -200,9 +222,13 @@ src/
     pages.js            → web (/, /home, /<categoría>, /information, /docs)
   utils/
     providers.js        → todas las fuentes públicas (SFW)
+    textEngine.js       → texto vectorial con fuentes empaquetadas (sin tofu)
     canvasEngine.js     → render de las 33 plantillas con parámetros
     video.js            → bratvideo (MP4) y attp (WebM)
     image.js            → helpers de sharp/SVG
+assets/
+  templates/            → plantillas de la carpeta CategoriaCanvas de Drive
+  fonts/                → Inter, Playfair Display, JetBrains Mono y NotoEmoji
 scripts/smoke.js        → npm test
 ```
 
