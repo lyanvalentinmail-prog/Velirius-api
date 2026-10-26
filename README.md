@@ -138,6 +138,12 @@ Los emojis y símbolos que no están en esas fuentes se dibujan con **NotoEmoji*
 tampoco aparecen cuadrados en textos como `hola 🐱🔥`. Todo el render es idéntico en local, Render o Vercel
 porque **no depende de las tipografías del sistema** (fontconfig).
 
+En los canvas que muestran un chat (`iqc`) los emojis salen **a color**, como en WhatsApp: van empaquetados
+como imágenes (hoja de sprites `assets/emoji/twitter-64.png`, Twemoji CC-BY 4.0 → ver
+`assets/emoji/LICENSE.txt`) y el generador las pide con `src/utils/emoji.js`:
+`const emojis = await emojiImages(texto)` y después `textLayer({ text, emojiImages: emojis })`. Si el set no
+tuviera algún emoji, se dibuja el glifo de NotoEmoji: **nunca** un cuadrado.
+
 **Parámetros de estilo válidos en cualquier canvas**
 
 | Parámetro | Qué hace |
@@ -550,12 +556,14 @@ src/
   utils/
     providers.js          → todas las fuentes públicas (SFW)
     textEngine.js         → texto vectorial con fuentes empaquetadas (sin tofu)
+    emoji.js              → emojis a color (recorta la hoja de sprites)
     canvasEngine.js       → fachada de src/canvas
     video.js              → bratvideo (MP4) y attp (WebM)
     image.js              → helpers de sharp/SVG
 assets/
   templates/              → plantillas de la carpeta CategoriaCanvas de Drive
   fonts/                  → Inter, Playfair Display, JetBrains Mono y NotoEmoji
+  emoji/                  → hoja de sprites de emojis a color + índice (Twemoji)
 scripts/
   smoke.js                → npm test
   validate-catalog.js     → npm run check

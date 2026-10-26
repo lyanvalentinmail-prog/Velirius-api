@@ -10,6 +10,7 @@ const { generateCanvas, CANVAS_IDS } = require('../src/utils/canvasEngine');
 const { sharp } = require('../src/utils/image');
 const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
 const { textLayer, measure, FAMILIES, FONTS_DIR } = require('../src/utils/textEngine');
+const { emojiImages } = require('../src/utils/emoji');
 const P = require('../src/utils/providers');
 const {
   REACTION_LIST, REACTION_PROVIDERS, ANIME_KINDS, ANIME_SOURCES, mapDanbooru, mapSafebooru, mapKonachan
@@ -117,6 +118,9 @@ async function main() {
     const glyph = textLayer({ text: 'Ñandú áéíóú ✓ 🐱', width: 400, height: 90, maxFont: 40 });
     ok('Texto en vectores (sin depender del sistema)', glyph.svg.toString().includes('<path') && glyph.missing === 0);
     ok('Emoji/símbolos con NotoEmoji (sin tofu)', textLayer({ text: '🐱🔥', width: 120, height: 60, maxFont: 40 }).missing === 0);
+    const colorEmoji = await emojiImages('🔥 😀 1️⃣');
+    const colorLayer = textLayer({ text: '🔥 😀 1️⃣', width: 240, height: 60, maxFont: 40, emojiImages: colorEmoji });
+    ok('Emojis a color (imágenes en el texto)', colorEmoji.size === 3 && (colorLayer.svg.toString().match(/<image /g) || []).length === 3);
     ok('Medición real de anchos', Math.abs(measure('abc', { size: 40 }) - measure('abc', { size: 40 })) === 0 && measure('abc', { size: 40 }) > 0);
     ok('Familias sans/hand/serif/mono', Object.keys(FAMILIES).join(',') === 'sans,hand,serif,mono');
 
