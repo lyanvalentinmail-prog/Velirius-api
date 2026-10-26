@@ -225,6 +225,9 @@ la plantilla, y cualquier valor se puede pisar desde la URL:
 
 Overrides en vivo: `/canvas/miCanvas?photo.y1=0.60&text.size=1.2&text.color=ff2d55`.
 
+Tipografías disponibles sin instalar nada: `sans` (Inter), `hand` (Caveat Brush, la letra a mano de
+`bratcoyote`), `serif` (Playfair) y `mono` (JetBrains Mono). Se cambian con `?font=hand`, por ejemplo.
+
 ### 7.4 La ficha — `src/catalog/canvas.js`
 
 ```js

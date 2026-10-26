@@ -21,11 +21,23 @@ const boxOf = (id, part, q) => P.area(q, part, partsOf(id)[part].box);
 /** Color de una parte: override de query > layouts.js. */
 const fillOf = (id, part, q, ov) => (ov.fill || P.color(q, part, 'fill', partsOf(id)[part].fill));
 
-/** Cartel con personaje: la zona del cartel y la tipografía vienen de layouts.js. */
+/**
+ * Cartel con personaje: la zona del cartel y la tipografía vienen de layouts.js.
+ * La tipografía se pasa COMPLETA (familia, peso, interlineado, espaciado y
+ * minúsculas), así un canvas puede usar exactamente la misma que `brat`.
+ */
 function signPart(id, q, opts = {}) {
   const parts = partsOf(id);
   const area = P.area(q, 'sign', parts.sign.box);
   const t = P.style(q, 'text', parts.text.font);
+  const ov = C.styleOf(q);
+  const padFrac = t.pad > 0 ? t.pad : (parts.text.pad ?? 0.06);
+  // Mayúsculas: `?uppercase=` manda si viene (así funciona el campo de la web);
+  // si no, lo que diga el layout del cartel.
+  const upperRaw = q && q.uppercase !== undefined && q.uppercase !== '' ? q.uppercase : null;
+  const upper = upperRaw !== null
+    ? C.flag(upperRaw)
+    : Boolean(parts.text.font.uppercase ?? parts.text.uppercase ?? t.uppercase);
   return C.signCanvas(parts.template, area, q, {
     defaultText: opts.defaultText || 'Welcome to Velirius API',
     imageRadius: parts.sign.radius || 0,
@@ -35,8 +47,16 @@ function signPart(id, q, opts = {}) {
       fill: t.fill || opts.fill,
       maxFont: Math.round(parts.text.font.maxFont * t.size),
       maxLines: parts.text.font.maxLines || 4,
+      lineHeight: t.lineHeight,
+      letterSpacing: t.spacing,
+      align: parts.text.font.align || t.align,
       rotate: t.rotate,
-      uppercase: t.uppercase,
+      uppercase: upper,
+      // posición vertical dentro del cartel (el original no está centrado)
+      offsetY: parts.text.offsetY ?? 0,
+      // minúsculas por defecto (brat): `?uppercase=true` las desactiva
+      lowercase: Boolean(parts.text.lowercase) && !upper,
+      padFrac,
       cover: opts.cover === false ? false : parts.text.cover !== false
     }
   });

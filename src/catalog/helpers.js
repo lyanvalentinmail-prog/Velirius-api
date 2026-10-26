@@ -25,7 +25,7 @@ const AV2 = '__AVATAR2__';
 const textStyle = () => [
   O('color', '', 'Color del texto (hex, ej. ff2d55, o nombre: white, black…)'),
   O('size', '1', 'Escala del texto: 0.5 = mitad, 2 = doble'),
-  S('font', 'sans', 'Tipografía incluida en el repo (sin cuadrados)', ['sans', 'serif', 'mono']),
+  S('font', 'sans', 'Tipografía incluida en el repo (sin cuadrados)', ['sans', 'serif', 'mono', 'hand']),
   O('uppercase', 'false', 'true = texto en MAYÚSCULAS'),
   O('x', '0', 'Mover el texto en horizontal (-50 a 50)'),
   O('y', '0', 'Mover el texto en vertical (-50 a 50)'),

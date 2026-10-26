@@ -61,7 +61,7 @@ Las medidas y estilos viven en `src/canvas/layouts.js`, en bloques con nombre (`
 | `color` / `fill` | Color de texto o de relleno (`ff2d55`, `white`, `#000`) |
 | `bg` | Color de fondo de la parte |
 | `size` | Escala tipográfica (0.5 – 2) |
-| `font`, `weight`, `align`, `uppercase`, `spacing`, `lineHeight`, `rotate` | Tipografía |
+| `font` (`sans`\|`hand`\|`serif`\|`mono`), `weight`, `align`, `uppercase`, `spacing`, `lineHeight`, `rotate` | Tipografía |
 | `radius`, `pad`, `zoom`, `opacity` | Formas, márgenes y fotos |
 
 ---
@@ -147,6 +147,9 @@ module.exports = async function ejemplo(q) {
 Reglas de oro:
 
 - **Nunca** `<text>` dentro de un SVG: usá `textLayer()` (fuentes empaquetadas → nunca ▯▯▯).
+  Familias disponibles: `sans` (Inter), `hand` (Caveat Brush, la letra a mano de `bratcoyote`),
+  `serif` (Playfair) y `mono` (JetBrains Mono). Para sumar otra: copiá el `.ttf` a `assets/fonts`
+  (con su licencia OFL al lado) y agregala a `FAMILIES` en `src/utils/textEngine.js`.
 - Los textos **crecen** hacia abajo (más líneas, no letra más chica): `textLayer` + `fitLines`.
 - Nada de medidas clavadas en el código: van en `layouts.js` y se leen con `P` / `boxOf`.
 - La imagen sale **sin marco** y el fondo respeta `?bg=` / `canvas.bg`.

@@ -16,6 +16,9 @@ const FONTS_DIR = path.join(__dirname, '..', '..', 'assets', 'fonts');
 
 const FAMILIES = {
   sans: { 400: 'Inter-Regular.ttf', 500: 'Inter-Regular.ttf', 600: 'Inter-Bold.ttf', 700: 'Inter-Bold.ttf', 800: 'Inter-Black.ttf', 900: 'Inter-Black.ttf' },
+  // Letra a mano del cartel de `bratcoyote` (Caveat Brush, OFL). Tiene un solo peso:
+  // pedir 700 u 800 devuelve la misma fuente, así el estilo no salta entre canvas.
+  hand: { 400: 'CaveatBrush-Regular.ttf', 500: 'CaveatBrush-Regular.ttf', 600: 'CaveatBrush-Regular.ttf', 700: 'CaveatBrush-Regular.ttf', 800: 'CaveatBrush-Regular.ttf', 900: 'CaveatBrush-Regular.ttf' },
   serif: { 400: 'Playfair-Regular.ttf', 500: 'Playfair-Regular.ttf', 600: 'Playfair-Bold.ttf', 700: 'Playfair-Bold.ttf', 800: 'Playfair-Black.ttf', 900: 'Playfair-Black.ttf' },
   mono: { 400: 'JetBrainsMono-Regular.ttf', 500: 'JetBrainsMono-Regular.ttf', 600: 'JetBrainsMono-Bold.ttf', 700: 'JetBrainsMono-Bold.ttf', 800: 'JetBrainsMono-Bold.ttf', 900: 'JetBrainsMono-Bold.ttf' }
 };
@@ -36,6 +39,8 @@ function resolveFamily(name) {
   if (FAMILIES[key]) return key;
   if (key === 'monoespaciada' || key === 'monospace') return 'mono';
   if (key === 'serif' || key === 'serifada') return 'serif';
+  // alias de la letra a mano: ?font=hand | manuscrita | caveat | brush
+  if (key === 'manuscrita' || key === 'caveat' || key === 'brush' || key === 'handwriting') return 'hand';
   return 'sans';
 }
 

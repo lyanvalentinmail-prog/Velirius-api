@@ -11,6 +11,18 @@
 // ➕ AGREGAR UN CANVAS: 1) src/canvas/generators/<id>.js  2) un bloque acá con sus
 //    medidas  3) la ficha en src/catalog/canvas.js. Guía: CONTRIBUTING.md.
 
+// ---------- Tipografía de la familia BRAT (una sola definición) ----------
+// Inter 700, minúsculas, interlineado apretado y letras levemente juntas: así se
+// ve el sticker original de brat. TODAS las canvas brat* (`brat`, `bratcoyote`,
+// `bratanime`…) tienen que usar exactamente esta, cambiándola acá una sola vez.
+// `align` lo decide cada canvas (el cartel del coyote va centrado).
+const BRAT_TYPE = {
+  family: 'sans',
+  weight: 700,
+  lineHeight: 1.08,
+  spacing: -0.5
+};
+
 const LAYOUTS = {
   /* ============================ TEXTO ============================ */
   brat: {
@@ -19,7 +31,7 @@ const LAYOUTS = {
       canvas: { width: 512, height: 512, bg: '#ffffff' },
       text: {
         box: { x0: 0.04, y0: 0.06, x1: 0.96, y1: 0.94 },
-        font: { family: 'sans', weight: 700, maxFont: 78, lineHeight: 1.08, maxLines: 8, spacing: -0.5, align: 'start' },
+        font: { ...BRAT_TYPE, maxFont: 78, maxLines: 8, align: 'start' },
         fill: '#000000',
         pad: 0.06
       }
@@ -187,7 +199,17 @@ const LAYOUTS = {
     parts: {
       template: 'bratcoyote.png',
       sign: { box: { x0: 0.052, y0: 0.092, x1: 0.538, y1: 0.468 } },
-      text: { font: { family: 'sans', weight: 900, maxFont: 104, maxLines: 4, uppercase: true }, fill: '#111111' }
+      // La tipografía del cartel original: letra a mano (`hand` = Caveat Brush,
+      // empaquetada en assets/fonts). Mayúsculas, interlineado amplio y el texto
+      // centrado en el cartel, igual que la plantilla de Drive.
+      // ?font=sans|serif|mono la cambia, como en el resto de los canvas.
+      text: {
+        font: { family: 'hand', weight: 400, maxFont: 102, maxLines: 4, lineHeight: 1.1, spacing: 0, align: 'middle', uppercase: true },
+        fill: '#111111',
+        pad: 0.055,
+        // el texto del cartel original no está centrado: baja un poco
+        offsetY: 0.19
+      }
     }
   },
 

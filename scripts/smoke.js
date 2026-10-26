@@ -108,12 +108,12 @@ async function main() {
 
     // ---- Tipografías empaquetadas: nunca cuadrados ▯▯▯ ----
     const fontFiles = fs.readdirSync(FONTS_DIR);
-    ok(`Fuentes empaquetadas (${fontFiles.length})`, fontFiles.some(f => /Inter-Bold/.test(f)) && fontFiles.some(f => /Playfair/.test(f)) && fontFiles.some(f => /JetBrainsMono/.test(f)) && fontFiles.includes('NotoEmoji-Regular.ttf'));
+    ok(`Fuentes empaquetadas (${fontFiles.length})`, fontFiles.some(f => /Inter-Bold/.test(f)) && fontFiles.some(f => /Playfair/.test(f)) && fontFiles.some(f => /JetBrainsMono/.test(f)) && fontFiles.includes('NotoEmoji-Regular.ttf') && fontFiles.includes('CaveatBrush-Regular.ttf'));
     const glyph = textLayer({ text: 'Ñandú áéíóú ✓ 🐱', width: 400, height: 90, maxFont: 40 });
     ok('Texto en vectores (sin depender del sistema)', glyph.svg.toString().includes('<path') && glyph.missing === 0);
     ok('Emoji/símbolos con NotoEmoji (sin tofu)', textLayer({ text: '🐱🔥', width: 120, height: 60, maxFont: 40 }).missing === 0);
     ok('Medición real de anchos', Math.abs(measure('abc', { size: 40 }) - measure('abc', { size: 40 })) === 0 && measure('abc', { size: 40 }) > 0);
-    ok('Familias sans/serif/mono', Object.keys(FAMILIES).join(',') === 'sans,serif,mono');
+    ok('Familias sans/hand/serif/mono', Object.keys(FAMILIES).join(',') === 'sans,hand,serif,mono');
 
     // ---- Canvas (render local con valores de ejemplo) ----
     const outDir = path.join(__dirname, '..', 'tmp-canvas');
@@ -148,6 +148,12 @@ async function main() {
     ok('GET /canvas/brat?color&size PNG', via.status === 200 && via.type.includes('image/png') && isPng(via.body));
     const viaSign = await get(port, '/canvas/bratanime?text=Hola&rotate=12&uppercase=true&x=5');
     ok('GET /canvas/bratanime con overrides', viaSign.status === 200 && isPng(viaSign.body));
+    // bratcoyote: letra a mano (familia `hand`) por defecto y override a sans
+    const coyote = await generateCanvas('bratcoyote', { text: 'Hola Velirius' });
+    const coyoteSans = await generateCanvas('bratcoyote', { text: 'Hola Velirius', font: 'sans' });
+    ok('canvas/bratcoyote usa la letra a mano (hand) y respeta ?font=sans',
+      isPng(coyote) && isPng(coyoteSans) && Buffer.compare(coyote, coyoteSans) !== 0);
+
     const missing = await get(port, '/canvas/noexiste');
     ok('canvas inexistente → 404', missing.status === 404);
 
