@@ -1,0 +1,626 @@
+// src/canvas/core.js — Motor compartido de los canvas.
+// Aquí viven los helpers de parámetros y las piezas reutilizables (texto, foto,
+// chroma-key, huecos de las plantillas, borrado del texto de ejemplo…).
+// Los canvas concretos están partidos en src/canvas/generators*.js y sus medidas
+// en src/canvas/layouts.js.
+const {
+  sharp, loadImageBuffer, templateMeta, shapedImage, circleImage, heartImage
+} = require('../utils/image');
+const { textLayer, measure, wrapLines } = require('../utils/textEngine');
+const { fetchBuffer } = require('../utils/http');
+
+// ---------- helpers de parámetros ----------
+const txt = (q, fallback) => {
+  const v = String(q.text ?? q.txt ?? '').trim();
+  return v || fallback;
+};
+const imgParam = (q, ...names) => {
+  for (const n of names) {
+    const v = String(q[n] ?? '').trim();
+    if (v) return v;
+  }
+  return '';
+};
+const numberIn = (v, def, min, max) => {
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.max(min, Math.min(max, n));
+};
+const flag = v => ['true', '1', 'yes', 'si', 'sí', 'on'].includes(String(v ?? '').toLowerCase());
+const parsePercent = v => {
+  if (v === undefined || v === null || String(v).trim() === '') return Math.floor(Math.random() * 101);
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? Math.floor(Math.random() * 101) : Math.max(0, Math.min(100, n));
+};
+
+const NAMED_COLORS = ['white', 'black', 'red', 'green', 'blue', 'yellow', 'pink', 'purple', 'orange', 'gray', 'grey', 'gold', 'cyan', 'magenta', 'brown', 'navy', 'teal', 'lime', 'silver', 'maroon', 'olive', 'transparent'];
+function normColor(value, fallback = null) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+  if (NAMED_COLORS.includes(lower)) return lower;
+  let hex = lower.replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/.test(hex)) hex = hex.split('').map(c => c + c).join('');
+  if (/^[0-9a-f]{6}$/.test(hex)) return `#${hex}`;
+  if (/^[0-9a-f]{8}$/.test(hex)) return `#${hex.slice(0, 6)}`;
+  return fallback;
+}
+
+/** Lee todos los overrides de estilo del query string. */
+function styleOf(q = {}) {
+  return {
+    fill: normColor(q.color ?? q.fill ?? q.textcolor ?? q.fontcolor, null),
+    bg: normColor(q.bg ?? q.background, null),
+    scale: numberIn(q.size ?? q.scale ?? q.fontsize, 1, 0.2, 3),
+    dx: numberIn(q.x, 0, -100, 100) / 100,
+    dy: numberIn(q.y, 0, -100, 100) / 100,
+    rotate: numberIn(q.rotate ?? q.rot, 0, -180, 180),
+    font: String(q.font ?? '').toLowerCase(),
+    uppercase: flag(q.uppercase ?? q.mayusculas),
+    spacing: numberIn(q.spacing ?? q.letterspacing ?? q.tracking, 0, -50, 200),
+    zoom: numberIn(q.zoom, 1, 0.2, 4),
+    grayscale: flag(q.grayscale ?? q.blanconegro),
+    opacity: numberIn(q.opacity, 0.45, 0, 1),
+    shadow: flag(q.shadow ?? q.sombra)
+  };
+}
+
+// ---------- piezas de imagen ----------
+
+/** Sombra interior suave para que la foto se integre en la plantilla. */
+function innerShade(w, h, shape = 'ellipse') {
+  const W = Math.max(2, Math.round(w));
+  const H = Math.max(2, Math.round(h));
+  const blur = Math.max(1.5, Math.min(W, H) * 0.05);
+  const stroke = Math.max(2, Math.min(W, H) * 0.09);
+  const el = shape === 'rect'
+    ? `<rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#000000" stroke-opacity="0.5" stroke-width="${stroke}" filter="url(#b)"/>`
+    : `<ellipse cx="${W / 2}" cy="${H / 2}" rx="${W / 2 - stroke / 3}" ry="${H / 2 - stroke / 3}" fill="none" stroke="#000000" stroke-opacity="0.5" stroke-width="${stroke}" filter="url(#b)"/>`;
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
+    `<defs><filter id="b" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="${blur.toFixed(2)}"/></filter></defs>` +
+    el + `</svg>`
+  );
+}
+
+/**
+ * Reemplazo por chroma-key: pinta la foto del usuario SOLO donde la plantilla es verde
+ * (pantallas verdes y círculos verde/lima). Pixel-perfect con la forma original.
+ */
+async function chromaInsert(file, userBuf, bbox = { x0: 0, y0: 0, x1: 1, y1: 1 }, opts = {}) {
+  const { buf, width: W, height: H } = await templateMeta(file);
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const x0 = Math.round(bbox.x0 * W), y0 = Math.round(bbox.y0 * H);
+  const x1 = Math.round(bbox.x1 * W), y1 = Math.round(bbox.y1 * H);
+  const bw = Math.max(2, x1 - x0), bh = Math.max(2, y1 - y0);
+  const maskRaw = Buffer.alloc(bw * bh * 4);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * info.width + x) * info.channels;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const o = ((y - y0) * bw + (x - x0)) * 4;
+      maskRaw[o] = 255; maskRaw[o + 1] = 255; maskRaw[o + 2] = 255;
+      maskRaw[o + 3] = (g > 135 && g > r * 1.22 && g > b * 1.22) ? 255 : 0;
+    }
+  }
+  // Suaviza el borde y refuerza el alfa para tapar el filo verde del JPEG
+  const mask = await sharp(maskRaw, { raw: { width: bw, height: bh, channels: 4 } })
+    .blur(1).linear([1, 1, 1, 1.7], [0, 0, 0, 8]).png().toBuffer();
+  const radius = opts.radius ? Math.round(bw * Number(opts.radius)) : 0;
+  let userPiece = await shapedImage(userBuf, bw, bh, {
+    zoom: opts.zoom ?? 1,
+    rotate: opts.rotate ?? 0,
+    grayscale: !!opts.grayscale,
+    radius
+  });
+  userPiece = await sharp(userPiece)
+    .composite([{ input: innerShade(bw, bh, radius ? 'rect' : 'ellipse'), blend: 'atop' }])
+    .png().toBuffer();
+  const masked = await sharp(userPiece).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+  return sharp(buf).composite([{ input: masked, left: x0, top: y0 }]).png().toBuffer();
+}
+
+async function ellipseImage(userBuf, w, h, opts = {}) {
+  const W = Math.max(2, Math.round(w)), H = Math.max(2, Math.round(h));
+  let piece = await shapedImage(userBuf, W, H, {
+    zoom: opts.zoom ?? 1,
+    rotate: opts.rotate ?? 0,
+    grayscale: !!opts.grayscale
+  });
+  piece = await sharp(piece)
+    .composite([{ input: innerShade(W, H, 'ellipse'), blend: 'atop' }])
+    .png().toBuffer();
+  const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><ellipse cx="${W / 2}" cy="${H / 2}" rx="${W / 2}" ry="${H / 2}" fill="#fff"/></svg>`);
+  return sharp(piece).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+}
+
+/** Coloca imagen (cover) en un área fraccional de la plantilla. */
+async function placeImageArea(W, H, area, userBuf, opts = {}) {
+  const w = (area.x1 - area.x0) * W, h = (area.y1 - area.y0) * H;
+  const piece = await shapedImage(userBuf, w, h, {
+    radius: opts.radius ?? 0,
+    rotate: opts.rotate ?? 0,
+    grayscale: !!opts.grayscale,
+    zoom: opts.zoom ?? 1
+  });
+  const meta = await sharp(piece).metadata();
+  const left = Math.round(area.x0 * W + (w - meta.width) / 2);
+  const top = Math.round(area.y0 * H + (h - meta.height) / 2);
+  return { input: piece, left, top };
+}
+
+
+/**
+ * Inserta la foto del usuario **con la forma exacta del hueco** de la plantilla.
+ * Detecta las zonas blancas encerradas (el face-swap de los originales), arma una
+ * máscara suavizada y coloca la foto solo ahí: la forma queda idéntica al dibujo
+ * (orejas, pelos, contornos) en vez de una elipse aproximada.
+ */
+async function holeMask(file, bbox, opts = {}) {
+  const { buf, width: W, height: H } = await templateMeta(file);
+  const x0 = Math.round(Math.max(0, bbox.x0) * W);
+  const y0 = Math.round(Math.max(0, bbox.y0) * H);
+  const x1 = Math.round(Math.min(1, bbox.x1) * W);
+  const y1 = Math.round(Math.min(1, bbox.y1) * H);
+  const bw = Math.max(4, x1 - x0), bh = Math.max(4, y1 - y0);
+  const N = bw * bh;
+
+  // 1) Se difumina el recorte: los hilos de pelo / brillos de 1-2 px dejan de
+  //    comunicar el hueco con el fondo blanco de la plantilla.
+  const soft = await sharp(buf)
+    .extract({ left: x0, top: y0, width: bw, height: bh })
+    .blur(Math.max(2, Math.min(bw, bh) * 0.02))
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const C = soft.info.channels;
+  const px = soft.data;
+
+  const white = new Uint8Array(N);
+  for (let i = 0, p = 0; i < N; i++, p += C) {
+    const r = px[p], g = px[p + 1], b = px[p + 2];
+    const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+    white[i] = (mn > (opts.whiteMin ?? 232) && mx - mn < (opts.whiteTol ?? 16)) ? 1 : 0;
+  }
+
+  // 2) Blanco conectado al borde del recorte = fondo de la plantilla
+  const bg = new Uint8Array(N);
+  const stack = [];
+  for (let x = 0; x < bw; x++) { stack.push(x, (bh - 1) * bw + x); }
+  for (let y = 0; y < bh; y++) { stack.push(y * bw, y * bw + bw - 1); }
+  while (stack.length) {
+    const p = stack.pop();
+    if (bg[p] || !white[p]) continue;
+    bg[p] = 1;
+    const x = p % bw, y = (p - x) / bw;
+    if (x > 0) stack.push(p - 1);
+    if (x < bw - 1) stack.push(p + 1);
+    if (y > 0) stack.push(p - bw);
+    if (y < bh - 1) stack.push(p + bw);
+  }
+
+  // 3) Componentes blancas interiores. Con elipse guía se suman TODAS las que caen
+  //    dentro (recoge los restos que deja el pelo); sin guía, solo la mayor.
+  const label = new Int32Array(N);
+  const comps = [];
+  let cur = 0;
+  for (let idx = 0; idx < N; idx++) {
+    if (!white[idx] || bg[idx] || label[idx]) continue;
+    cur++;
+    const st = [idx]; label[idx] = cur;
+    const cells = [];
+    while (st.length) {
+      const p = st.pop(); cells.push(p);
+      const x = p % bw, y = (p - x) / bw;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
+        const ni = ny * bw + nx;
+        if (white[ni] && !bg[ni] && !label[ni]) { label[ni] = cur; st.push(ni); }
+      }
+    }
+    comps.push(cells);
+  }
+  const e = opts.ellipse;
+  const cx = e ? e.cx * W - x0 : 0;
+  const cy = e ? e.cy * H - y0 : 0;
+  const rx = e ? e.rx * W * (opts.ellipseGrow ?? 1.45) : 0;
+  const ry = e ? e.ry * H * (opts.ellipseGrow ?? 1.45) : 0;
+  const inGuide = p => {
+    if (!e) return true;
+    const x = p % bw, y = (p - x) / bw;
+    const dx = (x - cx) / rx, dy = (y - cy) / ry;
+    return dx * dx + dy * dy <= 1;
+  };
+  let cells = [];
+  if (e && opts.clipWhite) {
+    // Blanco contenido en la elipse guía: cuando el hueco toca el fondo de la
+    // plantilla (minions), el relleno por borde no sirve y la forma del blanco
+    // dentro de la elipse es la más fiel.
+    for (let i = 0; i < N; i++) if (white[i] && !bg[i] && inGuide(i)) cells.push(i);
+  } else if (e) {
+    for (const c of comps) {
+      if (c.length < N * 0.0005) continue;
+      if (c.some(inGuide)) cells = cells.concat(c);
+    }
+  } else {
+    const biggest = comps.sort((a, b) => b.length - a.length)[0];
+    if (biggest && biggest.length >= N * 0.004) cells = biggest;
+  }
+  if (!cells.length || cells.length < N * 0.004) return null;
+
+  // 4) Recorte final a la elipse: la máscara nunca invade el resto de la plantilla.
+  if (e) cells = cells.filter(inGuide);
+  const inside = new Uint8Array(N);
+  for (const p of cells) inside[p] = 255;
+
+  // 4) Máscara: expansión (recupera lo que comió el difuminado) + borde suave
+  const R = Math.max(2, Math.round(Math.min(bw, bh) * 0.012));
+  const mask = Buffer.alloc(N * 4);
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const i = y * bw + x;
+      let v = inside[i] ? 255 : 0;
+      if (!v) {
+        for (let dy = -R; dy <= R && !v; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= bh) continue;
+          for (let dx = -R; dx <= R; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= bw) continue;
+            if (inside[ny * bw + nx]) { v = 255; break; }
+          }
+        }
+      }
+      const o = i * 4;
+      mask[o] = 255; mask[o + 1] = 255; mask[o + 2] = 255; mask[o + 3] = v;
+    }
+  }
+  const maskPng = await sharp(mask, { raw: { width: bw, height: bh, channels: 4 } })
+    .blur(0.8).png().toBuffer();
+  return { mask: maskPng, width: bw, height: bh, left: x0, top: y0 };
+}
+
+/** Capa de foto recortada con la forma del hueco (o null si no hay hueco). */
+async function holeLayer(file, userBuf, bbox, opts = {}) {
+  // 1) Si el generador dio la elipse del hueco, esa es la guía fiable.
+  // 2) Si no, se autodetecta el blanco encerrado; el bbox crece hasta contenerlo.
+  let m = null;
+  if (opts.guide && opts.ellipse) {
+    m = await holeMask(file, bbox, { ...opts, clipWhite: true });
+  }
+  if (!m) {
+    for (const grow of [0.02, 0.1, 0.2, 0.32]) {
+      const pad = { x: (bbox.x1 - bbox.x0) * grow, y: (bbox.y1 - bbox.y0) * grow };
+      m = await holeMask(file, {
+        x0: Math.max(0, bbox.x0 - pad.x), y0: Math.max(0, bbox.y0 - pad.y),
+        x1: Math.min(1, bbox.x1 + pad.x), y1: Math.min(1, bbox.y1 + pad.y)
+      }, { ...opts, ellipse: null });
+      if (m) break;
+    }
+  }
+  if (!m) return null;
+  let piece = await shapedImage(userBuf, m.width, m.height, {
+    zoom: opts.zoom ?? 1.06, rotate: opts.rotate ?? 0, grayscale: !!opts.grayscale
+  });
+  piece = await sharp(piece)
+    .composite([{ input: innerShade(m.width, m.height, 'ellipse'), blend: 'atop' }])
+    .composite([{ input: m.mask, blend: 'dest-in' }])
+    .png().toBuffer();
+  return { input: piece, left: m.left, top: m.top };
+}
+
+/** Inserta una sola foto con la forma exacta del hueco de la plantilla. */
+async function holeInsert(file, userBuf, bbox, opts = {}) {
+  const layer = await holeLayer(file, userBuf, bbox, opts);
+  if (!layer) return null;
+  const { buf } = await templateMeta(file);
+  return sharp(buf).composite([layer]).png().toBuffer();
+}
+
+/** Inserta varias fotos (una por hueco) en una misma plantilla. */
+async function holeInsertMany(file, bboxes, bufOrBufs, opts = {}) {
+  const buffers = Array.isArray(bufOrBufs) ? bufOrBufs : [bufOrBufs];
+  const layers = [];
+  for (let i = 0; i < bboxes.length; i++) {
+    const layer = await holeLayer(file, buffers[i] || buffers[0], bboxes[i], opts);
+    if (layer) layers.push(layer);
+  }
+  if (!layers.length) return null;
+  const { buf } = await templateMeta(file);
+  return sharp(buf).composite(layers).png().toBuffer();
+}
+
+/**
+ * Coloca texto (en vectores) dentro de un área fraccional, con cobertura opcional.
+ * Respeta color, tamaño, tipografía, mayúsculas, spacing, sombra y desplazamientos.
+ */
+function placeTextArea(W, H, area, text, opts = {}) {
+  const ov = opts.ov || {};
+  const shiftX = Math.round((ov.dx || 0) * W);
+  const shiftY = Math.round((ov.dy || 0) * H);
+  const x0 = Math.round(area.x0 * W) + shiftX;
+  const y0 = Math.round(area.y0 * H) + shiftY;
+  const w = Math.max(8, Math.round((area.x1 - area.x0) * W));
+  const h = Math.max(8, Math.round((area.y1 - area.y0) * H));
+  const pad = opts.pad ?? Math.round(Math.min(w, h) * 0.06);
+
+  const layer = textLayer({
+    text,
+    width: w,
+    height: h,
+    family: ov.font || opts.family || 'sans',
+    weight: opts.weight ?? 700,
+    maxFont: Math.round((opts.maxFont ?? 72) * (ov.scale || 1)),
+    minFont: Math.max(6, Math.round((opts.minFont ?? 14) * Math.min(ov.scale || 1, 1.4))),
+    maxLines: opts.maxLines ?? 6,
+    lineHeight: opts.lineHeight ?? 1.16,
+    letterSpacing: (opts.letterSpacing ?? 0) + (ov.spacing || 0),
+    fill: ov.fill || opts.fill || '#111111',
+    align: opts.align || 'middle',
+    uppercase: opts.uppercase || ov.uppercase,
+    italic: !!opts.italic,
+    padding: pad,
+    rotate: ov.rotate || opts.rotate || 0,
+    stroke: opts.stroke || null,
+    strokeWidth: opts.strokeWidth || 0
+  });
+
+  const cover = opts.cover
+    ? Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${opts.coverRadius ?? 0}" fill="${opts.cover}"/></svg>`)
+    : null;
+
+  const shade = opts.shadow
+    ? Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${Math.max(1.5, (layer.fontSize || 24) * 0.06)}"/></filter></defs><g filter="url(#s)" opacity="0.55" transform="translate(0 ${Math.max(1, (layer.fontSize || 24) * 0.045)})">${layer.svg.toString().replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')}</g></svg>`)
+    : null;
+
+  return {
+    inputs: [cover, layer.svg, shade].filter(Boolean),
+    left: x0,
+    top: y0
+  };
+}
+
+/** Expande una capa (que puede traer varias piezas) a entradas de composite. */
+function expandLayer(layer) {
+  if (!layer) return [];
+  if (Array.isArray(layer)) return layer.flatMap(expandLayer);
+  if (Array.isArray(layer.inputs)) return layer.inputs.map(input => ({ input, left: layer.left, top: layer.top }));
+  return [layer];
+}
+const flat = layers => layers.flatMap(expandLayer);
+
+/** Inserta `rows` filas de fondo (foto estirada) en `cut`, empujando lo de abajo. */
+async function insertRows(buf, W, H, rows, cut) {
+  const extra = Math.max(0, Math.round(rows));
+  if (!extra) return buf;
+  const newH = H + extra;
+  const stripTop = Math.max(0, Math.min(H - 12, cut + 10));
+  const stripH = Math.max(6, Math.min(64, H - stripTop));
+  const backdrop = await sharp(buf)
+    .extract({ left: 0, top: stripTop, width: W, height: stripH })
+    .resize(W, newH, { fit: 'fill' })
+    .blur(Math.max(4, Math.round(W * 0.01)))
+    .png().toBuffer();
+  const top = await sharp(buf).extract({ left: 0, top: 0, width: W, height: cut }).png().toBuffer();
+  const bottom = await sharp(buf).extract({ left: 0, top: cut, width: W, height: H - cut }).png().toBuffer();
+  return sharp(backdrop).composite([
+    { input: top, left: 0, top: 0 },
+    { input: bottom, left: 0, top: cut + extra }
+  ]).png().toBuffer();
+}
+
+async function renderTemplate(file, composites) {
+  const { buf, width, height } = await templateMeta(file);
+  const layers = [];
+  for (const c of composites) layers.push(typeof c === 'function' ? await c(width, height) : c);
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
+}
+
+
+/**
+ * Borra el texto de ejemplo de una plantilla SIN dejar un recuadro visible:
+ * detecta la caja del texto (píxeles claramente más oscuros que el fondo),
+ * toma el color mediano del propio fondo y repinta solo esa caja con bordes
+ * difuminados. Así el texto nuevo se apoya directo sobre el cartel/papel.
+ */
+async function eraseSampleText(buf, W, H, area, opts = {}) {
+  const inset = opts.inset ?? 0.08;
+  const ax = Math.round(area.x0 * W), ay = Math.round(area.y0 * H);
+  const aw = Math.round((area.x1 - area.x0) * W), ah = Math.round((area.y1 - area.y0) * H);
+  if (aw < 8 || ah < 8) return null;
+  const ix = Math.round(aw * inset), iy = Math.round(ah * inset);
+  const x = ax + ix, y = ay + iy;
+  const w = Math.max(8, aw - ix * 2), h = Math.max(8, ah - iy * 2);
+  const { data, info } = await sharp(buf)
+    .extract({ left: x, top: y, width: w, height: h })
+    .raw().toBuffer({ resolveWithObject: true });
+  const C = info.channels;
+  const lum = i => 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  const samples = [];
+  for (let i = 0; i < data.length; i += C) samples.push(lum(i));
+  samples.sort((a, b) => a - b);
+  const median = samples[Math.floor(samples.length * 0.5)];
+  const thr = median * 0.66;
+  // Solo las letras: se descartan las manchas oscuras enormes o pegadas al borde
+  // del recorte (fondo de la escena, ropa del personaje). Así el borrado nunca
+  // pinta un rectángulo fuera del cartel.
+  const dark = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) dark[p] = lum(p * C) < thr ? 1 : 0;
+  const seen = new Uint8Array(w * h);
+  const keep = new Uint8Array(w * h);
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1;
+  for (let p0 = 0; p0 < w * h; p0++) {
+    if (!dark[p0] || seen[p0]) continue;
+    const st = [p0]; seen[p0] = 1;
+    const cells = [];
+    let border = false;
+    while (st.length) {
+      const p = st.pop(); cells.push(p);
+      const x = p % w, y = (p - x) / w;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) border = true;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (dark[ni] && !seen[ni]) { seen[ni] = 1; st.push(ni); }
+      }
+    }
+    if (border || cells.length > w * h * 0.22) continue;
+    for (const p of cells) {
+      keep[p] = 1;
+      const x = p % w, y = (p - x) / w;
+      if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+      if (y < by0) by0 = y; if (y > by1) by1 = y;
+    }
+  }
+  if (bx1 < 0 || (bx1 - bx0 + 1) * (by1 - by0 + 1) > w * h * 0.92) return null;
+  // Borrado por difuminado local: se sustituyen SOLO los píxeles del texto de
+  // ejemplo por una versión muy difuminada del cartel. Así no aparece ningún
+  // rectángulo de relleno (el cartel conserva sus bordes, sombras y degradados).
+  const R = Math.max(2, Math.round(Math.min(w, h) * 0.018));
+  const grown = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) {
+    if (!keep[p]) continue;
+    const x = p % w, y = (p - x) / w;
+    for (let dy = -R; dy <= R; dy++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= h) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w) continue;
+        if (dx * dx + dy * dy > R * R) continue;
+        grown[ny * w + nx] = 255;
+      }
+    }
+  }
+  const maskPng = await sharp(Buffer.from(grown.reduce((acc, v, i) => {
+    acc.push(v, v, v, 255); return acc;
+  }, [])), { raw: { width: w, height: h, channels: 4 } })
+    .blur(0.7).png().toBuffer();
+  // color del fondo del cartel = mediana por canal de los píxeles que no son letra
+  const bg = [0, 1, 2].map(c => {
+    const arr = [];
+    for (let i = 0; i < data.length; i += C) if (lum(i) >= thr) arr.push(data[i + c]);
+    arr.sort((a, b) => a - b);
+    return arr.length ? arr[Math.floor(arr.length / 2)] : 255;
+  });
+  const solid = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+    `<rect width="${w}" height="${h}" fill="rgb(${bg[0]},${bg[1]},${bg[2]})"/></svg>`
+  );
+  const patch = await sharp(solid)
+    .composite([{ input: maskPng, blend: 'dest-in' }])
+    .png().toBuffer();
+  return { input: patch, left: x, top: y };
+}
+
+/** Plantilla de cartel: texto por defecto; imagen si viene `image/url` sin `text` (o mode=image). */
+async function signCanvas(file, area, q, opts = {}) {
+  const { buf, width: W, height: H } = await templateMeta(file);
+  const ov = styleOf(q);
+  const mode = String(q.mode || '').toLowerCase();
+  const imageUrl = imgParam(q, 'url', 'image', 'img');
+  const text = String(q.text ?? '').trim();
+  const useImage = mode === 'image' || (mode !== 'text' && imageUrl && !text) || (opts.preferImage && !text && imageUrl);
+  const layers = [];
+  if (useImage) {
+    const user = await loadImageBuffer(imageUrl);
+    layers.push(await placeImageArea(W, H, area, user, {
+      zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale, radius: opts.imageRadius ?? 0
+    }));
+  } else {
+    const textOpts = opts.textOpts || {};
+    // sin recuadro de fondo: se borra el texto de ejemplo y se escribe encima
+    if (textOpts.cover !== false) {
+      const erase = await eraseSampleText(buf, W, H, area, { inset: textOpts.eraseInset ?? 0.08 });
+      if (erase) layers.push(erase);
+    }
+    layers.push(placeTextArea(W, H, area, text || opts.defaultText || 'Welcome to Velirius API', {
+      ...textOpts, cover: null, ov
+    }));
+  }
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
+}
+
+/**
+ * Plantilla de personajes: la foto entra **con la forma exacta del hueco** que dejó
+ * el original (detección de la zona blanca encerrada). Si una plantilla no tiene un
+ * hueco detectable se cae al recorte elíptico de antes.
+ */
+async function faceCanvas(file, holes, q) {
+  const ov = styleOf(q);
+  const urls = [
+    imgParam(q, 'url', 'image', 'img', 'url1', 'image1'),
+    imgParam(q, 'url2', 'image2'),
+    imgParam(q, 'url3', 'image3')
+  ];
+  const users = [];
+  for (let i = 0; i < holes.length; i++) {
+    users.push(await loadImageBuffer(urls[i] || urls[0] || '', i === 1 ? 'avatar2.jpg' : 'avatar1.jpg'));
+  }
+  const bboxes = holes.map(h => ({
+    x0: Math.max(0, h.cx + ov.dx - h.rx * 1.04),
+    y0: Math.max(0, h.cy + ov.dy - h.ry * 1.04),
+    x1: Math.min(1, h.cx + ov.dx + h.rx * 1.04),
+    y1: Math.min(1, h.cy + ov.dy + h.ry * 1.04)
+  }));
+  // Hueco real cuando se puede detectar; elipse exacta cuando el blanco del hueco
+  // está pegado al fondo de la plantilla (p. ej. la cabeza izquierda de minions).
+  let { buf, width: W, height: H } = await templateMeta(file);
+  const upscale = W < 500 ? 3 : 1;
+  if (upscale > 1) {
+    buf = await sharp(buf).resize(W * upscale, H * upscale, { kernel: 'lanczos3' }).png().toBuffer();
+    W *= upscale; H *= upscale;
+  }
+  const layers = [];
+  for (let i = 0; i < holes.length; i++) {
+    const hole = holes[i];
+    const layer = hole.plain ? null : await holeLayer(file, users[i], bboxes[i], {
+      zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale,
+      ellipse: { cx: hole.cx + ov.dx, cy: hole.cy + ov.dy, rx: hole.rx, ry: hole.ry },
+      ellipseGrow: file.startsWith('minions') ? 1.06 : 1.45,
+      guide: file.startsWith('minions')
+    });
+    if (layer) {
+      if (upscale === 1) layers.push(layer);
+      else {
+        const scaled = await sharp(buf).metadata();
+        const piece = await sharp(layer.input).resize(
+          Math.round((await sharp(layer.input).metadata()).width * upscale),
+          Math.round((await sharp(layer.input).metadata()).height * upscale),
+          { kernel: 'lanczos3' }).png().toBuffer();
+        layers.push({ input: piece, left: layer.left * upscale, top: layer.top * upscale });
+        void scaled;
+      }
+      continue;
+    }
+    const w = hole.rx * 2 * W * ov.zoom, h = hole.ry * 2 * H * ov.zoom;
+    const piece = await ellipseImage(users[i], w, h, { zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale });
+    const cx = (hole.cx + ov.dx) * W, cy = (hole.cy + ov.dy) * H;
+    layers.push({ input: piece, left: Math.round(cx - w / 2), top: Math.round(cy - h / 2) });
+  }
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
+}
+
+// ---------- utilidades ----------
+const twemojiCache = new Map();
+async function twemoji(code) {
+  if (twemojiCache.has(code)) return twemojiCache.get(code);
+  try {
+    const buf = await fetchBuffer(`https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${code}.png`, { timeoutMs: 8000 });
+    twemojiCache.set(code, buf);
+    return buf;
+  } catch (_) { return null; }
+}
+
+const svgPng = async (svg, density = 1) => sharp(svg, { density: 72 * density }).png().toBuffer();
+
+
+module.exports = {
+  sharp, loadImageBuffer, templateMeta, shapedImage, circleImage, heartImage,
+  textLayer, measure, wrapLines, fetchBuffer,
+  txt, imgParam, numberIn, flag, parsePercent, normColor, styleOf,
+  flat, expandLayer, innerShade, chromaInsert, ellipseImage, insertRows,
+  placeImageArea, placeTextArea, eraseSampleText, signCanvas,
+  holeMask, holeLayer, holeInsert, holeInsertMany, faceCanvas,
+  twemoji, svgPng
+};

@@ -181,7 +181,6 @@ const CATEGORIES = [
       { id: 'sebusca', desc: 'Cartel SE BUSCA vivo o muerto', params: [
         P('url', AV, 'Foto del buscado'),
         O('name', 'EL MAS BUSCADO', 'Apodo bajo la foto'),
-        O('reward', '$5,000.00', 'Recompensa'),
         O('zoom', '1', 'Zoom de la foto')
       ] },
       { id: 'pokemoncard', desc: 'Carta Pokémon personalizada', params: [
