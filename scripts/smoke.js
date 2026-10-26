@@ -69,6 +69,15 @@ async function main() {
     ok(`GET /reactions/list (${REACTION_LIST.length} reacciones)`, reactList.status === true && reactList.result.count === REACTION_LIST.length);
     ok('Reactions no tiene nada NSFW', !/nsfw|hentai|porn|xxx/i.test(JSON.stringify(reactList.result)));
 
+    // ---- vercel.json válido (la validación de Vercel corta el deploy antes del build) ----
+    const vc = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
+    const fnKeys = Object.keys(vc.functions || {});
+    const fnOpts = fnKeys.map(k => vc.functions[k]);
+    ok('vercel.json: includeFiles es un string glob (no array)', fnOpts.every(o => o.includeFiles === undefined || typeof o.includeFiles === 'string'));
+    ok('vercel.json: excludeFiles es un string glob (no array)', fnOpts.every(o => o.excludeFiles === undefined || typeof o.excludeFiles === 'string'));
+    ok('vercel.json: maxDuration y memory son números', fnOpts.every(o => (o.maxDuration === undefined || typeof o.maxDuration === 'number' || o.maxDuration === 'max') && (o.memory === undefined || typeof o.memory === 'number')));
+    ok('vercel.json: glob de assets incluye plantillas y fuentes', /assets/.test(fnOpts.map(o => o.includeFiles).join(',')) && fnKeys.includes('api/index.js'));
+
     // ---- Tipografías empaquetadas: nunca cuadrados ▯▯▯ ----
     const fontFiles = fs.readdirSync(FONTS_DIR);
     ok(`Fuentes empaquetadas (${fontFiles.length})`, fontFiles.some(f => /Inter-Bold/.test(f)) && fontFiles.some(f => /Playfair/.test(f)) && fontFiles.some(f => /JetBrainsMono/.test(f)) && fontFiles.includes('NotoEmoji-Regular.ttf'));
