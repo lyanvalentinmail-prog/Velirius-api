@@ -2,7 +2,7 @@
 
 Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
 negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
-buscador) con **97 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+buscador) con **101 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
@@ -96,7 +96,7 @@ curl "https://<host>/anime/maid?provider=safebooru&direct=true" -o maid.jpg
 curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 ```
 
-## 🎨 Canvas — 49 (plantillas de la carpeta `CategoriaCanvas` de Drive)
+## 🎨 Canvas — 53 (plantillas de la carpeta `CategoriaCanvas` de Drive)
 
 Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
 modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
@@ -161,7 +161,8 @@ tuviera algún emoji, se dibuja el glifo de NotoEmoji: **nunca** un cuadrado.
 | `shadow` | `true` = sombra suave bajo el texto (mejor lectura sobre fotos) |
 
 La web agrupa estas canvas por **categorías**, igual que las carpetas de Drive `CategoriaCanvas`:
-**Textos** (quotly, ttp, attp, iqc, pov, x…), **Brats**, **Efectos**, **Porcentajes**, **Imágenes**,
+**Textos** (quotly, ttp, attp, iqc, iqcblue, iqcpink, messengerquote, profilenote, pov, x…),
+**Brats**, **Efectos**, **Porcentajes**, **Imágenes**,
 **Filtros** y **Personajes**. El orden y los nombres viven en `src/catalog/canvas.js` → `GROUPS`, y cada endpoint
 declara su carpeta con el campo `group`. Para mover una canvas de sección sólo se cambia ese campo.
 
@@ -183,6 +184,25 @@ foto, sin el recuadro que se notaba antes.
 - El menú de abajo (Conservar / Responder / …) **baja** lo necesario y el alto de la imagen se ajusta.
 - La hora queda abajo a la derecha, igual que en la app.
 - La cita se recorta con `…` en una sola línea, como el reply real.
+
+### Globos de chat nuevos (`iqcblue`, `iqcpink`, `messengerquote`, `profilenote`)
+
+Las cuatro salen de las capturas nuevas de Drive (`IqcBlue.jpg`, `IqcPink.jpg`, `MessengerQuote.jpg`,
+`ProfileNote.jpg`) y comparten motor (`src/canvas/generators/_chat.js`):
+
+- La barra de reacciones y el menú (Reply / Copy / Report…) **ya vienen en la plantilla**: no se dibujan,
+  así el resultado es idéntico a la captura.
+- El globo se **redibuja del color medido** y se estira hacia abajo todo lo que pida el texto: los
+  mensajes largos **nunca se cortan**.
+- Al crecer, el menú de abajo **baja** y la imagen se alarga, igual que en la app.
+- `profilenote` además cambia el avatar (`?image=`) y la etiqueta (`?label=Mi nota`); si no mandás foto
+  queda el círculo verde de la plantilla.
+
+```bash
+/canvas/iqcblue?text=hola%20🐱
+/canvas/messengerquote?text=te%20quiero%20mucho&size=1.2
+/canvas/profilenote?text=disponible%20💚&image=<url>&label=Mi nota
+```
 
 ### Estiramiento esférico (`bratestirado`)
 
@@ -230,12 +250,16 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/pov` | (generado) | `text` (se muestra como `pov: …`), `image`/`url`, `color`, `size` |
 | `/canvas/x` | (generado) | `text` (se muestra como `x: …`), `image`/`url`, `color`, `size` |
 | `/canvas/iqc` | `iqc.jpg` | `text` (la burbuja crece), `quote`, `username`, `time` + estilo |
+| `/canvas/iqcblue` | `IqcBlue.jpg` | `text` (la burbuja crece) + estilo |
+| `/canvas/iqcpink` | `IqcPink.jpg` | `text` (la burbuja crece) + estilo |
+| `/canvas/messengerquote` | `MessengerQuote.jpg` | `text` (la burbuja crece) + estilo |
+| `/canvas/profilenote` | `ProfileNote.jpg` | `text` (la burbuja crece), `image`, `label` + estilo |
 | `/canvas/cuentatiktok` | `CuentaTiktok.jpg` | `username`, `image`, `status` |
 | `/canvas/storyreply` | `StoryReply.jpg` | `url`, `text`, `color`, `size`, `zoom` |
 | `/canvas/absolutecinema` | `AbsoluteCinema.jpg` | `text`, `subtext`, `url`, `color`, `size` |
 | `/canvas/bobesponja` | `BobEsponja.jpg` | `text` o `url`, `mode` + estilo |
-| `/canvas/bobesponja2` | `BobEsponja2.jpg` | `text` o `url`, `mode` + estilo |
-| `/canvas/bobesponja3` | `BobEsponja3.jpg` | `text` o `url`, `mode` + estilo |
+| `/canvas/bobesponja2` | `BobEsponjaBratV2` (736x904) | `text` o `url`, `mode` + estilo |
+| `/canvas/bobesponja3` | `BobEsponjaBratV3` (1457x1079) | `text` o `url`, `mode` + estilo |
 | `/canvas/cartelboy` | `CartelBoy.jpg` | `text` o `url`, `mode` + estilo |
 | `/canvas/pcquote` | `PcQuote.jpg` | `url` o `text`, `mode`, `zoom` + estilo |
 | `/canvas/canvaimagen` | `CanvaImagen.jpg` | `url`, `zoom`, `grayscale`, `rotate` |

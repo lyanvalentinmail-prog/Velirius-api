@@ -156,6 +156,72 @@ const LAYOUTS = {
     }
   },
 
+  // ---- iMessage / Messenger / nota de perfil (globos que crecen) ----
+  // Todas: el globo se estira hacia abajo con el texto y el menú de la
+  // plantilla baja solo. Medidas tomadas de la captura real (Drive).
+  iqcblue: {
+    label: 'iQC azul (iMessage)',
+    parts: {
+      template: 'iqcblue.jpg',
+      // 735x686
+      bubble: { box: { x0: 0.0190, y0: 0.3382, x1: 0.6190, y1: 0.4548 }, radius: 0.0873, bg: '#dee5eb' },
+      msg: {
+        padX: 0.0313, padY: 21,
+        font: { family: 'sans', weight: 400, size: 30, lineHeight: 1.25 }, fill: '#000000'
+      }
+    }
+  },
+
+  iqcpink: {
+    label: 'iQC rosa (iMessage)',
+    parts: {
+      template: 'iqcpink.jpg',
+      // 736x1308
+      bubble: { box: { x0: 0.0258, y0: 0.6682, x1: 0.4008, y1: 0.7240 }, radius: 0.1304, bg: '#fcf4f4' },
+      msg: {
+        padX: 0.0313, padY: 16,
+        font: { family: 'sans', weight: 400, size: 30, lineHeight: 1.25 }, fill: '#000000'
+      }
+    }
+  },
+
+  messengerquote: {
+    label: 'Cita de Messenger',
+    parts: {
+      template: 'messengerquote.jpg',
+      // 735x994
+      bubble: { box: { x0: 0.0463, y0: 0.4950, x1: 0.8259, y1: 0.5905 }, radius: 0.0524, bg: '#eaeaec' },
+      msg: {
+        padX: 0.0313, padY: 11,
+        font: { family: 'sans', weight: 400, size: 30, lineHeight: 1.2 }, fill: '#000000'
+      }
+    }
+  },
+
+  profilenote: {
+    label: 'Nota de perfil ("Tu nota")',
+    parts: {
+      template: 'profilenote.jpg',
+      // 736x920
+      bubble: { box: { x0: 0.0788, y0: 0.1130, x1: 0.9090, y1: 0.4587 }, radius: 0.1211, bg: '#363636' },
+      msg: {
+        padX: 0.0450, padY: 30,
+        font: { family: 'sans', weight: 400, size: 34, lineHeight: 1.32 }, fill: '#ffffff'
+      },
+      // círculo verde de la plantilla: si mandás `image` se dibuja tu foto ahí
+      avatar: { box: { x0: 0.2663, y0: 0.4435, x1: 0.7215, y1: 0.8076 } },
+      // puntito gris que une el globo con el avatar
+      dot: { x: 0.3261, y: 0.4946, r: 0.0299, fill: '#363636' },
+      // etiqueta de abajo ("Tu nota"): se borra la de la plantilla y se escribe
+      label: {
+        box: { x0: 0.2000, y0: 0.8300, x1: 0.8000, y1: 0.9300 },
+        text: 'Tu nota',
+        cover: '#000000',
+        font: { family: 'sans', weight: 400, size: 52 }, fill: '#ffffff'
+      }
+    }
+  },
+
   cuentatiktok: {
     label: 'Cuenta de TikTok',
     parts: {
@@ -234,18 +300,20 @@ const LAYOUTS = {
   bobesponja2: {
     label: 'Bob Esponja (cómic 4 paneles)',
     parts: {
+      // plantilla nueva (736x904): la hoja blanca del primer panel
       template: 'bobesponja2.jpg',
-      sign: { box: { x0: 0.075, y0: 0.105, x1: 0.410, y1: 0.395 } },
-      text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 32, maxLines: 4 } }
+      sign: { box: { x0: 0.078, y0: 0.096, x1: 0.374, y1: 0.416 } },
+      text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 66, maxLines: 4 } }
     }
   },
 
   bobesponja3: {
     label: 'Bob Esponja con cartel',
     parts: {
+      // plantilla nueva (1457x1079, sin marca de agua)
       template: 'bobesponja3.jpg',
       sign: { box: { x0: 0.545, y0: 0.085, x1: 0.858, y1: 0.620 } },
-      text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 56, maxLines: 5 } }
+      text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 110, maxLines: 5 } }
     }
   },
 
