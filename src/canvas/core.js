@@ -605,24 +605,39 @@ async function faceCanvas(file, holes, q) {
 
 // ---------- utilidades ----------
 /**
- * Lente esférico (fisheye) sobre una imagen ya renderizada.
+ * Lente ESFÉRICA sobre una imagen ya renderizada.
  *
- * Remapea píxel a píxel con interpolación bilineal: el centro del lienzo se
- * agranda `stretch` veces y los bordes quedan igual, así el texto se "estira"
- * de forma continua, sin costuras, sin franjas y sin copias fantasma.
+ * Remapea píxel a píxel con interpolación bilineal usando un perfil radial: la
+ * distancia al centro se normaliza igual en X y en Y, así el bulto es un
+ * **círculo** (no una franja) y las letras se curvan alrededor del centro como
+ * si estuvieran sobre una esfera. Sin costuras, sin copias fantasma y sin
+ * píxeles de borde estirados.
  *
- *   stretch  cuánto crece el centro (1 = sin efecto, 1.35 = +35 %)
- *   bulge    cuánto acompaña el eje horizontal (0 = solo vertical)
- *   centerY  altura del centro de la lente (0-1)
+ *   stretch   cuánto se agranda el centro (1 = sin efecto, 1.6 = +60 %)
+ *   aspect    estirón vertical del texto (>1 = letras más altas y finas)
+ *   radius    tamaño de la lente: 1 = toca los bordes del lado corto,
+ *             0.6 = esfera más chica y marcada, 1.4 = lente que llena todo
+ *   centerY   altura del centro de la lente (0-1)
+ *
+ * El perfil es `mag(r) = 1 / (1 - k·(1 - r²))` con `k = 1 - 1/stretch`: vale
+ * exactamente `stretch` en el centro, 1 en el borde y su derivada es 0 en el
+ * borde (por eso no se nota ningún salto).
  */
-async function lensWarp(buf, { stretch = 1.35, bulge = 0.9, centerY = 0.5 } = {}) {
-  const k = Math.max(0, Math.min(1.5, Number(stretch) - 1 || 0));
-  if (k <= 0.001) return sharp(buf).png().toBuffer();
+async function lensWarp(buf, { stretch = 1.4, aspect = 1, radius = 1, centerY = 0.5, bulge } = {}) {
+  const s = Math.max(1, Math.min(3, Number(stretch) || 1));
+  // `bulge` es la clave vieja (estirado horizontal): se traduce a `aspect`
+  let a = Number(aspect);
+  if (!Number.isFinite(a) || a <= 0) a = 1 + Math.max(0, Math.min(1, Number(bulge) || 0)) * 0.5;
+  a = Math.max(0.5, Math.min(2.5, a));
+  const R = Math.max(0.2, Math.min(2, Number(radius) || 1));
+  if (s <= 1.001 && Math.abs(a - 1) < 0.001) return sharp(buf).png().toBuffer();
+
+  const k = 1 - 1 / s;
   const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const W = info.width, H = info.height, ch = info.channels;
   const out = Buffer.allocUnsafe(W * H * ch);
-  const cy = centerY * H, cx = W / 2;
-  const halfH = H / 2, halfW = W / 2;
+  const cx = W / 2, cy = centerY * H;
+  const scale = Math.min(W, H) / 2 * R;
 
   const sample = (x, y, o) => {
     const x0 = x | 0, y0 = y | 0;
@@ -639,14 +654,20 @@ async function lensWarp(buf, { stretch = 1.35, bulge = 0.9, centerY = 0.5 } = {}
   };
 
   for (let y = 0; y < H; y++) {
-    const dy = (y - cy) / halfH;
-    const falloff = 1 - Math.min(1, dy * dy);
-    const mag = 1 + k * falloff;              // eje vertical
-    const magX = 1 + k * bulge * falloff;     // eje horizontal
-    const sy = cy + (y - cy) / mag;
+    const py = y - cy;
     for (let x = 0; x < W; x++) {
-      const sx = cx + (x - cx) / magX;
-      sample(Math.max(0, Math.min(W - 1, sx)), Math.max(0, Math.min(H - 1, sy)), (y * W + x) * ch);
+      const px = x - cx;
+      // distancia radial normalizada: mismo peso en X y en Y → bulto circular
+      const r = Math.sqrt(px * px + py * py) / scale;
+      const u = r >= 1 ? 1 : r;
+      const mag = 1 / (1 - k * (1 - u * u));
+      const sx = cx + px / mag;
+      const sy = cy + (py / mag) / a;
+      sample(
+        sx < 0 ? 0 : sx > W - 1 ? W - 1 : sx,
+        sy < 0 ? 0 : sy > H - 1 ? H - 1 : sy,
+        (y * W + x) * ch
+      );
     }
   }
   return sharp(out, { raw: { width: W, height: H, channels: ch } }).png().toBuffer();

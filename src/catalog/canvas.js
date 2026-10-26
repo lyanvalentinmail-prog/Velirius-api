@@ -44,11 +44,15 @@ module.exports = {
       O('bg', '8ACE00', 'Color de fondo hex (ej. 8ACE00 o ffffff)'),
       O('color', '000000', 'Color del texto hex')
     ] },
-    { id: 'bratestirado', desc: 'Genera el cartel Brat estirado con lente esférico 3D (fisheye).', params: [
+    { id: 'bratestirado', desc: 'Genera el cartel Brat con estiramiento esférico: las letras se curvan alrededor de un bulto 3D.', params: [
       P('text', 'i <3 money', 'Texto a estirar'),
       O('bg', 'ffffff', 'Color de fondo hex (ej. ffffff o 8ACE00)'),
       O('color', '000000', 'Color del texto hex'),
-      O('size', '1', 'Escala del texto (0.5 - 2)')
+      O('size', '1', 'Escala del texto (0.5 - 2)'),
+      O('lens.stretch', '1.55', 'Cuánto se agranda el centro de la esfera (1 = plano, 3 = máximo)'),
+      O('lens.aspect', '1.35', 'Estirón vertical del texto (1 = normal, 1.6 = letras más altas)'),
+      O('lens.radius', '1', 'Tamaño del bulto: 0.6 = esfera chica y marcada, 1 = llena el lienzo'),
+      O('lens.y', '0.5', 'Altura del centro de la esfera (0 - 1)')
     ] },
     { id: 'bratanime', desc: 'Maid de anime sosteniendo tu texto', params: [
       P('text', 'Welcome to Velirius API', 'Texto del cartel'),

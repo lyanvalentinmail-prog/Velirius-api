@@ -39,7 +39,8 @@ const CATEGORIES = [anime, canvas, tools, downloader, searcher, reactions];
 // detrás de "Opciones avanzadas" para que el probador no quede lleno de campos.
 const ADVANCED_PARAMS = new Set([
   'color', 'bg', 'size', 'font', 'uppercase', 'x', 'y', 'rotate', 'spacing',
-  'zoom', 'grayscale', 'shadow', 'mode', 'align', 'opacity', 'subtext'
+  'zoom', 'grayscale', 'shadow', 'mode', 'align', 'opacity', 'subtext',
+  'lens.stretch', 'lens.aspect', 'lens.radius', 'lens.y'
 ]);
 for (const cat of CATEGORIES) {
   for (const ep of cat.endpoints) {

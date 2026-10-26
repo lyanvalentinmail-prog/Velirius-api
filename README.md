@@ -129,12 +129,27 @@ foto, sin el recuadro que se notaba antes.
 - La hora queda abajo a la derecha, igual que en la app.
 - La cita se recorta con `…` en una sola línea, como el reply real.
 
+### Estiramiento esférico (`bratestirado`)
+
+El cartel se dibuja plano y después pasa por una **lente esférica** (`lensWarp`): la distancia al centro
+se normaliza igual en X y en Y, así el bulto es un **círculo** y las letras se curvan alrededor del
+centro en vez de estirarse en franjas.
+
+- `lens.stretch` — cuánto se agranda el centro (`1` = plano, `1.55` por defecto, hasta `3`).
+- `lens.aspect` — estirón vertical del texto (`1` = normal, `1.35` por defecto): letras más altas.
+- `lens.radius` — tamaño del bulto (`1` = llega a los bordes del lado corto, `0.6` = esfera chica y marcada).
+- `lens.y` — altura del centro de la lente (`0.5` = medio del lienzo).
+
+El texto se maqueta más chico de lo que se ve (`fitLines` + el margen que la lente se va a comer), así
+que la deformación **nunca recorta** ni deja el texto pegado al borde, y con `lens.stretch=1&lens.aspect=1`
+queda el brat normal, plano.
+
 | Endpoint | Plantilla (Drive) | Parámetros propios |
 |---|---|---|
 | `/canvas/quotly` | `quotly.png` | `image`, `username`, `text`, `bg` + estilo |
 | `/canvas/brat` | (generado) | `text`, `bg`, `color`, `size`, `rotate` |
 | `/canvas/bratvideo` | (generado, MP4) | `text`, `size`, `bg`, `color` |
-| `/canvas/bratestirado` | `BratEstirado.jpg` | `text`, `color`, `size` |
+| `/canvas/bratestirado` | (generado) | `text`, `color`, `size` + lente esférica (`lens.stretch`, `lens.aspect`, `lens.radius`, `lens.y`) |
 | `/canvas/bratanime` | `bratanime.png` | `text` + estilo |
 | `/canvas/bratcoyote` | `bratcoyote.png` | `text` + estilo |
 | `/canvas/bratpinguino` | `BratPinguino.jpg` | `text` o `image`, `mode` + estilo |
