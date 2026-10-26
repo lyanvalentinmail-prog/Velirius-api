@@ -1,4 +1,4 @@
-// src/routes/pages.js — Web idéntica a Delirius: /home, /<categoria>, /information, /docs
+// src/routes/pages.js — Web estilo Delirius: /home, /<categoria>, /information, /docs
 const express = require('express');
 const config = require('../config');
 const { CATEGORIES, totals, findCategory, exampleQuery } = require('../catalog');
@@ -26,7 +26,7 @@ function layout({ title, body, script = '' }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<meta name="description" content="Velirius API — Canvas, Anime, Download, Search y Tools. Sin token.">
+<meta name="description" content="Velirius API — Anime, Canvas, Tools, Downloader, Searcher y Reactions. Sin token.">
 <link rel="icon" href="/img/banner.jpg">
 <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -48,7 +48,9 @@ function avatars(req) {
 
 // ---------- / y /home ----------
 router.get('/', (req, res) => res.redirect('/home'));
-router.get('/downloader', (req, res) => res.redirect('/download'));
+// Alias antiguos → rutas nuevas
+router.get('/download', (req, res) => res.redirect('/downloader'));
+router.get('/search', (req, res) => res.redirect('/searcher'));
 
 router.get('/home', (req, res) => {
   const t = totals();
@@ -98,7 +100,7 @@ router.get('/information', (req, res) => {
   const body = `
     <h1 class="title">Information</h1>
     <div class="sync">Database Synced</div>
-    <p class="intro">You can do <strong>fetching</strong> just by clicking on the test</p>
+    <p class="intro">You can do <strong>fetching</strong> just by clicking on the <strong>test</strong> button<br>(the panel opens downwards with editable parameters)</p>
     <div class="icons">
       <div class="left">
         <a href="/home" title="Home">${I.home}</a>
@@ -113,6 +115,7 @@ router.get('/information', (req, res) => {
       <div><b>Base URL:</b> ${esc(base)}/</div>
       <div><b>Routers:</b> ${CATEGORIES.map(c => `<a href="/${c.id}">${esc(c.id)}</a>`).join(' · ')}</div>
       <div><b>Formato:</b> JSON <code>{ creator, status, result }</code> · Canvas devuelve imagen/video directo</div>
+      <div><b>Sin NSFW:</b> todas las fuentes de Anime y Reactions son SFW</div>
       <div><b>Texto limpio:</b> agrega <code>?format=text</code> a cualquier endpoint JSON</div>
       <div><b>Directo:</b> en Download usa <code>?direct=true|mp3|mp4</code> para el archivo (Range 206)</div>
       <div><b>Catálogo JSON:</b> <a href="/docs">/docs</a></div>
@@ -143,7 +146,13 @@ router.get('/docs', (req, res) => {
         method: 'GET',
         path: `/${c.id}/${e.id}`,
         description: e.desc,
-        params: e.params.map(p => ({ name: p.name, required: !!p.required, description: p.desc || '' })),
+        media: e.media || 'json',
+        params: e.params.map(p => ({
+          name: p.name,
+          required: !!p.required,
+          description: p.desc || '',
+          ...(p.options ? { options: p.options.filter(Boolean) } : {})
+        })),
         example: absoluteUrl(req, `/${c.id}/${e.id}${exampleQuery(e, a1, a2)}`)
       }))
     }))
@@ -151,7 +160,7 @@ router.get('/docs', (req, res) => {
 });
 
 // ---------- /<categoria> ----------
-router.get('/:category(anime|canvas|download|search|tools)', (req, res) => {
+router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req, res) => {
   const cat = findCategory(req.params.category);
   if (!cat) return res.status(404).send('Not found');
   const { a1, a2 } = avatars(req);
@@ -173,10 +182,12 @@ router.get('/:category(anime|canvas|download|search|tools)', (req, res) => {
     endpoints: cat.endpoints.map(e => ({
       id: e.id,
       desc: e.desc || '',
+      media: e.media || null,
       params: e.params.map(p => ({
         name: p.name,
         desc: p.desc || '',
         required: !!p.required,
+        options: p.options || null,
         value: p.example === '__AVATAR__' ? a1 : p.example === '__AVATAR2__' ? a2 : (p.example ?? '')
       }))
     }))
@@ -185,7 +196,7 @@ router.get('/:category(anime|canvas|download|search|tools)', (req, res) => {
   const body = `
     <h1 class="title">${esc(cat.name)}</h1>
     <div class="sync">Database Synced</div>
-    <p class="intro">You can do <strong>fetching</strong> just by clicking on the test</p>
+    <p class="intro">You can do <strong>fetching</strong> just by clicking on the <strong>test</strong> button<br>(the panel opens downwards with editable parameters)</p>
     <div class="icons">
       <div class="left">
         <a href="/home" title="Home">${I.home}</a>

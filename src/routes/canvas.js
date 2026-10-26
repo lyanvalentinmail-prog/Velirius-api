@@ -1,20 +1,29 @@
-// src/routes/canvas.js — GET /canvas/:id → PNG (o MP4/WebM en bratvideo/attp)
+// src/routes/canvas.js — GET /canvas/:id → PNG (o MP4/WebM en bratvideo/attp).
+// Todos los canvas aceptan parámetros modificables (ver /docs o la web).
 const express = require('express');
-const { generateCanvas, txt } = require('../utils/canvasEngine');
+const { generateCanvas, txt, styleOf } = require('../utils/canvasEngine');
 const { bratVideo, attpVideo } = require('../utils/video');
 const { sendPng, sendMedia, sendError } = require('../utils/response');
+const { findEndpoint } = require('../catalog');
 
 const router = express.Router();
 
 router.get('/:id', async (req, res) => {
   const id = String(req.params.id || '').toLowerCase();
+  if (!findEndpoint('canvas', id)) {
+    return sendError(res, 404, `Canvas "${id}" no existe`, 'Revisa la lista en /canvas');
+  }
   try {
     if (id === 'bratvideo') {
-      const buf = await bratVideo(txt(req.query, 'Welcome to Velirius API'));
+      const buf = await bratVideo(txt(req.query, 'Welcome to Velirius API'), {
+        size: styleOf(req.query).scale,
+        bg: styleOf(req.query).bg,
+        color: styleOf(req.query).fill
+      });
       return sendMedia(res, buf, 'video/mp4', 'velirius-bratvideo.mp4');
     }
     if (id === 'attp') {
-      const buf = await attpVideo(txt(req.query, 'Welcome to Velirius'));
+      const buf = await attpVideo(txt(req.query, 'Welcome to Velirius'), { size: styleOf(req.query).scale });
       return sendMedia(res, buf, 'video/webm', 'velirius-attp.webm');
     }
     const buf = await generateCanvas(id, req.query);

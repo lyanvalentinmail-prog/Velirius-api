@@ -185,11 +185,13 @@ h1.title {
   transition: background 0.15s, color 0.15s;
 }
 .btn:hover, .btn.active { background: #ffffff; color: #000000; }
+.btn[data-test-btn]::before { content: "▾ "; font-size: 10px; }
+.btn[data-test-btn][aria-expanded="true"]::before { content: "▴ "; }
 .btn.ghost { background: #ffffff; color: #000000; }
 .btn.ghost:hover { background: #000000; color: #ffffff; }
 .btn.small { padding: 8px 16px; font-size: 12px; }
 
-/* Probador TEST con parámetros modificables: se despliega hacia abajo al tocar TEST */
+/* Botón TEST: despliega hacia abajo el probador con parámetros modificables */
 .tester {
   display: grid;
   grid-template-rows: 0fr;
@@ -213,13 +215,16 @@ h1.title {
 .tester label { display: block; font-size: 12px; color: #555; margin: 10px 0 5px; }
 .tester label b { color: #111; }
 .tester .field-row { display: flex; gap: 8px; }
-.tester input[type="text"] {
+.tester input[type="text"], .tester select {
   flex: 1; min-width: 0;
   font: inherit; font-size: 13px;
   padding: 9px 11px;
   border: 1.5px solid #111111; border-radius: 8px;
   background: #fff; outline: none;
+  cursor: text;
 }
+.tester select { cursor: pointer; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #111 50%), linear-gradient(135deg, #111 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 32px; }
+.tester input[type="text"]:focus, .tester select:focus { box-shadow: 0 0 0 3px #eeeeee; }
 .tester .upload {
   font-size: 11px; letter-spacing: 1px;
   border: 1.5px solid #111; border-radius: 8px;

@@ -1,42 +1,38 @@
-// src/routes/tools.js — Traductor y Calculadora
+// src/routes/tools.js — TOOLS: Calculator · Translator · Morse
 const express = require('express');
 const P = require('../utils/providers');
 const { sendSuccess, sendError } = require('../utils/response');
 
 const router = express.Router();
 
-// ---------- Traductor ----------
-router.get(['/translator', '/translate', '/traductor'], async (req, res) => {
-  const text = String(req.query.text || req.query.q || '').trim();
-  if (!text) return sendError(res, 400, 'Falta el parámetro text', 'Ejemplo: /tools/translator?text=Hola&to=en');
-  const to = String(req.query.to || req.query.language || req.query.lang || 'en').toLowerCase();
-  const from = String(req.query.from || 'auto').toLowerCase();
-  try {
-    return sendSuccess(res, await P.translate(text.slice(0, 2000), to, from));
-  } catch (e) {
-    return sendError(res, 502, 'No se pudo traducir ahora mismo', e.details ? e.details.join(' · ') : e.message);
-  }
-});
-
-// ---------- Calculadora (parser seguro, sin eval) ----------
+// ==========================================================================
+// Calculator — parser seguro (sin eval)
+// ==========================================================================
 const FUNCS = {
   sqrt: x => Math.sqrt(x), cbrt: x => Math.cbrt(x),
   sin: x => Math.sin(x), cos: x => Math.cos(x), tan: x => Math.tan(x),
   asin: x => Math.asin(x), acos: x => Math.acos(x), atan: x => Math.atan(x),
   ln: x => Math.log(x), log: x => Math.log10(x), log2: x => Math.log2(x),
   abs: x => Math.abs(x), round: x => Math.round(x), floor: x => Math.floor(x), ceil: x => Math.ceil(x),
-  exp: x => Math.exp(x)
+  exp: x => Math.exp(x), sign: x => Math.sign(x), fact: x => {
+    const n = Math.floor(x);
+    if (n < 0 || n > 170) throw new Error('fact() admite enteros entre 0 y 170');
+    let r = 1;
+    for (let i = 2; i <= n; i++) r *= i;
+    return r;
+  }
 };
-const CONSTS = { pi: Math.PI, e: Math.E, tau: Math.PI * 2 };
+const CONSTS = { pi: Math.PI, e: Math.E, tau: Math.PI * 2, phi: (1 + Math.sqrt(5)) / 2 };
 
 function calculate(input, degrees = false) {
-  const src = String(input || '').replace(/,/g, '.').replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').trim().toLowerCase();
+  const src = String(input || '')
+    .replace(/,/g, '.').replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/π/g, 'pi')
+    .trim().toLowerCase();
   if (!src) throw new Error('Expresión vacía');
   if (src.length > 200) throw new Error('Expresión demasiado larga');
   let pos = 0;
-  const peek = () => src[pos];
-  const eat = ch => { if (src[pos] === ch) { pos++; return true; } return false; };
   const skip = () => { while (src[pos] === ' ') pos++; };
+  const eat = ch => { if (src[pos] === ch) { pos++; return true; } return false; };
 
   function parseExpr() {
     let v = parseTerm();
@@ -52,9 +48,15 @@ function calculate(input, degrees = false) {
     for (;;) {
       skip();
       if (eat('*')) v *= parseFactor();
-      else if (eat('/')) { const d = parseFactor(); if (d === 0) throw new Error('División por cero'); v /= d; }
-      else if (eat('%')) { const d = parseFactor(); if (d === 0) throw new Error('Módulo por cero'); v %= d; }
-      else return v;
+      else if (eat('/')) {
+        const d = parseFactor();
+        if (d === 0) throw new Error('División por cero');
+        v /= d;
+      } else if (eat('%')) {
+        const d = parseFactor();
+        if (d === 0) throw new Error('Módulo por cero');
+        v %= d;
+      } else return v;
     }
   }
   function parseFactor() {
@@ -115,9 +117,83 @@ router.get(['/calculator', '/calc', '/calculadora'], (req, res) => {
     const result = calculate(expr, degrees);
     return sendSuccess(res, { expression: String(expr), result, degrees });
   } catch (e) {
-    return sendError(res, 400, `Expresión inválida: ${e.message}`, 'Usa + - * / % ^ ( ) sqrt() sin() pi e…');
+    return sendError(res, 400, `Expresión inválida: ${e.message}`, 'Usa + - * / % ^ ( ) sqrt() sin() cos() pi e…');
   }
+});
+
+// ==========================================================================
+// Translator
+// ==========================================================================
+router.get(['/translator', '/translate', '/traductor'], async (req, res) => {
+  const text = String(req.query.text || req.query.q || '').trim();
+  if (!text) return sendError(res, 400, 'Falta el parámetro text', 'Ejemplo: /tools/translator?text=Hola&to=en');
+  const to = String(req.query.to || req.query.language || req.query.lang || 'en').toLowerCase();
+  const from = String(req.query.from || 'auto').toLowerCase();
+  try {
+    return sendSuccess(res, await P.translate(text.slice(0, 2000), to, from));
+  } catch (e) {
+    return sendError(res, 502, 'No se pudo traducir ahora mismo', e.details ? e.details.join(' · ') : e.message);
+  }
+});
+
+// ==========================================================================
+// Morse
+// ==========================================================================
+const MORSE = {
+  A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.', H: '....',
+  I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.', O: '---', P: '.--.',
+  Q: '--.-', R: '.-.', S: '...', T: '-', U: '..-', V: '...-', W: '.--', X: '-..-',
+  Y: '-.--', Z: '--..',
+  0: '-----', 1: '.----', 2: '..---', 3: '...--', 4: '....-',
+  5: '.....', 6: '-....', 7: '--...', 8: '---..', 9: '----.',
+  '.': '.-.-.-', ',': '--..--', '?': '..--..', "'": '.----.', '!': '-.-.--',
+  '/': '-..-.', '(': '-.--.', ')': '-.--.-', '&': '.-...', ':': '---...',
+  ';': '-.-.-.', '=': '-...-', '+': '.-.-.', '-': '-....-', '_': '..--.-',
+  '"': '.-..-.', '$': '...-..-', '@': '.--.-.', '¿': '..-.-', '¡': '--...-'
+};
+const MORSE_REVERSE = Object.fromEntries(Object.entries(MORSE).map(([k, v]) => [v, k]));
+
+function morseEncode(text, separator = '/') {
+  return String(text || '')
+    .toUpperCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(word => word.split('').map(ch => MORSE[ch] ?? '').filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(` ${separator} `);
+}
+
+function morseDecode(code) {
+  return String(code || '')
+    .replace(/[·•]/g, '.')
+    .replace(/[–—_−]/g, '-')
+    .replace(/\s*\/\s*/g, ' | ')
+    .split(/\s*\|\s*|\s{3,}/)
+    .map(word => word.trim().split(/\s+/).filter(Boolean).map(sym => MORSE_REVERSE[sym] ?? '').join(''))
+    .filter(Boolean)
+    .join(' ');
+}
+
+router.get(['/morse', '/morsecode'], (req, res) => {
+  const input = String(req.query.text ?? req.query.q ?? req.query.code ?? req.query.query ?? '').trim();
+  if (!input) return sendError(res, 400, 'Falta el parámetro text', 'Ejemplos: /tools/morse?text=SOS  ·  /tools/morse?text=...%20---%20...&mode=decode');
+  const mode = String(req.query.mode || req.query.type || 'encode').toLowerCase();
+  if (!['encode', 'decode', 'codificar', 'decodificar'].includes(mode)) {
+    return sendError(res, 400, 'Modo inválido', 'Usa mode=encode o mode=decode');
+  }
+  const isDecode = mode === 'decode' || mode === 'decodificar';
+  const separator = String(req.query.separator || '/').slice(0, 3) || '/';
+  const output = isDecode ? morseDecode(input) : morseEncode(input, separator);
+  if (!output) return sendError(res, 400, 'No se pudo procesar el texto', 'Usa letras A-Z, números 0-9 y signos comunes');
+  return sendSuccess(res, {
+    mode: isDecode ? 'decode' : 'encode',
+    input,
+    output,
+    ...(isDecode ? {} : { separator })
+  });
 });
 
 module.exports = router;
 module.exports.calculate = calculate;
+module.exports.morseEncode = morseEncode;
+module.exports.morseDecode = morseDecode;
