@@ -1,13 +1,15 @@
 // src/canvas/generators/bratestirado.js — bratestirado (brat con lente esférico)
 //
-// El texto va grande y centrado, y después se le aplica la lente (`lensWarp`):
-// el centro se agranda `lens.stretch` veces y el eje horizontal acompaña con
-// `lens.bulge`. Eso es lo que da el efecto "estirado" del sticker original.
+// El texto va grande y centrado, y después se le aplica la lente esférica
+// (`lensWarp`): el centro se agranda `lens.stretch` veces y las letras se curvan
+// alrededor de un bulto circular, como si estuvieran sobre una esfera. Además
+// `lens.aspect` estira el texto en vertical (letras más altas), que es lo que
+// termina de dar el "estirado" del sticker original.
 //
 // Todo se puede cambiar por query:
 //   /canvas/bratestirado?text=hola&text.size=1.2&text.fill=ff0044
 //   /canvas/bratestirado?canvas.size=1024&bg=8ACE00
-//   /canvas/bratestirado?lens.stretch=1.5&lens.bulge=0.8&lens.y=0.45
+//   /canvas/bratestirado?lens.stretch=1.8&lens.radius=0.8&lens.aspect=1.4
 const {
   sharp, textLayer, txt, styleOf, lensWarp, fitLines, P, partsOf
 } = require('./_helpers');
@@ -27,19 +29,24 @@ module.exports = async function bratestirado(q) {
   const spacing = t.spacing + (ov.spacing || 0);
   const text = txt(q, 'i <3 money');
 
-  // ---- lente ----
-  const stretch = P.num(q, 'lens', 'stretch', parts.lens.stretch, 1, 1.9);
-  const bulge = P.num(q, 'lens', 'bulge', parts.lens.bulge, 0, 1);
+  // ---- lente esférica ----
+  const stretch = P.num(q, 'lens', 'stretch', parts.lens.stretch, 1, 3);
+  // `aspect` = cuánto se estira el texto en vertical; `bulge` es la clave vieja
+  const aspect = P.num(q, 'lens', 'aspect', parts.lens.aspect ?? (1 + (parts.lens.bulge || 0) * 0.5), 0.7, 2.5);
+  const radius = P.num(q, 'lens', 'radius', parts.lens.radius ?? 1, 0.2, 2);
   const centerY = P.num(q, 'lens', 'y', parts.lens.y, 0.1, 0.9);
-  const k = Math.max(0, Math.min(1.5, stretch - 1));
+  const k = 1 - 1 / Math.max(1, stretch);
+  // Cuánto crece el centro de la lente sobre la zona donde está el texto: se usa
+  // para maquetar más chico y que la deformación nunca recorte nada.
+  const growth = 1 + 0.5 * k;
 
   // ---- área de texto ----
-  // La lente agranda el centro hasta (1 + k) en vertical y (1 + k·bulge) en
-  // horizontal, así que el texto se maqueta más chico para que la deformación
-  // no lo saque del lienzo.
+  // Se maqueta en el espacio "sin deformar": la lente agranda el centro `growth`
+  // veces y el estirón vertical ocupa `aspect`, así que el bloque de texto se
+  // achica proporcionalmente para no salirse del lienzo.
   const box = P.area(q, 'text', parts.text.box);
-  const availW = ((box.x1 - box.x0) * S) / (1 + k * bulge);
-  const availH = ((box.y1 - box.y0) * S) / (1 + k);
+  const availW = ((box.x1 - box.x0) * S) / growth;
+  const availH = ((box.y1 - box.y0) * S) / (growth * aspect);
 
   // Elige el tamaño más grande que entra partiendo por palabras (nunca corta ni
   // parte una palabra) y deja crecer el bloque hacia abajo si hay más líneas.
@@ -88,9 +95,9 @@ module.exports = async function bratestirado(q) {
     .png()
     .toBuffer();
 
-  // Con stretch = 1 y bulge = 0 la lente no hace nada (queda el brat normal).
-  if (stretch > 1.001 || bulge > 0.001) {
-    return lensWarp(flatImg, { stretch, bulge, centerY });
+  // Con stretch = 1 y aspect = 1 la lente no hace nada (queda el brat normal).
+  if (stretch > 1.001 || Math.abs(aspect - 1) > 0.001) {
+    return lensWarp(flatImg, { stretch, aspect, radius, centerY });
   }
   return flatImg;
 };

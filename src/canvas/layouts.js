@@ -26,17 +26,18 @@ const LAYOUTS = {
   },
 
   bratestirado: {
-    label: 'Brat estirado (fisheye)',
+    label: 'Brat estirado (lente esférica)',
     parts: {
       canvas: { width: 736, height: 736, bg: '#ffffff' },
       text: {
-        box: { x0: 0.08, y0: 0.10, x1: 0.92, y1: 0.90 },
-        font: { family: 'sans', weight: 800, maxFont: 172, lineHeight: 1.16 },
+        box: { x0: 0.05, y0: 0.06, x1: 0.95, y1: 0.94 },
+        font: { family: 'sans', weight: 800, maxFont: 190, lineHeight: 1.16 },
         fill: '#000000'
       },
-      // lente esférico: cuánto se agranda el centro (1 = plano), cuánto acompaña
-      // el eje horizontal y a qué altura está el centro de la lente
-      lens: { stretch: 1.4, bulge: 0.8, y: 0.5 }
+      // lente esférica: `stretch` = cuánto se agranda el centro (1 = plano),
+      // `aspect` = estirón vertical del texto, `radius` = tamaño del bulto
+      // (1 = llega a los bordes del lado corto) e `y` = altura del centro.
+      lens: { stretch: 1.55, aspect: 1.35, radius: 1, y: 0.5 }
     }
   },
 
