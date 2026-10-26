@@ -108,11 +108,12 @@ const CATEGORIES = [
         P('text', 'Welcome to Velirius', 'Texto animado'),
         O('size', '1', 'Escala del texto (0.5 - 2)')
       ] },
-      { id: 'iqc', desc: 'Chat falso de WhatsApp con cita y menú', params: [
-        P('text', 'Yo siempre te voy a amar', 'Mensaje principal'),
+      { id: 'iqc', desc: 'Chat falso de WhatsApp: la burbuja crece con el texto (como en la app real)', params: [
+        P('text', 'Yo siempre te voy a amar', 'Mensaje principal (si es largo, la burbuja se estira)'),
         O('quote', 'vooooss seguro', 'Mensaje citado'),
         O('username', 'Tú', 'Autor de la cita'),
-        O('time', '7:32 p. m.', 'Hora del mensaje')
+        O('time', '7:32 p. m.', 'Hora del mensaje'),
+        ...textStyle()
       ] },
       { id: 'cuentatiktok', desc: 'Menú falso de TikTok "Account not found"', params: [
         O('username', 'Account not found', 'Nombre de la cuenta'),
@@ -353,6 +354,21 @@ const CATEGORIES = [
     }))
   }
 ];
+
+// ---------- Parámetros "avanzados" (se ocultan tras un botón en la web) ----------
+// Los estilos de texto/foto no hacen falta para probar un endpoint: se agrupan
+// detrás de "Opciones avanzadas" para que el probador no quede lleno de campos.
+const ADVANCED_PARAMS = new Set([
+  'color', 'bg', 'size', 'font', 'uppercase', 'x', 'y', 'rotate', 'spacing',
+  'zoom', 'grayscale', 'shadow', 'mode', 'align', 'opacity', 'subtext'
+]);
+for (const cat of CATEGORIES) {
+  for (const ep of cat.endpoints) {
+    for (const p of ep.params) {
+      if (ADVANCED_PARAMS.has(String(p.name).toLowerCase())) p.advanced = true;
+    }
+  }
+}
 
 function totals() {
   return {

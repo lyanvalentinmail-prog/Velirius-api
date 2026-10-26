@@ -148,25 +148,43 @@
     tester.setAttribute('aria-hidden', 'true');
     if ('inert' in tester) tester.inert = true;
 
-    let fields = '';
-    if (!ep.params.length) fields = '<label>Este endpoint no necesita parámetros.</label>';
-    ep.params.forEach(p => {
+    // Los parámetros de estilo (color, size, font, x, y, rotate…) van detrás de
+    // "Opciones avanzadas" para que el panel no quede lleno de campos.
+    const LONG_PARAMS = ['text', 'caption', 'quote', 'message', 'desc', 'query'];
+    const fieldOf = p => {
       const up = isImageParam(p.name)
         ? `<label class="upload">SUBIR FOTO<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label>`
         : '';
-      const control = Array.isArray(p.options) && p.options.length
-        ? `<select data-param="${esc(p.name)}">${p.options.map(o =>
-            `<option value="${esc(o)}"${String(o) === String(p.value || '') ? ' selected' : ''}>${esc(o === '' ? 'automático' : o)}</option>`).join('')}</select>`
-        : `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
-      fields += `<label><b>?${esc(p.name)}</b>${p.required ? '' : ' (opcional)'}${p.desc ? ' — ' + esc(p.desc) : ''}</label>
+      let control;
+      if (Array.isArray(p.options) && p.options.length) {
+        control = `<select data-param="${esc(p.name)}">${p.options.map(o =>
+          `<option value="${esc(o)}"${String(o) === String(p.value || '') ? ' selected' : ''}>${esc(o === '' ? 'automático' : o)}</option>`).join('')}</select>`;
+      } else if (LONG_PARAMS.includes(String(p.name).toLowerCase())) {
+        control = `<textarea data-param="${esc(p.name)}" rows="${p.name === 'text' ? 3 : 2}" spellcheck="false" placeholder="${esc(p.value || '')}">${esc(p.value || '')}</textarea>`;
+      } else {
+        control = `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
+      }
+      return `<label><b>?${esc(p.name)}</b>${p.required ? '' : ' (opcional)'}${p.desc ? ' — ' + esc(p.desc) : ''}</label>
         <div class="field-row">${control}${up}</div>`;
-    });
+    };
+
+    let fields = '';
+    if (!ep.params.length) fields = '<label>Este endpoint no necesita parámetros.</label>';
+    const basicParams = ep.params.filter(p => !p.advanced);
+    const advParams = ep.params.filter(p => p.advanced);
+    basicParams.forEach(p => { fields += fieldOf(p); });
+    const advFields = advParams.map(fieldOf).join('');
+    const advBlock = advParams.length
+      ? `<button type="button" class="btn small ghost adv-toggle" data-act="adv" aria-expanded="false">⚙ OPCIONES AVANZADAS (${advParams.length})</button>
+         <div class="adv-fields" hidden>${advFields}</div>`
+      : '';
 
     tester.innerHTML = `
     <div class="tester-inner"><div class="t-pad">
       <div class="t-title">▶ Test · GET /${esc(data.category)}/${esc(id)}</div>
       ${ep.desc ? `<div class="t-desc">${esc(ep.desc)}</div>` : ''}
       ${fields}
+      ${advBlock}
       <div class="url-line"></div>
       <div class="actions">
         <button type="button" class="btn small" data-act="exec">Ejecutar</button>
@@ -194,6 +212,18 @@
         });
       });
     });
+    const advBtn = tester.querySelector('[data-act="adv"]');
+    if (advBtn) {
+      advBtn.addEventListener('click', () => {
+        const box = tester.querySelector('.adv-fields');
+        const open = box.hasAttribute('hidden');
+        if (open) box.removeAttribute('hidden'); else box.setAttribute('hidden', '');
+        advBtn.setAttribute('aria-expanded', String(open));
+        advBtn.textContent = open
+          ? '⚙ OCULTAR OPCIONES AVANZADAS'
+          : `⚙ OPCIONES AVANZADAS (${tester.querySelectorAll('.adv-fields [data-param]').length})`;
+      });
+    }
     tester.querySelector('[data-act="exec"]').addEventListener('click', () => executeTest(tester));
     tester.querySelector('[data-act="open"]').addEventListener('click', () => window.open(buildPath(tester), '_blank', 'noopener'));
     tester.querySelector('[data-act="copy"]').addEventListener('click', async ev => {

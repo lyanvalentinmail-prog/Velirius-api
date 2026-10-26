@@ -222,11 +222,87 @@ function expandLayer(layer) {
 }
 const flat = layers => layers.flatMap(expandLayer);
 
+/** Inserta `rows` filas de fondo (foto estirada) en `cut`, empujando lo de abajo. */
+async function insertRows(buf, W, H, rows, cut) {
+  const extra = Math.max(0, Math.round(rows));
+  if (!extra) return buf;
+  const newH = H + extra;
+  const stripTop = Math.max(0, Math.min(H - 12, cut + 10));
+  const stripH = Math.max(6, Math.min(64, H - stripTop));
+  const backdrop = await sharp(buf)
+    .extract({ left: 0, top: stripTop, width: W, height: stripH })
+    .resize(W, newH, { fit: 'fill' })
+    .blur(Math.max(4, Math.round(W * 0.01)))
+    .png().toBuffer();
+  const top = await sharp(buf).extract({ left: 0, top: 0, width: W, height: cut }).png().toBuffer();
+  const bottom = await sharp(buf).extract({ left: 0, top: cut, width: W, height: H - cut }).png().toBuffer();
+  return sharp(backdrop).composite([
+    { input: top, left: 0, top: 0 },
+    { input: bottom, left: 0, top: cut + extra }
+  ]).png().toBuffer();
+}
+
 async function renderTemplate(file, composites) {
   const { buf, width, height } = await templateMeta(file);
   const layers = [];
   for (const c of composites) layers.push(typeof c === 'function' ? await c(width, height) : c);
   return sharp(buf).composite(flat(layers)).png().toBuffer();
+}
+
+
+/**
+ * Borra el texto de ejemplo de una plantilla SIN dejar un recuadro visible:
+ * detecta la caja del texto (píxeles claramente más oscuros que el fondo),
+ * toma el color mediano del propio fondo y repinta solo esa caja con bordes
+ * difuminados. Así el texto nuevo se apoya directo sobre el cartel/papel.
+ */
+async function eraseSampleText(buf, W, H, area, opts = {}) {
+  const inset = opts.inset ?? 0.08;
+  const ax = Math.round(area.x0 * W), ay = Math.round(area.y0 * H);
+  const aw = Math.round((area.x1 - area.x0) * W), ah = Math.round((area.y1 - area.y0) * H);
+  if (aw < 8 || ah < 8) return null;
+  const ix = Math.round(aw * inset), iy = Math.round(ah * inset);
+  const x = ax + ix, y = ay + iy;
+  const w = Math.max(8, aw - ix * 2), h = Math.max(8, ah - iy * 2);
+  const { data, info } = await sharp(buf)
+    .extract({ left: x, top: y, width: w, height: h })
+    .raw().toBuffer({ resolveWithObject: true });
+  const C = info.channels;
+  const lum = i => 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  const samples = [];
+  for (let i = 0; i < data.length; i += C) samples.push(lum(i));
+  samples.sort((a, b) => a - b);
+  const median = samples[Math.floor(samples.length * 0.5)];
+  const thr = median * 0.66;
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1;
+  for (let yy = 0; yy < h; yy++) {
+    for (let xx = 0; xx < w; xx++) {
+      const i = (yy * w + xx) * C;
+      if (lum(i) < thr) {
+        if (xx < bx0) bx0 = xx; if (xx > bx1) bx1 = xx;
+        if (yy < by0) by0 = yy; if (yy > by1) by1 = yy;
+      }
+    }
+  }
+  if (bx1 < 0 || (bx1 - bx0 + 1) * (by1 - by0 + 1) > w * h * 0.92) return null;
+  // color del fondo = mediana por canal de los píxeles NO oscuros
+  const ch = [0, 0, 0].map((_, c) => {
+    const arr = [];
+    for (let i = 0; i < data.length; i += C) if (lum(i) >= thr) arr.push(data[i + c]);
+    arr.sort((a, b) => a - b);
+    return arr.length ? arr[Math.floor(arr.length / 2)] : 255;
+  });
+  const fill = '#' + ch.map(v => v.toString(16).padStart(2, '0')).join('');
+  const pad = Math.max(4, Math.round(Math.min(w, h) * 0.03));
+  const cx = Math.max(0, bx0 - pad), cy = Math.max(0, by0 - pad);
+  const cw = Math.min(w - cx, bx1 - bx0 + 1 + pad * 2);
+  const chh = Math.min(h - cy, by1 - by0 + 1 + pad * 2);
+  const svg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${chh}">` +
+    `<rect width="${cw}" height="${chh}" fill="${fill}"/></svg>`
+  );
+  const feathered = await sharp(svg).blur(Math.max(1.2, Math.min(cw, chh) * 0.035)).png().toBuffer();
+  return { input: feathered, left: x + cx, top: y + cy };
 }
 
 /** Plantilla de cartel: texto por defecto; imagen si viene `image/url` sin `text` (o mode=image). */
@@ -244,8 +320,14 @@ async function signCanvas(file, area, q, opts = {}) {
       zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale, radius: opts.imageRadius ?? 0
     }));
   } else {
+    const textOpts = opts.textOpts || {};
+    // sin recuadro de fondo: se borra el texto de ejemplo y se escribe encima
+    if (textOpts.cover !== false) {
+      const erase = await eraseSampleText(buf, W, H, area, { inset: textOpts.eraseInset ?? 0.08 });
+      if (erase) layers.push(erase);
+    }
     layers.push(placeTextArea(W, H, area, text || opts.defaultText || 'Welcome to Velirius API', {
-      ...(opts.textOpts || {}), ov
+      ...textOpts, cover: null, ov
     }));
   }
   return sharp(buf).composite(flat(layers)).png().toBuffer();
@@ -369,10 +451,10 @@ const GENERATORS = {
 
   // ======================= CARTELES CON PERSONAJES =======================
   bratanime: q => signCanvas('bratanime.png', { x0: 0.163, y0: 0.497, x1: 0.818, y1: 0.810 }, q,
-    { textOpts: { cover: '#ffffff', coverRadius: 2, family: 'serif', weight: 700, fill: '#111111', maxFont: 96, maxLines: 4 } }),
+    { textOpts: { family: 'serif', weight: 700, fill: '#111111', maxFont: 96, maxLines: 4 } }),
 
   bratcoyote: q => signCanvas('bratcoyote.png', { x0: 0.052, y0: 0.092, x1: 0.538, y1: 0.468 }, q,
-    { textOpts: { cover: '#f3e6cf', coverRadius: 3, family: 'sans', weight: 900, fill: '#111111', maxFont: 104, uppercase: true, maxLines: 4 } }),
+    { textOpts: { family: 'sans', weight: 900, fill: '#111111', maxFont: 104, uppercase: true, maxLines: 4 } }),
 
   bratpinguino: q => signCanvas('bratpinguino.jpg', { x0: 0.335, y0: 0.545, x1: 0.875, y1: 0.855 }, q,
     { defaultText: 'Welcome to Velirius API', textOpts: { family: 'sans', weight: 700, fill: '#2b3020', maxFont: 74, maxLines: 4, rotate: -1.2 } }),
@@ -507,55 +589,92 @@ const GENERATORS = {
   },
 
   // ======================= IQC (chat falso) =======================
+  // La burbuja se arma por partes (cita + mensaje + hora) y CRECE hacia abajo
+  // como en WhatsApp: si la respuesta es larga se agregan líneas, la burbuja se
+  // estira y el menú de abajo baja lo necesario (el alto de la imagen se ajusta).
   async iqc(q) {
+    const ov = styleOf(q);
     const message = txt(q, 'Yo siempre te voy a amar');
-    const quote = String(q.quote ?? q.quoted ?? 'vooooss seguro').slice(0, 60);
-    const username = String(q.username ?? q.name ?? 'Tú').slice(0, 24);
-    const time = String(q.time ?? q.hour ?? '7:32 p. m.').slice(0, 14);
-    // Zonas medidas sobre iqc.jpg (736x1308): burbuja de cita 45%-55% y mensaje 55%-59%.
-    return renderTemplate('iqc.jpg', [(W, H) => {
-      const bubbleX = Math.round(0.046 * W);
-      const bubbleW = Math.round(0.728 * W);
-      const quoteTop = Math.round(0.462 * H);
-      const quoteH = Math.round(0.086 * H);
-      const msgTop = Math.round(0.550 * H);
-      const msgH = Math.round(0.040 * H);
-      const padding = Math.round(0.024 * W);
-      const hourW = Math.round(0.105 * W);
+    const quoteRaw = String(q.quote ?? q.quoted ?? 'vooooss seguro').trim();
+    // la cita de WhatsApp va en una sola línea con "…" al final
+    const quote = quoteRaw.length > 46 ? quoteRaw.slice(0, 44).trimEnd() + '…' : quoteRaw;
+    const username = String(q.username ?? q.name ?? 'Tú').slice(0, 28);
+    const time = String(q.time ?? q.hour ?? '7:32 p. m.').slice(0, 18);
+    const { buf, width: W, height: H } = await templateMeta('iqc.jpg');
 
-      const name = textLayer({
-        text: username, width: bubbleW - padding * 2, height: Math.round(quoteH * 0.40),
-        family: 'sans', weight: 600, maxFont: Math.round(0.0215 * H), minFont: 9,
-        maxLines: 1, align: 'start', fill: '#e8848c'
-      });
-      const quoted = textLayer({
-        text: quote, width: bubbleW - padding * 2, height: Math.round(quoteH * 0.42),
-        family: 'sans', weight: 400, maxFont: Math.round(0.0235 * H), minFont: 9,
-        maxLines: 1, align: 'start', fill: '#e9edef'
-      });
-      const msg = textLayer({
-        text: message, width: bubbleW - padding - hourW - 12, height: Math.round(msgH * 0.92),
-        family: 'sans', weight: 400, maxFont: Math.round(0.0225 * H), minFont: 8,
-        maxLines: 1, align: 'start', fill: '#e9edef'
-      });
-      const hour = textLayer({
-        text: time, width: hourW, height: Math.round(msgH * 0.72),
-        family: 'sans', weight: 400, maxFont: Math.round(0.0148 * H), minFont: 7,
-        maxLines: 1, align: 'end', fill: '#a9b4bb'
-      });
+    // --- medidas tomadas de iqc.jpg (736x1308) ---
+    const bubbleX = Math.round(0.0408 * W);          // 30
+    const bubbleW = Math.round(0.7092 * W);          // 522
+    const quoteTop = Math.round(0.4434 * H);         // 580
+    const quoteH = Math.round(0.0948 * H);           // 124
+    const quoteBottom = quoteTop + quoteH;           // 704
+    const msgTop = Math.round(0.5397 * H);           // 706
+    const baseBottom = Math.round(0.5841 * H);       // 764 (burbuja con 1 línea)
+    const textPadX = Math.round(0.0435 * W);         // 32
+    const hourW = Math.round(0.105 * W);
+    const family = ov.font || 'sans';
+    const weight = 400;
 
-      return [
-        // limpian el texto de ejemplo de la plantilla
-        { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${bubbleW - padding * 2}" height="${Math.round(quoteH * 0.94)}"><rect width="100%" height="100%" rx="3" fill="#212121"/></svg>`), left: bubbleX + padding, top: quoteTop + Math.round(quoteH * 0.02) },
-        // limpia TODA la franja del mensaje de ejemplo (texto + hora) respetando el borde redondeado
-        { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${bubbleW - 26}" height="${Math.round(msgH * 1.04)}"><rect width="100%" height="100%" rx="5" fill="#2a2a2a"/></svg>`), left: bubbleX + 13, top: msgTop - Math.round(msgH * 0.16) },
-        // textos nuevos
-        { input: name.svg, left: bubbleX + padding, top: quoteTop + Math.round(quoteH * 0.08) },
-        { input: quoted.svg, left: bubbleX + padding, top: quoteTop + Math.round(quoteH * 0.44) },
-        { input: msg.svg, left: bubbleX + Math.round(padding * 0.55), top: msgTop + Math.round(msgH * 0.12) },
-        { input: hour.svg, left: bubbleX + bubbleW - hourW - Math.round(0.010 * W), top: msgTop + Math.round(msgH * 0.26) }
-      ];
-    }]);
+    // --- mensaje: se mide y se envuelve como WhatsApp ---
+    const fontSize = Math.max(10, Math.round(0.0225 * H * ov.scale));
+    const lineHeight = 1.36;
+    const msgW = Math.max(40, bubbleW - textPadX - Math.round(0.016 * W) - hourW);
+    const lines = wrapLines(message, msgW, { family, weight, size: fontSize, letterSpacing: ov.spacing || 0, maxLines: 16 });
+    const blockH = Math.round(Math.max(1, lines.length) * fontSize * lineHeight);
+    const bottomPad = Math.round(0.0145 * H);        // 19
+    const bubbleBottom = msgTop + blockH + bottomPad;
+    const delta = Math.max(0, bubbleBottom - baseBottom);   // lo que crece la burbuja
+
+    // --- cita (nombre + texto citado) ---
+    const quoteLayer = textLayer({
+      text: quote, width: bubbleW - textPadX - Math.round(0.03 * W), height: Math.round(quoteH * 0.30),
+      family, weight: 400, maxFont: Math.round(0.0232 * H), minFont: 14, maxLines: 1,
+      align: 'start', fill: '#e9edef', letterSpacing: ov.spacing || 0
+    });
+    const nameLayer = textLayer({
+      text: username, width: bubbleW - textPadX - Math.round(0.03 * W), height: Math.round(quoteH * 0.22),
+      family, weight: 600, maxFont: Math.round(0.0198 * H), minFont: 9, maxLines: 1,
+      align: 'start', fill: '#e8848c'
+    });
+
+    // --- mensaje + hora ---
+    const msgLayer = textLayer({
+      text: lines.join('\n'), width: msgW, height: blockH,
+      family, weight, fontSize, autoFit: false, maxLines: lines.length,
+      lineHeight, align: 'start', fill: ov.fill || '#e9edef', letterSpacing: ov.spacing || 0
+    });
+    const hourH = Math.round(0.020 * H);
+    const hourLayer = textLayer({
+      text: time, width: hourW, height: hourH, family, weight: 400,
+      maxFont: Math.round(0.0165 * H), minFont: 8, maxLines: 1,
+      align: 'end', fill: '#a9b4bb'
+    });
+
+    // --- si la burbuja crece, se insertan filas de fondo y el menú baja ---
+    const base = delta > 0 ? await insertRows(buf, W, H, delta, Math.round(0.5887 * H)) : buf;
+
+    // --- se redibuja SOLO la parte de abajo de la burbuja (sin cajas blancas) ---
+    const bubbleExt = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${bubbleW}" height="${bubbleBottom - quoteBottom + 2}">` +
+      `<rect width="${bubbleW}" height="${bubbleBottom - quoteBottom + 2}" rx="${Math.round(bubbleW * 0.032)}" fill="#2a2a2a"/>` +
+      `<rect width="${bubbleW}" height="${Math.round((bubbleBottom - quoteBottom) * 0.55)}" fill="#2a2a2a"/>` +
+      `</svg>`
+    );
+
+    // limpia el texto de ejemplo de la cita pintando el propio panel (#212121)
+    const quoteCover = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${bubbleW - 28}" height="${quoteH - 8}">` +
+      `<rect width="${bubbleW - 28}" height="${quoteH - 8}" rx="8" fill="#212121"/></svg>`
+    );
+
+    return sharp(base).composite([
+      { input: bubbleExt, left: bubbleX, top: quoteBottom - 1 },
+      { input: quoteCover, left: bubbleX + 22, top: quoteTop + 4 },
+      { input: nameLayer.svg, left: bubbleX + textPadX, top: quoteTop + Math.round(quoteH * 0.10) },
+      { input: quoteLayer.svg, left: bubbleX + textPadX, top: quoteTop + Math.round(quoteH * 0.46) },
+      { input: msgLayer.svg, left: bubbleX + textPadX, top: msgTop + Math.round(bottomPad * 0.25) },
+      { input: hourLayer.svg, left: bubbleX + bubbleW - hourW - Math.round(0.014 * W), top: bubbleBottom - bottomPad - hourH + Math.round(bottomPad * 0.35) }
+    ]).png().toBuffer();
   },
 
   // ======================= CUENTA TIKTOK =======================
@@ -700,7 +819,7 @@ const GENERATORS = {
     const reward = String(q.reward ?? q.recompensa ?? '').trim();
     if (reward) {
       layers.push(placeTextArea(W, H, { x0: 0.09, y0: 0.735, x1: 0.905, y1: 0.838 }, reward, {
-        cover: '#d9c69c', family: 'serif', weight: 900, fill: '#1a1207',
+        family: 'serif', weight: 900, fill: '#1a1207',
         maxFont: 56, maxLines: 1, pad: 4, ov: { ...ov, scale: ov.scale * 0.92 }
       }));
     }
