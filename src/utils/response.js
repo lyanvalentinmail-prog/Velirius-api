@@ -10,7 +10,7 @@ function formatValueClean(val, indent = '') {
     return val.slice(0, 20).map((item, idx) => {
       if (typeof item === 'object' && item !== null) {
         const title = item.title || item.name || item.trackName || item.packName || `#${idx + 1}`;
-        const sub = item.url || item.shareUrl || item.spotifyUrl || item.storeUrl || item.aptoideUrl || item.downloadUrl || item.description || '';
+        const sub = item.image || item.gif || item.cover || item.thumbnail || item.url || item.playUrl || item.video || item.description || '';
         return `${indent}${idx + 1}. ${title}${sub ? ` — ${sub}` : ''}`;
       }
       return `${indent}• ${item}`;

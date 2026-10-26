@@ -79,11 +79,21 @@ async function svgToPng(svgBuf, width) {
 }
 
 /** Imagen de usuario recortada cover a w×h (PNG). Opciones: circle, radius, rotate, grayscale, negate. */
-async function shapedImage(userBuf, w, h, { circle = false, radius = 0, rotate = 0, grayscale = false } = {}) {
+async function shapedImage(userBuf, w, h, { circle = false, radius = 0, rotate = 0, grayscale = false, zoom = 1 } = {}) {
   let img = sharp(userBuf).rotate();
   if (grayscale) img = img.grayscale();
-  let resized = await img.resize(Math.max(2, Math.round(w)), Math.max(2, Math.round(h)), { fit: 'cover', position: 'centre' }).png().toBuffer();
-  if (rotate) resized = await sharp(resized).rotate(rotate, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  const W = Math.max(2, Math.round(w));
+  const H = Math.max(2, Math.round(h));
+  const z = Math.max(0.2, Math.min(4, Number(zoom) || 1));
+  if (rotate) img = sharp(await img.png().toBuffer()).rotate(rotate, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
+  let resized = await img.resize(Math.max(2, Math.round(W * z)), Math.max(2, Math.round(H * z)), { fit: 'cover', position: 'centre' }).png().toBuffer();
+  if (Math.abs(z - 1) > 0.001) {
+    const meta = await sharp(resized).metadata();
+    const cw = Math.min(W, meta.width), ch = Math.min(H, meta.height);
+    resized = await sharp(resized)
+      .extract({ left: Math.round((meta.width - cw) / 2), top: Math.round((meta.height - ch) / 2), width: cw, height: ch })
+      .png().toBuffer();
+  }
   if (circle || radius > 0) {
     const meta = await sharp(resized).metadata();
     const W = meta.width, H = meta.height;

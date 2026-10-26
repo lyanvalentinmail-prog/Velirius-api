@@ -1,4 +1,4 @@
-// src/server.js — Velirius API (Express). Web estilo Delirius + 5 routers sin token.
+// src/server.js — Velirius API (Express). Web estilo Delirius + 6 routers sin token.
 const path = require('path');
 const express = require('express');
 const config = require('./config');
@@ -21,19 +21,24 @@ app.use((req, res, next) => {
   next();
 });
 
-// Páginas (/, /home, /anime, /canvas, /download, /search, /tools, /information, /docs)
+// Páginas (/, /home, /anime, /canvas, /tools, /downloader, /searcher, /reactions,
+// /information, /docs)
 // Deben ir ANTES de los routers API para que GET /canvas sirva la web y /canvas/:id el PNG.
 app.use(require('./routes/pages'));
 
 // API
 app.use('/canvas', require('./routes/canvas'));
 app.use('/anime', require('./routes/anime'));
+app.use('/reactions', require('./routes/reactions'));
 app.use('/tools', require('./routes/tools'));
-app.use(['/download', '/downloader'], require('./routes/download'));
-app.use('/search', require('./routes/search'));
+app.use(['/downloader', '/download'], require('./routes/download'));
+app.use(['/searcher', '/search'], require('./routes/searcher'));
 
 // Salud
-app.get('/ping', (req, res) => res.json({ creator: config.creator, status: true, result: { pong: true, uptime: Math.round(process.uptime()) } }));
+app.get('/ping', (req, res) => {
+  const { totals } = require('./catalog');
+  res.json({ creator: config.creator, status: true, result: { pong: true, uptime: Math.round(process.uptime()), ...totals() } });
+});
 
 // 404
 app.use((req, res) => {

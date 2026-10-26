@@ -57,8 +57,8 @@
     const cat = tester.dataset.category;
     const id = tester.dataset.endpoint;
     const params = new URLSearchParams();
-    tester.querySelectorAll('input[data-param]').forEach(inp => {
-      const v = inp.value.trim();
+    tester.querySelectorAll('[data-param]').forEach(inp => {
+      const v = String(inp.value || '').trim();
       if (v) params.set(inp.dataset.param, v);
     });
     const qs = params.toString();
@@ -75,11 +75,13 @@
       const r = json && json.result;
       if (!r) return null;
       if (typeof r.image === 'string') return r.image;
+      if (typeof r.gif === 'string') return r.gif;
       if (typeof r.thumbnail === 'string') return r.thumbnail;
       if (typeof r.cover === 'string') return r.cover;
       const first = Array.isArray(r.results) ? r.results[0] : null;
-      if (first) return first.image || first.thumbnail || first.trayIcon || first.url || null;
-      if (Array.isArray(r) && r[0]) return r[0].image || r[0].url || null;
+      if (first) return first.image || first.gif || first.thumbnail || first.cover || first.trayIcon || first.url || null;
+      if (Array.isArray(r) && r[0]) return r[0].image || r[0].gif || r[0].cover || r[0].url || null;
+      if (Array.isArray(r.images) && r.images[0]) return r.images[0].url || r.images[0].image || null;
     } catch (_) {}
     return null;
   }
@@ -152,8 +154,12 @@
       const up = isImageParam(p.name)
         ? `<label class="upload">SUBIR FOTO<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label>`
         : '';
+      const control = Array.isArray(p.options) && p.options.length
+        ? `<select data-param="${esc(p.name)}">${p.options.map(o =>
+            `<option value="${esc(o)}"${String(o) === String(p.value || '') ? ' selected' : ''}>${esc(o === '' ? 'automático' : o)}</option>`).join('')}</select>`
+        : `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
       fields += `<label><b>?${esc(p.name)}</b>${p.required ? '' : ' (opcional)'}${p.desc ? ' — ' + esc(p.desc) : ''}</label>
-        <div class="field-row"><input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false">${up}</div>`;
+        <div class="field-row">${control}${up}</div>`;
     });
 
     tester.innerHTML = `
@@ -174,6 +180,10 @@
     refreshUrlLine(tester);
 
     tester.addEventListener('input', () => refreshUrlLine(tester));
+    tester.addEventListener('change', () => refreshUrlLine(tester));
+    tester.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' && ev.target.matches('input[data-param]')) { ev.preventDefault(); executeTest(tester); }
+    });
     tester.querySelectorAll('input[type="file"][data-upload-for]').forEach(fileInp => {
       fileInp.addEventListener('change', () => {
         const file = fileInp.files && fileInp.files[0];

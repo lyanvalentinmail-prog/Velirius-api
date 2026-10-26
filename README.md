@@ -1,135 +1,209 @@
 # Velirius API
 
-Web **idéntica a [api.delirius.online/home](https://api.delirius.online/home)** (tarjeta blanca punteada, borde negro, tipografía mono, botones `VIEW` / `TEST`, barra de estado y buscador) con **57 endpoints REST sin token** en 5 categorías, lista para **Vercel** o **Render**.
+Web estilo [api.delirius.online](https://api.delirius.online/home) (tarjeta blanca punteada, borde negro,
+tipografía mono, botones `VIEW` / `TEST`, barra de estado y buscador) con **78 endpoints REST sin token**
+repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
-- Sin claves de API: todo sale de fuentes públicas (PokeAPI, Jikan, TikWM, YouTube InnerTube/Invidious, LRCLIB, Aptoide, Sticker.ly…).
-- El botón **`TEST`** de cada endpoint **despliega hacia abajo el probador con parámetros modificables**: editar valores, subir una foto desde la galería, ejecutar sin salir de la página, abrir el endpoint directo y copiar la URL final. Tocando `TEST` de nuevo el panel se cierra.
+- Sin claves de API: todo sale de fuentes públicas (nekos.best, waifu.pics, waifu.im, nekos.life, purrbot,
+  otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
+- **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan únicamente
+  rutas `/sfw/` o `is_nsfw=false`.
+- El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el probador con **parámetros
+  modificables**: campos de texto, listas desplegables (`select`), subida de foto desde la galería,
+  ejecución sin salir de la página, abrir el endpoint directo y copiar la URL final.
+  Tocando `TEST` otra vez el panel se cierra (solo uno abierto a la vez).
+- Páginas: `/anime` · `/canvas` · `/tools` · `/downloader` · `/searcher` · `/reactions`
+  (los alias antiguos `/download` y `/search` redirigen a `/downloader` y `/searcher`).
 
 ---
 
-## Endpoints (57)
+## Formato de respuesta
 
-Formato general JSON: `{ "creator": "Velirius", "status": true, "result": { … } }`.
-A cualquier endpoint JSON se le puede agregar `?format=text` para texto limpio (útil para bots).
-En **Download**, `?direct=true|mp3|mp4` devuelve el archivo en streaming con `Range 206` (reproducible en navegador/WhatsApp).
+```json
+{ "creator": "Velirius", "status": true, "result": { } }
+```
 
-### 🎨 Canvas — 33 (todas las plantillas de la carpeta `CategoriaCanvas` de Drive)
-
-Devuelven **imagen directa** (PNG; `bratvideo` → MP4 y `attp` → WebM). Todos los parámetros son modificables por query; sin parámetros usan valores de ejemplo y el avatar por defecto (`FotoPredeterminada.jpg` / `FotoShipGirlPred.jpg`).
-
-| Endpoint | Plantilla (Drive) | Parámetros |
-|---|---|---|
-| `GET /canvas/quotly` | `quotly.png` | `image`, `username`, `text`, `bg` |
-| `GET /canvas/brat` | `brat.jpg` | `text`, `bg`, `color` |
-| `GET /canvas/bratvideo` | `bratvideo.mp4` | `text` (MP4 palabra por palabra) |
-| `GET /canvas/bratestirado` | `BratEstirado.jpg` | `text` (estirado ojo de pez) |
-| `GET /canvas/bratanime` | `bratanime.png` | `text` (maid con cartel) |
-| `GET /canvas/bratcoyote` | `bratcoyote.png` | `text` (Coyote con cartel) |
-| `GET /canvas/bratpinguino` | `BratPinguino.jpg` | `text` o `image` (Gunter con cartel) |
-| `GET /canvas/ttp` | `ttp.png` | `text`, `color` |
-| `GET /canvas/attp` | `attp.webm` | `text` (WebM arcoíris animado) |
-| `GET /canvas/iqc` | `iqc.jpg` | `text`, `quote`, `username`, `time` (chat falso de WhatsApp) |
-| `GET /canvas/cuentatiktok` | `CuentaTiktok.jpg` | `username`, `image` (avatar), `status` |
-| `GET /canvas/storyreply` | `StoryReply.jpg` | `url` (historia), `text` (respuesta) |
-| `GET /canvas/absolutecinema` | `AbsoluteCinema.jpg` | `text`, `subtext`, `url` (foto B/N opcional) |
-| `GET /canvas/bobesponja` | `BobEsponja.jpg` | `text` o `url` en la hoja |
-| `GET /canvas/bobesponja2` | `BobEsponja2.jpg` | `text` o `url` (cómic 4 viñetas) |
-| `GET /canvas/bobesponja3` | `BobEsponja3.jpg` | `text` o `url` en el cartel |
-| `GET /canvas/canvatextoxd` | `CanvaTextoxD.jpg` | `text` o `url` (muñeco 3D) |
-| `GET /canvas/imagencanba` | `ImagenCanba.jpg` | `url` o `text` dentro de MS Paint |
-| `GET /canvas/canvaimagen` | `CanvaImagen.jpg` | `url` (pantalla verde Wojak, chroma-key) |
-| `GET /canvas/fotopc` | `FotoPc.jpg` | `url` en la pantalla (chroma-key) |
-| `GET /canvas/sebusca` | `SeBusca.jpg` | `url`, `name`, `reward` |
-| `GET /canvas/pokemoncard` | `PokemonCard.jpg` | `name`, `hp`, `url`, `type`, `attack`, `damage`, `description` |
-| `GET /canvas/ship` | `ship.png` | `image1`, `name1`, `image2`, `name2`, `percentage`, `text` |
-| `GET /canvas/friendship` | `friendship.png` | igual que ship (círculos + 👍) |
-| `GET /canvas/gaycard` | `gaycard.png` | `url`, `name`, `rank` |
-| `GET /canvas/gay` | `gay.png` | `url`, `opacity` (filtro arcoíris) |
-| `GET /canvas/invert` | `invert.png` | `url` (colores invertidos) |
-| `GET /canvas/rata` | `Canvas Personajes/Rata.jpg` | `url` (tu cara) |
-| `GET /canvas/banana` | `Canvas Personajes/Banana.jpg` | `url` |
-| `GET /canvas/arandano` | `Canvas Personajes/Arandano.jpg` | `url` (chroma-key) |
-| `GET /canvas/pan` | `Canvas Personajes/Pan.jpg` | `url` (chroma-key) |
-| `GET /canvas/galletita` | `Canvas Personajes/Galletita.jpg` | `url` |
-| `GET /canvas/minions` | `Canvas Personajes/Minions.jpg` | `url`, `url2`, `url3` (las 3 caras) |
-
-Ejemplo: `/canvas/quotly?image=https://…/avatar.jpg&username=Velirius+Api&text=Welcome+to+Velirius+Api&bg=000000`
-En carteles con texto **o** imagen, borrar el texto y poner `url`/`image` (o `mode=image`) pega la foto en el cartel. También acepta imágenes en `data:` (así funciona "SUBIR FOTO" del probador web).
-
-### ⛩️ Anime — 5
-
-| Endpoint | Descripción | Parámetros |
-|---|---|---|
-| `GET /anime/pokemon` | Pokédex PokeAPI: stats, tipos, descripción y arte | `query` (nombre/ID/`random`), `shiny` |
-| `GET /anime/gacha` | Personaje al azar con rareza (common→legendary) | — |
-| `GET /anime/character` | Buscar personajes (sin `query` = al azar) | `query`, `limit` |
-| `GET /anime/manga` | Buscar manga (Jikan) | `query`, `limit` |
-| `GET /anime/anime` | Buscar anime (Jikan) | `query`, `limit` |
-
-### ⬇️ Download — 9
-
-| Endpoint | Descripción | Parámetros |
-|---|---|---|
-| `GET /download/tiktok` | **TikTok sin marca de agua** (HD + MP3, vía TikWM) | `url`, `direct=mp4\|mp3` |
-| `GET /download/youtube` | Info + todos los formatos de un video | `url` (o `query`), `quality`, `direct` |
-| `GET /download/mp3` | Audio desde YouTube | `url` o `query`, `direct=true` |
-| `GET /download/mp4` | Video desde YouTube | `url` o `query`, `quality=360\|480\|720\|1080`, `direct=true` |
-| `GET /download/play` | Busca una canción y suena el audio | `query`, `direct=true` |
-| `GET /download/spotify` | Info del track + audio equivalente en YouTube | `url`, `direct=true` |
-| `GET /download/instagram` | Reels/fotos públicas | `url`, `direct=true` |
-| `GET /download/aptoide` | Buscar apps con link APK directo | `query`, `limit` |
-| `GET /download/lyric` | Letra (LRCLIB + lyrics.ovh) | `query`, `format=json\|txt\|lrc` |
-
-> YouTube se resuelve con InnerTube (búsqueda) + instancias Invidious con **descubrimiento dinámico** desde la lista oficial de `api.invidious.io` (en 2026 la mayoría cerró su API; la lista se refresca sola cada hora) y Piped como respaldo.
-
-### 🔎 Search — 8
-
-| Endpoint | Descripción | Parámetros |
-|---|---|---|
-| `GET /search/sticker` | Stickers sueltos (Sticker.ly v3.1) | `query`, `limit` |
-| `GET /search/stickerpack` | Packs de stickers (alias `stickerly`) | `query`, `limit` |
-| `GET /search/anime` | Buscar anime (Jikan) | `query`, `limit` |
-| `GET /search/tiktok` | Buscar videos en TikTok | `query`, `limit` |
-| `GET /search/youtube` | Buscar videos en YouTube | `query`, `limit` |
-| `GET /search/instagram` | Perfil público por usuario (+ posts) | `query` (usuario sin @) |
-| `GET /search/lyric` | Buscar letras (marca si hay sincronizada) | `query`, `limit` |
-| `GET /search/play` | Canciones con `playUrl` listo para sonar | `query`, `limit` |
-
-### 🛠️ Tools — 2
-
-| Endpoint | Descripción | Parámetros |
-|---|---|---|
-| `GET /tools/translator` | Traductor (alias `translate`, `traductor`) | `text`, `to`, `from` |
-| `GET /tools/calculator` | Calculadora sin `eval`: `+ - * / % ^ ( ) sqrt() sin()… pi e` (alias `calc`, `calculadora`) | `expr`, `degrees` |
+- `?format=text` en cualquier endpoint JSON → texto plano (útil para bots).
+- En **Downloader**, `?direct=` devuelve el archivo en streaming con `Range 206`
+  (`mp4`, `mp3`, `true` según el endpoint).
+- **Canvas** devuelve la imagen (PNG) o el video (MP4/WebM) directamente.
+- Errores: `{ "creator", "status": false, "error", "hint" }`.
 
 ---
 
-## Correr en local
+## ⛩️ Anime — 4 (proveedores de imágenes)
+
+| Endpoint | Proveedores | Parámetros |
+|---|---|---|
+| `GET /anime/neko` | nekos.best · waifu.pics · waifu.im · nekos.life | `provider`, `amount`, `direct` |
+| `GET /anime/waifu` | nekos.best · waifu.pics · waifu.im | `provider`, `amount`, `direct` |
+| `GET /anime/maid` | nekos.best · waifu.im | `provider`, `amount`, `direct` |
+| `GET /anime/pokemon` | PokeAPI | `query`, `shiny`, `direct` |
+
+- `provider` fuerza una fuente; si se deja vacío se prueban en orden hasta que una responda.
+- `amount` (1-10) devuelve varias imágenes: `result.images[]` además de `result.image`.
+- `direct=true` entrega la imagen/GIF en vez del JSON.
+
+```bash
+curl "https://<host>/anime/neko?amount=3"
+curl "https://<host>/anime/waifu?provider=waifu.im&direct=true" -o waifu.jpg
+curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
+```
+
+## 🎨 Canvas — 33 (plantillas de la carpeta `CategoriaCanvas` de Drive)
+
+Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
+modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
+
+**Parámetros de estilo válidos en cualquier canvas**
+
+| Parámetro | Qué hace |
+|---|---|
+| `color` | color del texto (hex `ff2d55`, `#ff2d55` o nombre: `white`, `black`, `red`…) |
+| `bg` | fondo (canvas generados: `brat`, `ttp`, `quotly`, `ship`…) |
+| `size` | escala del texto (`0.5` = mitad, `2` = doble) |
+| `font` | `sans` · `serif` · `mono` |
+| `uppercase` | `true` = MAYÚSCULAS |
+| `x`, `y` | desplazamiento en % (-50 … 50) |
+| `rotate` | rotación en grados (-180 … 180) |
+| `zoom` | zoom de la foto del usuario (0.5 … 3) |
+| `grayscale` | `true` = foto en blanco y negro |
+
+| Endpoint | Plantilla (Drive) | Parámetros propios |
+|---|---|---|
+| `/canvas/quotly` | `quotly.png` | `image`, `username`, `text`, `bg` + estilo |
+| `/canvas/brat` | (generado) | `text`, `bg`, `color`, `size`, `rotate` |
+| `/canvas/bratvideo` | (generado, MP4) | `text`, `size`, `bg`, `color` |
+| `/canvas/bratestirado` | `BratEstirado.jpg` | `text`, `color`, `size` |
+| `/canvas/bratanime` | `bratanime.png` | `text` + estilo |
+| `/canvas/bratcoyote` | `bratcoyote.png` | `text` + estilo |
+| `/canvas/bratpinguino` | `BratPinguino.jpg` | `text` o `image`, `mode` + estilo |
+| `/canvas/ttp` | (generado) | `text`, `color`, `bg`, `size` |
+| `/canvas/attp` | (generado, WebM) | `text`, `size` |
+| `/canvas/iqc` | `iqc.jpg` | `text`, `quote`, `username`, `time` |
+| `/canvas/cuentatiktok` | `CuentaTiktok.jpg` | `username`, `image`, `status` |
+| `/canvas/storyreply` | `StoryReply.jpg` | `url`, `text`, `color`, `size`, `zoom` |
+| `/canvas/absolutecinema` | `AbsoluteCinema.jpg` | `text`, `subtext`, `url`, `color`, `size` |
+| `/canvas/bobesponja` | `BobEsponja.jpg` | `text` o `url`, `mode` + estilo |
+| `/canvas/bobesponja2` | `BobEsponja2.jpg` | `text` o `url`, `mode` + estilo |
+| `/canvas/bobesponja3` | `BobEsponja3.jpg` | `text` o `url`, `mode` + estilo |
+| `/canvas/canvatextoxd` | `CanvaTextoxD.jpg` | `text` o `url`, `mode` + estilo |
+| `/canvas/imagencanba` | `ImagenCanba.jpg` | `url` o `text`, `mode`, `zoom` + estilo |
+| `/canvas/canvaimagen` | `CanvaImagen.jpg` | `url`, `zoom`, `grayscale`, `rotate` |
+| `/canvas/fotopc` | `FotoPc.jpg` | `url`, `zoom`, `grayscale`, `rotate` |
+| `/canvas/sebusca` | `SeBusca.jpg` | `url`, `name`, `reward`, `zoom` |
+| `/canvas/pokemoncard` | `PokemonCard.jpg` | `name`, `hp`, `url`, `type`, `attack`, `damage`, `description` |
+| `/canvas/ship` | `ship.png` | `image1`, `name1`, `image2`, `name2`, `percentage`, `text`, `color` |
+| `/canvas/friendship` | `friendship.png` | igual que `ship` (círculos + 👍) |
+| `/canvas/gaycard` | `gaycard.png` | `url`, `name`, `rank` |
+| `/canvas/gay` | `gay.png` | `url`, `opacity` |
+| `/canvas/invert` | `invert.png` | `url` |
+| `/canvas/rata` | `Canvas Personajes/Rata.jpg` | `url`, `zoom`, `rotate`, `grayscale` |
+| `/canvas/banana` | `Canvas Personajes/Banana.jpg` | `url`, `zoom`, `rotate`, `grayscale` |
+| `/canvas/arandano` | `Canvas Personajes/Arandano.jpg` | `url` (chroma-key) |
+| `/canvas/pan` | `Canvas Personajes/Pan.jpg` | `url` (chroma-key) |
+| `/canvas/galletita` | `Canvas Personajes/Galletita.jpg` | `url`, `zoom`, `rotate` |
+| `/canvas/minions` | `Canvas Personajes/Minions.jpg` | `url`, `url2`, `url3`, `zoom` |
+
+En los carteles con texto **o** imagen: deja `text` vacío y envía `url`/`image` (o `mode=image`)
+para pegar la foto en el cartel. También acepta imágenes `data:` (así funciona "SUBIR FOTO" del probador).
+
+```bash
+curl "https://<host>/canvas/brat?text=hola%20mundo&color=ff2d55&size=1.4&rotate=-6" -o brat.png
+curl "https://<host>/canvas/bratanime?text=Velirius%20API&uppercase=true&font=serif" -o anime.png
+```
+
+## 🛠️ Tools — 3
+
+| Endpoint | Parámetros |
+|---|---|
+| `GET /tools/calculator` | `expr` (`+ - * / % ^ ( ) sqrt() cbrt() sin() cos() tan() ln() log() abs() fact() pi e tau phi`), `degrees` |
+| `GET /tools/translator` | `text`, `to` (en, es, pt…), `from` (auto) |
+| `GET /tools/morse` | `text`, `mode` (`encode` / `decode`), `separator` |
+
+```bash
+curl "https://<host>/tools/calculator?expr=(2+3)*4^2%2Bsqrt(81)"
+curl "https://<host>/tools/translator?text=Hola&to=en"
+curl "https://<host>/tools/morse?text=SOS"                 # → "... --- ..."
+curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
+```
+
+## 📥 Downloader — 8
+
+| Endpoint | Parámetros |
+|---|---|
+| `GET /downloader/tiktok` | `url`, `direct` (`mp4` / `mp3`) — sin marca de agua |
+| `GET /downloader/youtube` | `url` o `query`, `quality`, `direct` (`mp4` / `mp3`) |
+| `GET /downloader/facebook` | `url`, `direct` (`mp4`), `quality` (`hd` / `sd`) |
+| `GET /downloader/instagram` | `url`, `direct` |
+| `GET /downloader/mp3` | `url` o `query`, `direct` |
+| `GET /downloader/mp4` | `url` o `query`, `quality`, `direct` |
+| `GET /downloader/play` | `query`, `direct` |
+| `GET /downloader/lyric` | `query`, `format` (`json` / `txt` / `lrc`) |
+
+```bash
+curl "https://<host>/downloader/tiktok?url=https://vt.tiktok.com/ZS43DntHW/"          # JSON
+curl "https://<host>/downloader/tiktok?url=https://vt.tiktok.com/ZS43DntHW/&direct=mp4" -o video.mp4
+curl "https://<host>/downloader/mp3?query=Twice%20I%20Cant%20Stop%20Me&direct=true"   -o cancion.mp3
+curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc"
+```
+
+## 🔎 Searcher — 4
+
+| Endpoint | Parámetros |
+|---|---|
+| `GET /searcher/tiktok` | `query`, `limit` |
+| `GET /searcher/youtube` | `query`, `limit` |
+| `GET /searcher/google` | `query`, `limit`, `lang` (respaldo automático en DuckDuckGo) |
+| `GET /searcher/wikipedia` | `query`, `limit`, `lang` (extracto + imagen + URL) |
+
+## 💞 Reactions — 26 (proveedores de GIFs)
+
+`hug`, `kiss`, `pat`, `slap`, `cuddle`, `wave`, `wink`, `blush`, `smile`, `happy`, `dance`, `cry`, `poke`,
+`tickle`, `highfive`, `handhold`, `nom`, `bite`, `bonk`, `baka`, `smug`, `laugh`, `shrug`, `sleep`, `think`,
+`thumbsup`.
+
+- `GET /reactions/<reaccion>` → `{ reaction, label, provider, gif }`
+- Parámetros: `provider` (`nekos.best` · `waifu.pics` · `purrbot` · `otakugifs`), `direct=true` para el GIF.
+- `GET /reactions/list` → catálogo de reacciones y proveedores.
+
+```bash
+curl "https://<host>/reactions/hug"
+curl "https://<host>/reactions/pat?provider=purrbot&direct=true" -o pat.gif
+```
+
+---
+
+## Desarrollo
 
 ```bash
 npm install
-npm start          # http://localhost:3000/home
-npm test           # smoke: web + catálogo + calculadora + los 33 canvas (guarda PNG en tmp-canvas/)
+npm start        # http://localhost:3000/home
+npm run dev      # con --watch
+npm test         # smoke: web, catálogo, tools, /docs y los 33 canvas
 ```
 
-Requiere Node ≥ 18. Los canvas en video (`bratvideo`, `attp`) usan el binario de `@ffmpeg-installer/ffmpeg` incluido en dependencias.
-
-## Despliegue
-
-- **Render (recomendado):** se incluye `render.yaml` → *New → Blueprint*. Los canvas en video funcionan sin límite de 10 s.
-- **Vercel:** se incluye `vercel.json` + `api/index.js` (Express como función, `assets/` empaquetadas con `includeFiles`). Importar el repo y desplegar.
-
-## Estructura
+Estructura:
 
 ```
-assets/templates/   Plantillas Canvas originales de Drive (CategoriaCanvas)
-assets/defaults/    Avatares por defecto (FotoPredeterminada / FotoShipGirlPred)
-public/             CSS + JS de la web (home.js buscador global, category.js probador TEST desplegable)
-src/catalog.js      Fuente única: alimenta /home, categorías, /docs y ejemplos de prueba
-src/routes/         pages (web Delirius) · canvas · anime · tools · download · search
-src/utils/          http · response (JSON + Range 206) · image (sharp) · canvasEngine (33) · video (ffmpeg) · providers ( APIs públicas)
-scripts/smoke.js    Pruebas (npm test)
+src/
+  catalog.js            → catálogo único (home, categorías, /docs y probador TEST)
+  server.js             → Express + CORS abierto + páginas + routers
+  routes/
+    anime.js            → /anime (neko, waifu, maid, pokemon)
+    canvas.js           → /canvas/:id (PNG / MP4 / WebM)
+    tools.js            → /tools (calculator, translator, morse)
+    download.js         → /downloader (+ alias /download)
+    searcher.js         → /searcher (+ alias /search)
+    reactions.js        → /reactions
+    pages.js            → web (/, /home, /<categoría>, /information, /docs)
+  utils/
+    providers.js        → todas las fuentes públicas (SFW)
+    canvasEngine.js     → render de las 33 plantillas con parámetros
+    video.js            → bratvideo (MP4) y attp (WebM)
+    image.js            → helpers de sharp/SVG
+scripts/smoke.js        → npm test
 ```
 
-Respuestas de error siempre en JSON con `hint` cuando falta un parámetro. Si una fuente pública se cae, los buscadores rotan entre varias (InnerTube/Invidious/Piped, LRCLIB/lyrics.ovh, Google/MyMemory…) antes de responder `502`.
+Despliegue: **Vercel** (`vercel.json` → `api/index.js`) o **Render** (`render.yaml` → `npm start`).

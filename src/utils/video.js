@@ -25,30 +25,33 @@ function cached(key, buf) {
   return buf;
 }
 
-async function bratFrame(textSoFar) {
+async function bratFrame(textSoFar, opts = {}) {
   const S = 512;
-  const lines = wrapText(textSoFar.toLowerCase(), 12, 6);
-  const fontSize = 62;
+  const scale = Math.max(0.3, Math.min(2.5, Number(opts.size) || 1));
+  const bg = opts.bg || '#ffffff';
+  const fill = opts.color || '#000000';
+  const lines = wrapText(textSoFar.toLowerCase(), Math.max(6, Math.round(12 / scale)), 6);
+  const fontSize = Math.round(62 * scale);
   const totalH = lines.length * fontSize * 1.12;
   const startY = (S - totalH) / 2 + fontSize * 0.9;
   const svg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><rect width="${S}" height="${S}" fill="#ffffff"/>` +
-    lines.map((ln, i) => `<text x="36" y="${Math.round(startY + i * fontSize * 1.12)}" font-family="DejaVu Sans, Arial" font-size="${fontSize}" fill="#000000">${escapeXml(ln)}</text>`).join('') +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><rect width="${S}" height="${S}" fill="${bg}"/>` +
+    lines.map((ln, i) => `<text x="36" y="${Math.round(startY + i * fontSize * 1.12)}" font-family="DejaVu Sans, Arial" font-size="${fontSize}" fill="${fill}">${escapeXml(ln)}</text>`).join('') +
     `</svg>`
   );
   const png = await svgToPng(svg);
   return sharp(png).blur(0.6).png().toBuffer();
 }
 
-async function bratVideo(text) {
+async function bratVideo(text, opts = {}) {
   const clean = String(text || 'Welcome to Velirius API').trim().slice(0, 90);
-  const key = `bratvideo:${clean}`;
+  const key = `bratvideo:${clean}:${opts.size || 1}:${opts.bg || ''}:${opts.color || ''}`;
   if (cache.has(key)) return cache.get(key);
   const words = clean.split(/\s+/).filter(Boolean);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velirius-brat-'));
   try {
     for (let i = 0; i < words.length; i++) {
-      const frame = await bratFrame(words.slice(0, i + 1).join(' '));
+      const frame = await bratFrame(words.slice(0, i + 1).join(' '), opts);
       fs.writeFileSync(path.join(dir, `f-${String(i).padStart(3, '0')}.png`), frame);
     }
     const out = path.join(dir, 'out.mp4');
@@ -65,10 +68,11 @@ async function bratVideo(text) {
 }
 
 const ATTP_COLORS = ['#ff004d', '#ff8a00', '#ffe600', '#00e05a', '#00c2ff', '#8a2be2', '#ff5da2', '#ffffff'];
-async function attpFrame(text, color, dx) {
+async function attpFrame(text, color, dx, opts = {}) {
   const S = 512;
-  const lines = wrapText(text, 9, 4);
-  const fontSize = 78;
+  const scale = Math.max(0.3, Math.min(2.5, Number(opts.size) || 1));
+  const lines = wrapText(text, Math.max(4, Math.round(9 / scale)), 4);
+  const fontSize = Math.round(78 * scale);
   const totalH = lines.length * fontSize * 1.15;
   const startY = (S - totalH) / 2 + fontSize * 0.9;
   const svg = Buffer.from(
@@ -79,15 +83,15 @@ async function attpFrame(text, color, dx) {
   return svgToPng(svg);
 }
 
-async function attpVideo(text) {
+async function attpVideo(text, opts = {}) {
   const clean = String(text || 'Welcome to Velirius').trim().slice(0, 60);
-  const key = `attp:${clean}`;
+  const key = `attp:${clean}:${opts.size || 1}`;
   if (cache.has(key)) return cache.get(key);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velirius-attp-'));
   try {
     const frames = 16;
     for (let i = 0; i < frames; i++) {
-      const frame = await attpFrame(clean, ATTP_COLORS[i % ATTP_COLORS.length], i % 2 === 0 ? -3 : 3);
+      const frame = await attpFrame(clean, ATTP_COLORS[i % ATTP_COLORS.length], i % 2 === 0 ? -3 : 3, opts);
       fs.writeFileSync(path.join(dir, `f-${String(i).padStart(3, '0')}.png`), frame);
     }
     const out = path.join(dir, 'out.webm');

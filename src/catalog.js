@@ -1,97 +1,354 @@
-// src/catalog.js — Catálogo único: alimenta /home, las categorías, /docs y el probador TEST.
-// AVATAR se reemplaza en tiempo de render por la URL absoluta de /img/default-avatar.jpg
+// src/catalog.js — Catálogo único de Velirius API.
+// Alimenta /home, las páginas de categoría, /docs y el probador TEST de la web.
+//
+// Categorías: ANIME · CANVAS · TOOLS · DOWNLOADER · SEARCHER · REACTIONS
+// (sin IA y sin contenido NSFW por diseño).
+//
+// AVATAR / AVATAR2 se reemplazan en tiempo de render por las URLs absolutas de
+// /img/default-avatar.jpg y /img/default-avatar2.jpg.
 const AV = '__AVATAR__';
 const AV2 = '__AVATAR2__';
 
-const P = (name, example, desc = '', required = true) => ({ name, example, desc, required });
+const P = (name, example, desc = '') => ({ name, example, desc, required: true });
 const O = (name, example, desc = '') => ({ name, example, desc, required: false });
+const S = (name, example, desc, options) => ({ name, example, desc, required: false, options });
 
-const canvasText = [
-  P('text', 'Welcome to Velirius API', 'Texto del cartel')
+// ---------- Parámetros de estilo reutilizables (Canvas) ----------
+const textStyle = () => [
+  O('color', '', 'Color del texto (hex, ej. ff2d55, o nombre: white, black…)'),
+  O('size', '1', 'Escala del texto: 0.5 = mitad, 2 = doble'),
+  S('font', 'sans', 'Tipografía del texto', ['sans', 'serif', 'mono']),
+  O('uppercase', 'false', 'true = texto en MAYÚSCULAS'),
+  O('x', '0', 'Mover el texto en horizontal (-50 a 50)'),
+  O('y', '0', 'Mover el texto en vertical (-50 a 50)'),
+  O('rotate', '0', 'Rotar el texto en grados (-180 a 180)')
+];
+const photoStyle = () => [
+  O('zoom', '1', 'Zoom de la foto: 0.5 = más pequeña, 2 = más grande'),
+  O('grayscale', 'false', 'true = foto en blanco y negro'),
+  O('rotate', '0', 'Rotar la foto en grados (-180 a 180)')
 ];
 
 const CATEGORIES = [
+  // ======================================================================
   {
     id: 'anime', name: 'ANIME',
     endpoints: [
-      { id: 'pokemon', desc: 'Pokédex: datos, stats y arte oficial (PokeAPI)', params: [P('query', 'pikachu', 'Nombre o ID. Usa "random" al azar'), O('shiny', 'false', 'true = arte shiny')] },
-      { id: 'gacha', desc: 'Personaje al azar con rareza (common → legendary)', params: [] },
-      { id: 'character', desc: 'Busca personajes de anime (Jikan)', params: [P('query', 'Monkey D. Luffy', 'Nombre del personaje'), O('limit', '10', 'Resultados (1-25)')] },
-      { id: 'manga', desc: 'Busca manga: portada, score y sinopsis (Jikan)', params: [P('query', 'Berserk', 'Título del manga'), O('limit', '10', 'Resultados (1-25)')] },
-      { id: 'anime', desc: 'Busca anime: episodios, score y trailer (Jikan)', params: [P('query', 'Naruto', 'Título del anime'), O('limit', '10', 'Resultados (1-25)')] }
+      { id: 'neko', desc: 'Imagen aleatoria de neko (chica gato). Proveedores: nekos.best, waifu.pics, waifu.im, nekos.life', media: 'image', params: [
+        S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'waifu.im', 'nekos.life']),
+        O('amount', '1', 'Cantidad de imágenes (1-10)'),
+        O('direct', 'false', 'true = devuelve la imagen directamente')
+      ] },
+      { id: 'waifu', desc: 'Imagen aleatoria de waifu. Proveedores: nekos.best, waifu.pics, waifu.im', media: 'image', params: [
+        S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'waifu.im']),
+        O('amount', '1', 'Cantidad de imágenes (1-10)'),
+        O('direct', 'false', 'true = devuelve la imagen directamente')
+      ] },
+      { id: 'maid', desc: 'Imagen aleatoria de maid (sirvienta). Proveedores: nekos.best, waifu.im', media: 'image', params: [
+        S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.im']),
+        O('amount', '1', 'Cantidad de imágenes (1-10)'),
+        O('direct', 'false', 'true = devuelve la imagen directamente')
+      ] },
+      { id: 'pokemon', desc: 'Pokémon por nombre o ID: arte oficial, tipos, stats y descripción (PokeAPI)', media: 'image', params: [
+        P('query', 'pikachu', 'Nombre o ID del Pokémon. Usa "random" para uno al azar'),
+        O('shiny', 'false', 'true = arte shiny'),
+        O('direct', 'false', 'true = devuelve solo la imagen')
+      ] }
     ]
   },
+
+  // ======================================================================
   {
     id: 'canvas', name: 'CANVAS',
     endpoints: [
-      { id: 'quotly', desc: 'Sticker de cita estilo Telegram', params: [P('image', AV, 'URL del avatar'), P('username', 'Velirius Api', 'Nombre visible'), P('text', 'Welcome to Velirius Api', 'Mensaje'), O('bg', '000000', 'Fondo hex sin #')] },
-      { id: 'brat', desc: 'Texto brat (blanco, minúsculas, blur)', params: [...canvasText, O('bg', 'ffffff', 'Fondo hex'), O('color', '000000', 'Texto hex')] },
-      { id: 'bratvideo', desc: 'Brat animado palabra por palabra (MP4)', params: canvasText, media: 'video' },
-      { id: 'bratestirado', desc: 'Brat estirado con lente ojo de pez', params: [P('text', 'i <3 money', 'Texto a estirar')] },
-      { id: 'bratanime', desc: 'Maid de anime sosteniendo tu texto', params: canvasText },
-      { id: 'bratcoyote', desc: 'El Coyote sosteniendo tu texto', params: canvasText },
-      { id: 'bratpinguino', desc: 'Gunter (pingüino) con cartel: texto o imagen', params: [P('text', 'Welcome to Velirius API', 'Texto del cartel'), O('image', '', 'O pega una imagen en el cartel (borra el texto)')] },
-      { id: 'ttp', desc: 'Texto a sticker (letras espaciadas)', params: [P('text', 'Hola', 'Texto'), O('color', 'white', 'Color: white, black, red…')] },
-      { id: 'attp', desc: 'TTP animado arcoíris (WebM sticker)', params: [P('text', 'Welcome to Velirius', 'Texto animado')], media: 'video' },
-      { id: 'iqc', desc: 'Chat falso de WhatsApp con cita y menú', params: [P('text', 'Yo siempre te voy a amar', 'Mensaje principal'), O('quote', 'vooooss seguro', 'Mensaje citado'), O('username', 'Tú', 'Autor de la cita'), O('time', '7:32 p. m.', 'Hora')] },
-      { id: 'cuentatiktok', desc: 'Menú falso de TikTok "Account not found"', params: [O('username', 'Account not found', 'Nombre de la cuenta'), O('image', AV, 'Avatar'), O('status', 'Sent', 'Texto bajo el nombre')] },
-      { id: 'storyreply', desc: '"Replied to your story" con tu foto y mensaje', params: [P('url', AV, 'Foto de la historia'), P('text', 'jajaja total', 'Respuesta')] },
-      { id: 'absolutecinema', desc: 'Meme ABSOLUTE CINEMA con tu texto', params: [O('text', 'CINEMA', 'Palabra grande'), O('subtext', 'ABSOLUTE', 'Palabra chica'), O('url', '', 'Foto opcional en blanco y negro')] },
-      { id: 'bobesponja', desc: 'Bob Esponja muestra una hoja: texto o imagen', params: [O('text', 'Welcome to Velirius API', 'Texto en la hoja'), O('url', '', 'O imagen en la hoja (borra el texto)')] },
-      { id: 'bobesponja2', desc: 'Cómic de 4 viñetas: texto o imagen en la hoja', params: [O('text', 'mi tarea', 'Texto en la hoja'), O('url', '', 'O imagen en la hoja (borra el texto)')] },
-      { id: 'bobesponja3', desc: 'Bob Esponja con cartel: texto o imagen', params: [O('text', 'tu texto aquí', 'Texto del cartel'), O('url', '', 'O imagen en el cartel (borra el texto)')] },
-      { id: 'canvatextoxd', desc: 'Muñeco 3D con cartel en blanco', params: [O('text', 'tu texto aquí', 'Texto del cartel'), O('url', '', 'O imagen en el cartel (borra el texto)')] },
-      { id: 'imagencanba', desc: 'Tu imagen (o texto) dentro de MS Paint', params: [O('url', AV, 'Imagen en el lienzo'), O('text', '', 'O texto en el lienzo (borra la imagen)')] },
-      { id: 'canvaimagen', desc: 'Wojaks señalando tu imagen (pantalla verde)', params: [P('url', AV, 'Tu imagen')] },
-      { id: 'fotopc', desc: 'Tu imagen en la pantalla de la PC (Lain)', params: [P('url', AV, 'Tu imagen')] },
-      { id: 'sebusca', desc: 'Cartel SE BUSCA vivo o muerto', params: [P('url', AV, 'Foto del buscado'), O('name', 'EL MAS BUSCADO', 'Apodo bajo la foto'), O('reward', '$5,000.00', 'Recompensa')] },
-      { id: 'pokemoncard', desc: 'Carta Pokémon personalizada', params: [P('name', 'Velirius', 'Nombre'), O('hp', '120', 'Puntos de salud'), P('url', AV, 'Arte de la carta'), O('type', 'Legendario', 'Tipo'), O('attack', 'Golpe API', 'Ataque'), O('damage', '90', 'Daño'), O('description', 'Una carta creada con Velirius API.', 'Descripción')] },
-      { id: 'ship', desc: 'Medidor de compatibilidad (corazones)', params: [P('image1', AV, 'Foto 1'), P('name1', 'Velirius', 'Nombre 1'), P('image2', AV2, 'Foto 2'), P('name2', 'dls', 'Nombre 2'), O('percentage', '85', '0-100 (vacío = al azar)'), O('text', 'Best Friends', 'Frase central')] },
-      { id: 'friendship', desc: 'Medidor de amistad (círculos)', params: [P('image1', AV, 'Foto 1'), P('name1', 'Velirius', 'Nombre 1'), P('image2', AV2, 'Foto 2'), P('name2', 'dls', 'Nombre 2'), O('percentage', '85', '0-100 (vacío = al azar)'), O('text', 'Best Friends', 'Frase central')] },
-      { id: 'gaycard', desc: 'Tarjeta GAY PERCENTAGE', params: [P('url', AV, 'Foto'), O('name', 'Velirius', 'Nombre'), O('rank', '12', 'Porcentaje 0-100 (vacío = al azar)')] },
-      { id: 'gay', desc: 'Filtro arcoíris sobre tu foto', params: [P('url', AV, 'Tu foto'), O('opacity', '0.45', 'Intensidad 0-1')] },
-      { id: 'invert', desc: 'Invierte los colores de tu foto', params: [P('url', AV, 'Tu foto')] },
-      { id: 'rata', desc: 'Tu cara en la rata', params: [P('url', AV, 'Tu foto/cara')] },
-      { id: 'banana', desc: 'Tu cara en la banana', params: [P('url', AV, 'Tu foto/cara')] },
-      { id: 'arandano', desc: 'Tu cara en el arándano', params: [P('url', AV, 'Tu foto/cara')] },
-      { id: 'pan', desc: 'Tu cara en el pan', params: [P('url', AV, 'Tu foto/cara')] },
-      { id: 'galletita', desc: 'Tu cara en la galletita', params: [P('url', AV, 'Tu foto/cara')] },
-      { id: 'minions', desc: 'Tus caras en los 3 Minions', params: [P('url', AV, 'Cara principal (se repite)'), O('url2', AV2, 'Cara del medio'), O('url3', AV, 'Cara de la derecha')] }
+      { id: 'quotly', desc: 'Sticker de cita estilo Telegram con tu avatar', params: [
+        P('image', AV, 'URL del avatar (o data: del probador)'),
+        P('username', 'Velirius Api', 'Nombre visible'),
+        P('text', 'Welcome to Velirius Api', 'Mensaje de la cita'),
+        O('bg', '000000', 'Fondo en hex sin #'),
+        ...textStyle()
+      ] },
+      { id: 'brat', desc: 'Texto brat (blanco, minúsculas, desenfocado)', params: [
+        P('text', 'Welcome to Velirius API', 'Texto del sticker'),
+        O('bg', 'ffffff', 'Fondo hex sin #'),
+        O('color', '000000', 'Color del texto hex sin #'),
+        O('size', '1', 'Escala del texto (0.5 - 2)'),
+        O('rotate', '0', 'Rotar el texto en grados')
+      ] },
+      { id: 'bratvideo', desc: 'Brat animado palabra por palabra (MP4)', media: 'video', params: [
+        P('text', 'Welcome to Velirius API', 'Texto que va apareciendo')
+      ] },
+      { id: 'bratestirado', desc: 'Brat estirado con efecto ojo de pez', params: [
+        P('text', 'i <3 money', 'Texto a estirar'),
+        O('color', '000000', 'Color del texto hex sin #'),
+        O('size', '1', 'Escala del texto (0.5 - 2)')
+      ] },
+      { id: 'bratanime', desc: 'Maid de anime sosteniendo tu texto', params: [
+        P('text', 'Welcome to Velirius API', 'Texto del cartel'),
+        ...textStyle()
+      ] },
+      { id: 'bratcoyote', desc: 'El Coyote sosteniendo tu texto', params: [
+        P('text', 'WELCOME TO VELIRIUS API', 'Texto del cartel'),
+        ...textStyle()
+      ] },
+      { id: 'bratpinguino', desc: 'Gunter (pingüino) con cartel: texto o imagen', params: [
+        O('text', 'Welcome to Velirius API', 'Texto del cartel'),
+        O('image', '', 'URL de imagen para el cartel (reemplaza el texto)'),
+        S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
+        ...textStyle()
+      ] },
+      { id: 'ttp', desc: 'Texto a sticker con letras espaciadas', params: [
+        P('text', 'Hola', 'Texto del sticker'),
+        S('color', 'white', 'Color de las letras', ['white', 'black', 'red', 'green', 'blue', 'yellow', 'pink', 'purple', 'orange']),
+        O('bg', 'transparent', 'Fondo hex sin # o "transparent"'),
+        O('size', '1', 'Escala del texto (0.5 - 2)')
+      ] },
+      { id: 'attp', desc: 'Texto animado arcoíris (WebM sticker)', media: 'video', params: [
+        P('text', 'Welcome to Velirius', 'Texto animado'),
+        O('size', '1', 'Escala del texto (0.5 - 2)')
+      ] },
+      { id: 'iqc', desc: 'Chat falso de WhatsApp con cita y menú', params: [
+        P('text', 'Yo siempre te voy a amar', 'Mensaje principal'),
+        O('quote', 'vooooss seguro', 'Mensaje citado'),
+        O('username', 'Tú', 'Autor de la cita'),
+        O('time', '7:32 p. m.', 'Hora del mensaje')
+      ] },
+      { id: 'cuentatiktok', desc: 'Menú falso de TikTok "Account not found"', params: [
+        O('username', 'Account not found', 'Nombre de la cuenta'),
+        O('image', AV, 'Avatar de la cuenta'),
+        O('status', 'Sent', 'Texto bajo el nombre')
+      ] },
+      { id: 'storyreply', desc: '"Replied to your story" con tu foto y mensaje', params: [
+        P('url', AV, 'Foto de la historia'),
+        P('text', 'jajaja total', 'Respuesta'),
+        O('color', 'ffffff', 'Color del texto hex sin #'),
+        O('size', '1', 'Escala del texto (0.5 - 2)'),
+        O('zoom', '1', 'Zoom de la foto')
+      ] },
+      { id: 'absolutecinema', desc: 'Meme ABSOLUTE CINEMA con tu texto', params: [
+        O('text', 'CINEMA', 'Palabra grande'),
+        O('subtext', 'ABSOLUTE', 'Palabra chica'),
+        O('url', '', 'Foto opcional (se pasa a blanco y negro)'),
+        O('size', '1', 'Escala del texto (0.5 - 2)'),
+        O('color', 'ffffff', 'Color del texto hex sin #')
+      ] },
+      { id: 'bobesponja', desc: 'Bob Esponja muestra una hoja: texto o imagen', params: [
+        O('text', 'Welcome to Velirius API', 'Texto en la hoja'),
+        O('url', '', 'Imagen para la hoja (reemplaza el texto)'),
+        S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
+        ...textStyle()
+      ] },
+      { id: 'bobesponja2', desc: 'Cómic de 4 viñetas: texto o imagen en la hoja', params: [
+        O('text', 'mi tarea', 'Texto en la hoja'),
+        O('url', '', 'Imagen para la hoja (reemplaza el texto)'),
+        S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
+        ...textStyle()
+      ] },
+      { id: 'bobesponja3', desc: 'Bob Esponja con cartel: texto o imagen', params: [
+        O('text', 'tu texto aquí', 'Texto del cartel'),
+        O('url', '', 'Imagen para el cartel (reemplaza el texto)'),
+        S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
+        ...textStyle()
+      ] },
+      { id: 'canvatextoxd', desc: 'Muñeco 3D con cartel en blanco', params: [
+        O('text', 'tu texto aquí', 'Texto del cartel'),
+        O('url', '', 'Imagen para el cartel (reemplaza el texto)'),
+        S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
+        ...textStyle()
+      ] },
+      { id: 'imagencanba', desc: 'Tu imagen (o texto) dentro de MS Paint', params: [
+        O('url', AV, 'Imagen dentro del lienzo'),
+        O('text', '', 'Texto dentro del lienzo (reemplaza la imagen)'),
+        S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
+        O('color', '111111', 'Color del texto hex sin #'),
+        O('size', '1', 'Escala del texto (0.5 - 2)'),
+        O('zoom', '1', 'Zoom de la imagen')
+      ] },
+      { id: 'canvaimagen', desc: 'Wojaks señalando tu imagen (pantalla verde)', params: [
+        P('url', AV, 'Tu imagen'),
+        ...photoStyle()
+      ] },
+      { id: 'fotopc', desc: 'Tu imagen en la pantalla de la PC', params: [
+        P('url', AV, 'Tu imagen'),
+        ...photoStyle()
+      ] },
+      { id: 'sebusca', desc: 'Cartel SE BUSCA vivo o muerto', params: [
+        P('url', AV, 'Foto del buscado'),
+        O('name', 'EL MAS BUSCADO', 'Apodo bajo la foto'),
+        O('reward', '$5,000.00', 'Recompensa'),
+        O('zoom', '1', 'Zoom de la foto')
+      ] },
+      { id: 'pokemoncard', desc: 'Carta Pokémon personalizada', params: [
+        P('name', 'Velirius', 'Nombre de la carta'),
+        O('hp', '120', 'Puntos de salud'),
+        P('url', AV, 'Arte de la carta'),
+        O('type', 'Legendario', 'Tipo'),
+        O('attack', 'Golpe API', 'Nombre del ataque'),
+        O('damage', '90', 'Daño del ataque'),
+        O('description', 'Una carta creada con Velirius API.', 'Descripción')
+      ] },
+      { id: 'ship', desc: 'Medidor de compatibilidad con corazones', params: [
+        P('image1', AV, 'Foto 1'),
+        P('name1', 'Velirius', 'Nombre 1'),
+        P('image2', AV2, 'Foto 2'),
+        P('name2', 'dls', 'Nombre 2'),
+        O('percentage', '85', '0-100 (vacío = al azar)'),
+        O('text', 'Best Friends', 'Frase central'),
+        O('color', '', 'Color del porcentaje hex sin #')
+      ] },
+      { id: 'friendship', desc: 'Medidor de amistad con círculos', params: [
+        P('image1', AV, 'Foto 1'),
+        P('name1', 'Velirius', 'Nombre 1'),
+        P('image2', AV2, 'Foto 2'),
+        P('name2', 'dls', 'Nombre 2'),
+        O('percentage', '85', '0-100 (vacío = al azar)'),
+        O('text', 'Best Friends', 'Frase central'),
+        O('color', '', 'Color del porcentaje hex sin #')
+      ] },
+      { id: 'gaycard', desc: 'Tarjeta GAY PERCENTAGE', params: [
+        P('url', AV, 'Foto'),
+        O('name', 'Velirius', 'Nombre'),
+        O('rank', '12', 'Porcentaje 0-100 (vacío = al azar)')
+      ] },
+      { id: 'gay', desc: 'Filtro arcoíris sobre tu foto', params: [
+        P('url', AV, 'Tu foto'),
+        O('opacity', '0.45', 'Intensidad del filtro 0-1')
+      ] },
+      { id: 'invert', desc: 'Invierte los colores de tu foto', params: [
+        P('url', AV, 'Tu foto')
+      ] },
+      { id: 'rata', desc: 'Tu cara en la rata', params: [
+        P('url', AV, 'Tu foto o cara'),
+        ...photoStyle()
+      ] },
+      { id: 'banana', desc: 'Tu cara en la banana', params: [
+        P('url', AV, 'Tu foto o cara'),
+        ...photoStyle()
+      ] },
+      { id: 'arandano', desc: 'Tu cara en el arándano', params: [
+        P('url', AV, 'Tu foto o cara'),
+        ...photoStyle()
+      ] },
+      { id: 'pan', desc: 'Tu cara en el pan', params: [
+        P('url', AV, 'Tu foto o cara'),
+        ...photoStyle()
+      ] },
+      { id: 'galletita', desc: 'Tu cara en la galletita', params: [
+        P('url', AV, 'Tu foto o cara'),
+        ...photoStyle()
+      ] },
+      { id: 'minions', desc: 'Tus caras en los 3 Minions', params: [
+        P('url', AV, 'Cara izquierda'),
+        O('url2', AV2, 'Cara del medio'),
+        O('url3', AV, 'Cara de la derecha'),
+        O('zoom', '1', 'Zoom de las caras')
+      ] }
     ]
   },
-  {
-    id: 'download', name: 'DOWNLOAD',
-    endpoints: [
-      { id: 'tiktok', desc: 'TikTok SIN marca de agua (HD + MP3)', params: [P('url', 'https://vt.tiktok.com/ZS43DntHW/', 'URL del TikTok'), O('direct', '', 'mp4 o mp3 = archivo directo')] },
-      { id: 'youtube', desc: 'Info y formatos de un video de YouTube', params: [P('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL del video'), O('quality', '720', 'Calidad preferida'), O('direct', '', 'mp4 o mp3 = archivo directo')] },
-      { id: 'mp3', desc: 'Audio MP3 desde YouTube (URL o búsqueda)', params: [O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'), O('query', 'Twice I Cant Stop Me', 'O busca por nombre'), O('direct', 'true', 'true = audio directo')], media: 'audio' },
-      { id: 'mp4', desc: 'Video MP4 desde YouTube (URL o búsqueda)', params: [O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'), O('query', 'Twice', 'O busca por nombre'), O('quality', '360', '360/480/720/1080'), O('direct', 'true', 'true = video directo')], media: 'video' },
-      { id: 'play', desc: 'Busca una canción y reproduce el audio', params: [P('query', 'Lisa Money', 'Canción / artista'), O('direct', 'true', 'true = audio directo')], media: 'audio' },
-      { id: 'spotify', desc: 'Track de Spotify: info + audio equivalente', params: [P('url', 'https://open.spotify.com/track/37ZtpRBkHcaq6hHy0X98zn', 'URL de Spotify'), O('direct', '', 'true = audio directo')] },
-      { id: 'instagram', desc: 'Reels/fotos de Instagram', params: [P('url', 'https://www.instagram.com/reel/C7cVzn2yzXB/', 'URL del post/reel'), O('direct', '', 'true = media directa')] },
-      { id: 'aptoide', desc: 'Busca apps en Aptoide con link APK', params: [P('query', 'WhatsApp', 'Nombre de la app'), O('limit', '10', 'Resultados')] },
-      { id: 'lyric', desc: 'Letra de canción (.txt / .lrc sincronizada)', params: [P('query', 'Kendrick Lamar Humble', 'Artista + canción'), O('format', 'json', 'json, txt o lrc')] }
-    ]
-  },
-  {
-    id: 'search', name: 'SEARCH',
-    endpoints: [
-      { id: 'sticker', desc: 'Busca stickers sueltos (Sticker.ly)', params: [P('query', 'anime', 'Palabra clave'), O('limit', '20', 'Cantidad')] },
-      { id: 'stickerpack', desc: 'Busca packs de stickers (Sticker.ly)', params: [P('query', 'my melody', 'Palabra clave'), O('limit', '10', 'Cantidad de packs')] },
-      { id: 'anime', desc: 'Busca anime (Jikan)', params: [P('query', 'One Piece', 'Título'), O('limit', '10', 'Resultados')] },
-      { id: 'tiktok', desc: 'Busca videos en TikTok', params: [P('query', 'anime edit', 'Palabra clave'), O('limit', '10', 'Cantidad')] },
-      { id: 'youtube', desc: 'Busca videos en YouTube', params: [P('query', 'Twice', 'Palabra clave'), O('limit', '10', 'Cantidad')] },
-      { id: 'instagram', desc: 'Perfil público de Instagram por usuario', params: [P('query', 'nayeonyny', 'Usuario sin @')] },
-      { id: 'lyric', desc: 'Busca letras (con opción sincronizada)', params: [P('query', 'Twice Feel Special', 'Artista + canción'), O('limit', '10', 'Cantidad')] },
-      { id: 'play', desc: 'Busca canciones listas para reproducir (audio)', params: [P('query', 'Blackpink', 'Canción / artista'), O('limit', '10', 'Cantidad')] }
-    ]
-  },
+
+  // ======================================================================
   {
     id: 'tools', name: 'TOOLS',
     endpoints: [
-      { id: 'translator', desc: 'Traduce texto entre idiomas', params: [P('text', 'Hola, bienvenido a Velirius API', 'Texto a traducir'), O('to', 'en', 'Idioma destino (en, es, pt…)'), O('from', 'auto', 'Idioma origen o auto')] },
-      { id: 'calculator', desc: 'Calculadora: opera una expresión', params: [P('expr', '(2+3)*4^2 + sqrt(81)', 'Expresión: + - * / % ^ sqrt() pi')] }
+      { id: 'calculator', desc: 'Calculadora scientific: resuelve expresiones matemáticas', params: [
+        P('expr', '(2+3)*4^2 + sqrt(81)', 'Expresión: + - * / % ^ ( ) sqrt() sin() cos() pi e…'),
+        O('degrees', 'false', 'true = trigonometría en grados')
+      ] },
+      { id: 'translator', desc: 'Traduce texto entre idiomas (Google + MyMemory)', params: [
+        P('text', 'Hola, bienvenido a Velirius API', 'Texto a traducir'),
+        O('to', 'en', 'Idioma destino (en, es, pt, fr, ja…)'),
+        O('from', 'auto', 'Idioma origen o auto')
+      ] },
+      { id: 'morse', desc: 'Código Morse: codifica o decodifica texto', params: [
+        P('text', 'SOS', 'Texto o código morse'),
+        S('mode', 'encode', 'encode = texto → morse, decode = morse → texto', ['encode', 'decode']),
+        O('separator', '/', 'Separador entre palabras al codificar')
+      ] }
     ]
+  },
+
+  // ======================================================================
+  {
+    id: 'downloader', name: 'DOWNLOADER',
+    endpoints: [
+      { id: 'tiktok', desc: 'TikTok SIN marca de agua (video HD + audio MP3)', params: [
+        P('url', 'https://vt.tiktok.com/ZS43DntHW/', 'URL del TikTok'),
+        S('direct', '', 'Devuelve el archivo en vez de JSON', ['', 'mp4', 'mp3'])
+      ] },
+      { id: 'youtube', desc: 'Info y formatos de un video de YouTube', params: [
+        O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL del video'),
+        O('query', '', 'O busca por nombre'),
+        O('quality', '720', 'Calidad preferida (360/480/720/1080)'),
+        S('direct', '', 'Devuelve el archivo en vez de JSON', ['', 'mp4', 'mp3'])
+      ] },
+      { id: 'facebook', desc: 'Descarga videos públicos de Facebook (HD/SD)', params: [
+        P('url', 'https://www.facebook.com/watch/?v=10153231379946729', 'URL del video o reel público'),
+        S('direct', '', 'Devuelve el archivo en vez de JSON', ['', 'mp4']),
+        S('quality', '', 'Preferencia de calidad', ['', 'hd', 'sd'])
+      ] },
+      { id: 'instagram', desc: 'Reels, videos y fotos de Instagram', params: [
+        P('url', 'https://www.instagram.com/reel/C7cVzn2yzXB/', 'URL del post/reel'),
+        O('direct', 'false', 'true = media directa')
+      ] },
+      { id: 'mp3', desc: 'Audio MP3 desde YouTube (URL o búsqueda)', media: 'audio', params: [
+        O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'),
+        O('query', 'Twice I Cant Stop Me', 'O busca por nombre'),
+        O('direct', 'true', 'true = audio directo en streaming')
+      ] },
+      { id: 'mp4', desc: 'Video MP4 desde YouTube (URL o búsqueda)', media: 'video', params: [
+        O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'),
+        O('query', 'Twice', 'O busca por nombre'),
+        O('quality', '360', '360/480/720/1080'),
+        O('direct', 'true', 'true = video directo en streaming')
+      ] },
+      { id: 'play', desc: 'Busca una canción y devuelve el audio listo para reproducir', media: 'audio', params: [
+        P('query', 'Lisa Money', 'Canción o artista'),
+        O('direct', 'true', 'true = audio directo en streaming')
+      ] },
+      { id: 'lyric', desc: 'Letra de una canción (JSON, .txt o .lrc sincronizada)', params: [
+        P('query', 'Kendrick Lamar Humble', 'Artista + canción'),
+        S('format', 'json', 'Formato de salida', ['json', 'txt', 'lrc'])
+      ] }
+    ]
+  },
+
+  // ======================================================================
+  {
+    id: 'searcher', name: 'SEARCHER',
+    endpoints: [
+      { id: 'tiktok', desc: 'Busca videos en TikTok (TikWM)', media: 'image', params: [
+        P('query', 'anime edit', 'Palabra clave'),
+        O('limit', '10', 'Cantidad de resultados (1-30)')
+      ] },
+      { id: 'youtube', desc: 'Busca videos en YouTube', media: 'image', params: [
+        P('query', 'Twice', 'Palabra clave'),
+        O('limit', '10', 'Cantidad de resultados (1-30)')
+      ] },
+      { id: 'google', desc: 'Busca en Google (con respaldo en DuckDuckGo)', params: [
+        P('query', 'Velirius API', 'Qué quieres buscar'),
+        O('limit', '10', 'Cantidad de resultados (1-20)'),
+        O('lang', 'es', 'Idioma de la búsqueda (es, en, pt…)')
+      ] },
+      { id: 'wikipedia', desc: 'Busca artículos en Wikipedia con extracto e imagen', media: 'image', params: [
+        P('query', 'One Piece', 'Tema a buscar'),
+        O('limit', '8', 'Cantidad de artículos (1-20)'),
+        O('lang', 'es', 'Idioma de Wikipedia (es, en, pt…)')
+      ] }
+    ]
+  },
+
+  // ======================================================================
+  {
+    id: 'reactions', name: 'REACTIONS',
+    endpoints: Object.entries(require('./utils/providers').REACTIONS).map(([id, label]) => ({
+      id,
+      desc: `GIF de ${label.toLowerCase()} (nekos.best · waifu.pics · purrbot · otakugifs)`,
+      media: 'image',
+      params: [
+        S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'purrbot', 'otakugifs']),
+        O('direct', 'false', 'true = devuelve el GIF directamente')
+      ]
+    }))
   }
 ];
 
@@ -106,18 +363,23 @@ function findCategory(id) {
   return CATEGORIES.find(c => c.id === String(id).toLowerCase()) || null;
 }
 
+function findEndpoint(categoryId, endpointId) {
+  const cat = findCategory(categoryId);
+  if (!cat) return null;
+  return cat.endpoints.find(e => e.id === String(endpointId).toLowerCase()) || null;
+}
+
 function exampleQuery(endpoint, avatarUrl, avatar2Url) {
   const qs = new URLSearchParams();
   for (const p of endpoint.params) {
-    if (p.example === '' || p.example === undefined) continue;
+    if (p.example === '' || p.example === undefined || p.example === null) continue;
     let v = String(p.example);
     if (v === AV) { if (!avatarUrl) continue; v = avatarUrl; }
     if (v === AV2) { if (!avatar2Url) continue; v = avatar2Url; }
-    // En los ejemplos del probador evitamos direct vacío y parámetros opcionales sin ejemplo
     qs.set(p.name, v);
   }
   const s = qs.toString();
   return s ? `?${s}` : '';
 }
 
-module.exports = { CATEGORIES, totals, findCategory, exampleQuery };
+module.exports = { CATEGORIES, totals, findCategory, findEndpoint, exampleQuery };
