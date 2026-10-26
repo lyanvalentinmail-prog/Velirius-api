@@ -236,7 +236,7 @@ h1.title {
 }
 .tester .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .tester .result { margin-top: 14px; }
-.tester .result img, .tester .result video { max-width: 100%; border: 1.5px solid #111; border-radius: 10px; display: block; }
+.tester .result img, .tester .result video { max-width: 100%; border: 0; border-radius: 0; display: block; }
 .tester .result audio { width: 100%; }
 .tester .result pre {
   font-size: 11.5px; line-height: 1.55;
@@ -325,4 +325,71 @@ h1.title {
 @media (max-width: 560px) {
   .landing .lead { font-size: 13px; }
   .landing .cta { font-size: 13px; padding: 14px 24px; letter-spacing: 1.6px; }
+}
+
+/* ---------- Video del dashboard (DashboardVid.mp4) ---------- */
+.demo {
+  margin: 18px auto 6px;
+  max-width: 420px;
+  border: 2px solid #111111;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000000;
+  box-shadow: 6px 6px 0 #efefef;
+}
+.demo-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #000000;
+}
+.demo-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #d7d7d7;
+  background: #111111;
+  padding: 8px 11px;
+}
+.demo-tag .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #35d07f; box-shadow: 0 0 0 3px rgba(53, 208, 127, 0.18);
+  flex: none;
+}
+.demo-tag a { color: #ffffff; margin-left: auto; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- Capturas nuevas (Drive) en la portada ---------- */
+.shots-title {
+  margin: 30px 0 4px;
+  font-size: 11.5px; letter-spacing: 2.6px; text-transform: uppercase; color: #8a8a8a;
+  text-align: center;
+}
+.shots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.shot {
+  display: block;
+  border: 2px solid #111111;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  text-decoration: none;
+  color: #111111;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.shot:hover { transform: translateY(-2px); box-shadow: 4px 4px 0 #e9e9e9; }
+.shot img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; background: #f2f2f2; }
+.shot span {
+  display: block; font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+  padding: 7px 9px; border-top: 2px solid #111111; color: #555;
+}
+@media (max-width: 560px) {
+  .demo { max-width: 100%; }
+  .shots { gap: 9px; }
 }

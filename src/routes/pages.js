@@ -3,6 +3,7 @@ const express = require('express');
 const config = require('../config');
 const { CATEGORIES, totals, findCategory, exampleQuery } = require('../catalog');
 const { absoluteUrl } = require('../utils/http');
+const { driveImage } = require('./media');
 
 const router = express.Router();
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -62,6 +63,14 @@ router.get('/', (req, res) => {
       <blockquote class="quote">If you detect third parties commercializing access to this API, report it immediately. This resource is free and open-source for all developers.</blockquote>
       <p class="lead small">Base URL: <code>${esc(base)}</code> &middot; ${totals().endpoints} endpoints in ${totals().routers} routers</p>
       <a class="cta" href="/home">INITIALIZE DASHBOARD</a>
+      <div class="shots-title">Capturas</div>
+      <div class="shots">
+        ${config.media.captures.map((c, i) => `
+        <a class="shot" href="https://drive.google.com/file/d/${esc(c.id)}/view" target="_blank" rel="noopener">
+          <img src="${esc(driveImage(c.id, 1000))}" alt="Captura ${i + 1} de Velirius API" loading="lazy">
+          <span>${esc(c.name.replace('.jpg', ''))} / ${String(config.media.captures.length).padStart(2, '0')}</span>
+        </a>`).join('')}
+      </div>
       <div class="landing-links">
         <a href="/information">Information</a>
         <a href="/docs">JSON Docs</a>
@@ -92,6 +101,16 @@ router.get('/home', (req, res) => {
     <h1 class="title">Velirius API</h1>
     <div class="sync">Sync Complete</div>
     <p class="intro">Here are the folders with all the <strong>APIS</strong> available on this website.<br><strong>(Not Required Token)</strong></p>
+    <div class="demo">
+      <video class="demo-video" poster="${esc(driveImage(config.media.dashboard[0].id, 1200))}" autoplay muted loop playsinline controls preload="metadata" aria-label="Dashboard de Velirius API en funcionamiento">
+        <source src="/media/dashboardvid.mp4" type="video/mp4">
+        <source src="${esc(config.media.video.direct)}" type="video/mp4">
+      </video>
+      <div class="demo-tag">
+        <span class="dot"></span> ${esc(config.media.video.name.replace('.mp4', ''))} &middot; dashboard en vivo
+        <a href="https://drive.google.com/file/d/${esc(config.media.video.id)}/view" target="_blank" rel="noopener">abrir en Drive ↗</a>
+      </div>
+    </div>
     <div class="follow"><a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">Follow my github account</a></div>
     <div class="icons">
       <div class="left">
