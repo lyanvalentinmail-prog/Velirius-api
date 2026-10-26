@@ -20,13 +20,20 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
   modificables**: campos de texto, listas desplegables (`select`), subida de foto desde la galería,
   ejecución sin salir de la página, abrir el endpoint directo y copiar la URL final.
   Tocando `TEST` otra vez el panel se cierra (solo uno abierto a la vez).
-- **Portada** (`/`) con el diseño de las capturas de referencia: hoja de papel rayado con marco
-  negro, titular mono espaciado, píldora `V. x.y.z // STATUS: ONLINE`, **video del dashboard** como
-  hero (con sombra dura), caja `SECURITY ALERT` y botón **`INITIALIZE DASHBOARD`** que entra a `/home`.
-- **Dashboard** (`/home`) copia literal de Apireon: intro *"Aquí están las carpetas con todas las APIS…"*,
-  *(No Requiere Token)* + enlace a GitHub, cuatro píldoras (`Información del Sistema`, `Catálogo JSON (/docs)`,
-  `Cuenta de GitHub`, `Repositorio Velirius`), barra negra `ESTADO: EN LÍNEA · RUTAS · ENDPOINTS` y rejilla
-  de tarjetas monoespaciadas (`anime\`, `canvas\`…) con el contador de endpoints y el enlace **VER**.
+- **Portada** (`/`) calcada de la referencia de Drive: hoja de papel rayado con marco negro, titular mono
+  espaciado, píldora `V. x.y.z // STATUS: ONLINE`, **video del dashboard** como hero (con sombra dura),
+  párrafos grandes, caja `SECURITY ALERT` y botón **`INITIALIZE DASHBOARD`** que entra a `/home`.
+- **Dashboard** (`/home`) copia literal de Apireon: título + `SINCRONIZACIÓN COMPLETA`, intro
+  *"Aquí están las carpetas con todas las APIS…"*, *(No Requiere Token)* + enlace a GitHub, fila de
+  iconos (monitor · apoyo · GitHub · repositorio · buscar), barra negra `ESTADO: EN LÍNEA · RUTAS ·
+  ENDPOINTS` de lado a lado y la lista de carpetas (`anime\`, `canvas\`…) con el contador de endpoints
+  y el botón **VER**.
+- **Categorías** (`/canvas`…) con la misma cabecera: título, `BASE DE DATOS SINCRONIZADA`, intro, iconos
+  (inicio · repositorio · monitor · buscar), barra `RED: EN LÍNEA · LISTA: N` y filas con viñeta negra,
+  `GET - parámetros` y botón **TEST**.
+- Las medidas (tarjeta de 552 px, tarjeta de 373 px en móvil, tipografías de 12-34 px) están tomadas
+  **píxel a píxel** de las capturas; la tipografía va **empaquetada** (`public/fonts/JetBrainsMono-*.ttf`,
+  `@font-face`), nunca se pide a Google Fonts.
 - **Parámetros con los mismos nombres que Apireon** en los canvas: `quotly` (`text, username, image, bg`),
   `iqc` (`text, replyText, replyName, time`), `ship`/`friendship` (`name1, name2, percentage, text, image1,
   image2`, avatares opcionales), `gaycard` (`name, percentage, url`), `bratestirado`/`bratvideo` (`bg, color`).
