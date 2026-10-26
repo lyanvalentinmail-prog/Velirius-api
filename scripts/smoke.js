@@ -78,6 +78,11 @@ async function main() {
     ok('vercel.json: maxDuration y memory son números', fnOpts.every(o => (o.maxDuration === undefined || typeof o.maxDuration === 'number' || o.maxDuration === 'max') && (o.memory === undefined || typeof o.memory === 'number')));
     ok('vercel.json: glob de assets incluye plantillas y fuentes', /assets/.test(fnOpts.map(o => o.includeFiles).join(',')) && fnKeys.includes('api/index.js'));
 
+    // ---- Node soportado por Vercel/Render (20.x ya está discontinuado) ----
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    ok('package.json: engines.node soportado (24.x)', /^2[46]\.x$/.test(pkg.engines.node));
+    ok('render.yaml: NODE_VERSION alineado con package.json', fs.readFileSync(path.join(__dirname, '..', 'render.yaml'), 'utf8').includes(`value: "${pkg.engines.node.replace('.x', '')}"`));
+
     // ---- Tipografías empaquetadas: nunca cuadrados ▯▯▯ ----
     const fontFiles = fs.readdirSync(FONTS_DIR);
     ok(`Fuentes empaquetadas (${fontFiles.length})`, fontFiles.some(f => /Inter-Bold/.test(f)) && fontFiles.some(f => /Playfair/.test(f)) && fontFiles.some(f => /JetBrainsMono/.test(f)) && fontFiles.includes('NotoEmoji-Regular.ttf'));
