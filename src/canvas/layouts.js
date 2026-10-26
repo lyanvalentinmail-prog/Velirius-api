@@ -7,6 +7,9 @@
 //
 // Partes típicas:  canvas (lienzo) · bg · photo · text · name · reward · band ·
 //                  bubble · quote · msg · time · avatar · badge · bar · title
+//
+// ➕ AGREGAR UN CANVAS: 1) src/canvas/generators/<id>.js  2) un bloque acá con sus
+//    medidas  3) la ficha en src/catalog/canvas.js. Guía: CONTRIBUTING.md.
 
 const LAYOUTS = {
   /* ============================ TEXTO ============================ */
@@ -31,8 +34,9 @@ const LAYOUTS = {
         font: { family: 'sans', weight: 800, maxFont: 172, lineHeight: 1.16 },
         fill: '#000000'
       },
-      // lente esférico: cuánto se agranda el centro (1 = plano)
-      lens: { stretch: 1.35 }
+      // lente esférico: cuánto se agranda el centro (1 = plano), cuánto acompaña
+      // el eje horizontal y a qué altura está el centro de la lente
+      lens: { stretch: 1.32, bulge: 0.55, y: 0.5 }
     }
   },
 
@@ -52,7 +56,7 @@ const LAYOUTS = {
   absolutecinema: {
     label: 'Absolute cinema',
     parts: {
-      canvas: { width: 900, height: 737, bg: '#000000' },
+      canvas: { width: 735, height: 602, bg: '#000000' },
       bar: { box: { x0: 0, y0: 0.68, x1: 1, y1: 1 }, bg: '#000000' },
       sub: {
         box: { x0: 0.03, y0: 0.70, x1: 0.97, y1: 0.81 },
@@ -88,7 +92,7 @@ const LAYOUTS = {
         box: { x0: 0.0408, y0: 0.4380, x1: 0.7500, y1: 0.5910 },
         radius: 0.032,
         bg: '#2a2a2a',
-        pad: { top: 0.0122, bottom: 0.0183, gap: 0.0061 }
+        pad: { top: 0.0122, bottom: 0.0122, gap: 0.0061 }
       },
       // cita dentro del globo
       quote: {
@@ -97,12 +101,12 @@ const LAYOUTS = {
         bar: '#e8848c',
         barWidth: 0.0054,
         padX: 0.0380,
-        name: { x: 0.0870, y: 0.4600, font: { family: 'sans', weight: 600, size: 26 }, fill: '#e8848c' },
-        text: { x: 0.0856, y: 0.4985, font: { family: 'sans', weight: 400, size: 26 }, fill: '#e9edef' }
+        name: { x: 0.0870, y: 0.4570, font: { family: 'sans', weight: 600, size: 29 }, fill: '#e8848c' },
+        text: { x: 0.0856, y: 0.4955, font: { family: 'sans', weight: 400, size: 30 }, fill: '#e9edef' }
       },
       // mensaje y hora
-      msg: { x: 0.0679, y: 0.5428, font: { family: 'sans', weight: 400, size: 29, lineHeight: 1.36 }, fill: '#e9edef' },
-      time: { right: 0.7215, y: 0.5627, font: { family: 'sans', weight: 400, size: 21 }, fill: '#a9b4bb' }
+      msg: { x: 0.0679, y: 0.5474, font: { family: 'sans', weight: 400, size: 30, lineHeight: 1.36 }, fill: '#e9edef' },
+      time: { right: 0.7215, y: 0.5670, font: { family: 'sans', weight: 400, size: 23 }, fill: '#a9b4bb' }
     }
   },
 
@@ -235,40 +239,46 @@ const LAYOUTS = {
   ship: {
     label: 'Medidor de compatibilidad',
     parts: {
-      canvas: { width: 1200, height: 512, bg: '#23272e' },
-      title: { box: { x0: 0.20, y0: 0.075, x1: 0.80, y1: 0.135 }, font: { family: 'sans', weight: 700, maxFont: 30 }, fill: '#ff2d55' },
-      avatar1: { box: { x0: 0.285, y0: 0.30, x1: 0.535, y1: 0.88 }, size: 295 },
-      avatar2: { box: { x0: 0.465, y0: 0.30, x1: 0.715, y1: 0.88 }, size: 295 },
-      heart: { box: { x0: 0.45, y0: 0.22, x1: 0.55, y1: 0.36 }, fill: '#ff2d55' },
-      percentage: { box: { x0: 0.42, y0: 0.36, x1: 0.58, y1: 0.45 }, font: { family: 'sans', weight: 700, maxFont: 34 }, fill: '#ff2d55' },
-      phrase: { box: { x0: 0.36, y0: 0.45, x1: 0.64, y1: 0.51 }, font: { family: 'sans', weight: 700, maxFont: 26 }, fill: '#ff2d55' },
-      name1: { box: { x0: 0.285, y0: 0.90, x1: 0.535, y1: 0.96 }, font: { family: 'sans', weight: 400, maxFont: 22 }, fill: '#ffffff' },
-      name2: { box: { x0: 0.465, y0: 0.90, x1: 0.715, y1: 0.96 }, font: { family: 'sans', weight: 400, maxFont: 22 }, fill: '#ffffff' }
+      canvas: { width: 1200, height: 460, bg: '#23272e' },
+      title: { box: { x0: 0.18, y0: 0.05, x1: 0.82, y1: 0.15 }, font: { family: 'sans', weight: 700, maxFont: 30 }, fill: '#ff6b8a' },
+      avatar1: { box: { x0: 0.30, y0: 0.56, x1: 0.30, y1: 0.56 }, size: 210 },
+      avatar2: { box: { x0: 0.70, y0: 0.56, x1: 0.70, y1: 0.56 }, size: 210 },
+      heart: { box: { x0: 0.465, y0: 0.24, x1: 0.535, y1: 0.38 }, fill: '#ff2d55' },
+      percentage: { box: { x0: 0.38, y0: 0.38, x1: 0.62, y1: 0.49 }, font: { family: 'sans', weight: 800, maxFont: 40 }, fill: '#ff2d55' },
+      phrase: { box: { x0: 0.32, y0: 0.50, x1: 0.68, y1: 0.60 }, font: { family: 'sans', weight: 700, maxFont: 26 }, fill: '#ff8fa6' },
+      name1: { box: { x0: 0.18, y0: 0.82, x1: 0.42, y1: 0.93 }, font: { family: 'sans', weight: 600, maxFont: 24 }, fill: '#ffffff' },
+      name2: { box: { x0: 0.58, y0: 0.82, x1: 0.82, y1: 0.93 }, font: { family: 'sans', weight: 600, maxFont: 24 }, fill: '#ffffff' }
     }
   },
 
   friendship: {
     label: 'Medidor de amistad',
     parts: {
-      canvas: { width: 1200, height: 512, bg: '#23272e' },
-      title: { box: { x0: 0.20, y0: 0.075, x1: 0.80, y1: 0.135 }, font: { family: 'sans', weight: 700, maxFont: 30 }, fill: '#00e05a' },
-      avatar1: { box: { x0: 0.285, y0: 0.30, x1: 0.535, y1: 0.88 }, size: 250 },
-      avatar2: { box: { x0: 0.465, y0: 0.30, x1: 0.715, y1: 0.88 }, size: 250 },
-      heart: { box: { x0: 0.45, y0: 0.22, x1: 0.55, y1: 0.36 }, fill: '#ff2d55' },
-      percentage: { box: { x0: 0.42, y0: 0.36, x1: 0.58, y1: 0.45 }, font: { family: 'sans', weight: 700, maxFont: 34 }, fill: '#00e05a' },
-      phrase: { box: { x0: 0.36, y0: 0.45, x1: 0.64, y1: 0.51 }, font: { family: 'sans', weight: 700, maxFont: 26 }, fill: '#00e05a' },
-      name1: { box: { x0: 0.285, y0: 0.90, x1: 0.535, y1: 0.96 }, font: { family: 'sans', weight: 400, maxFont: 22 }, fill: '#ffffff' },
-      name2: { box: { x0: 0.465, y0: 0.90, x1: 0.715, y1: 0.96 }, font: { family: 'sans', weight: 400, maxFont: 22 }, fill: '#ffffff' }
+      canvas: { width: 1200, height: 460, bg: '#23272e' },
+      title: { box: { x0: 0.18, y0: 0.05, x1: 0.82, y1: 0.15 }, font: { family: 'sans', weight: 700, maxFont: 30 }, fill: '#2ee06d' },
+      avatar1: { box: { x0: 0.30, y0: 0.56, x1: 0.30, y1: 0.56 }, size: 210 },
+      avatar2: { box: { x0: 0.70, y0: 0.56, x1: 0.70, y1: 0.56 }, size: 210 },
+      heart: { box: { x0: 0.465, y0: 0.24, x1: 0.535, y1: 0.38 }, fill: '#ffc93c' },
+      percentage: { box: { x0: 0.38, y0: 0.38, x1: 0.62, y1: 0.49 }, font: { family: 'sans', weight: 800, maxFont: 40 }, fill: '#00e05a' },
+      phrase: { box: { x0: 0.32, y0: 0.50, x1: 0.68, y1: 0.60 }, font: { family: 'sans', weight: 700, maxFont: 26 }, fill: '#6cf0a5' },
+      name1: { box: { x0: 0.18, y0: 0.82, x1: 0.42, y1: 0.93 }, font: { family: 'sans', weight: 600, maxFont: 24 }, fill: '#ffffff' },
+      name2: { box: { x0: 0.58, y0: 0.82, x1: 0.82, y1: 0.93 }, font: { family: 'sans', weight: 600, maxFont: 24 }, fill: '#ffffff' }
     }
   },
 
   gaycard: {
     label: 'Tarjeta arcoíris',
     parts: {
-      canvas: { width: 600, height: 450, bg: '#000000' },
-      avatar: { box: { x0: 0.30, y0: 0.17, x1: 0.70, y1: 0.72 }, size: 178 },
-      name: { box: { x0: 0.15, y0: 0.73, x1: 0.85, y1: 0.81 }, font: { family: 'mono', weight: 700, maxFont: 30 }, fill: '#ffffff' },
-      badge: { box: { x0: 0.30, y0: 0.82, x1: 0.70, y1: 0.90 }, font: { family: 'sans', weight: 700, maxFont: 24 }, fill: '#ff2d55' }
+      canvas: { width: 600, height: 450, bg: '#141414' },
+      avatar: { box: { x0: 0.50, y0: 0.435, x1: 0.50, y1: 0.435 }, size: 190, ring: '#ffffff' },
+      title: { box: { x0: 0.10, y0: 0.05, x1: 0.90, y1: 0.15 }, font: { family: 'mono', weight: 700, maxFont: 30, spacing: 2 } },
+      name: { box: { x0: 0.15, y0: 0.70, x1: 0.85, y1: 0.80 }, font: { family: 'serif', weight: 700, maxFont: 34 }, fill: '#ffffff' },
+      badge: {
+        box: { x0: 0.31, y0: 0.82, x1: 0.69, y1: 0.92 },
+        pill: { bg: '#ffffff', radius: 26 },
+        font: { family: 'sans', weight: 700, maxFont: 26 },
+        fill: '#ff2d55'
+      }
     }
   },
 
@@ -312,11 +322,25 @@ const LAYOUTS = {
   },
   gay: {
     label: 'Filtro arcoíris',
-    parts: { template: 'gay.jpg', photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      overlay: { opacity: 0.45, colors: ['#ff004d', '#ff8a00', '#ffee00', '#00e05a', '#0088ff', '#8a2be2'] }
+    }
   },
   invert: {
     label: 'Foto invertida',
-    parts: { photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+    parts: { photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 } }
+  },
+
+  quotly: {
+    label: 'Sticker estilo Quotly',
+    parts: {
+      canvas: { bg: '#000000', maxWidth: 1000 },
+      avatar: { size: 84, radius: 0.22 },
+      name: { font: { family: 'sans', weight: 700, size: 0.86 }, fill: '#f59e0b' },
+      body: { font: { family: 'sans', weight: 400, size: 32, lineHeight: 1.34 }, fill: '#ffffff' },
+      pad: { x: 24, y: 22, gap: 20 }
+    }
   }
 };
 

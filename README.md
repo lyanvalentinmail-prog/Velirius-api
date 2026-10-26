@@ -36,6 +36,8 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
   lleno. Los campos de texto libre se escriben en un **área multilínea** (texto largo sin scroll horizontal).
 - Páginas: `/anime` · `/canvas` · `/tools` · `/downloader` · `/searcher` · `/reactions`
   (los alias antiguos `/download` y `/search` redirigen a `/downloader` y `/searcher`).
+- **¿Agregar o editar un endpoint?** → tutorial [`Cómo agregar o editar un endpoint`](#-cómo-agregar-o-editar-un-endpoint)
+  y guía completa en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -232,39 +234,188 @@ curl "https://<host>/reactions/pat?provider=purrbot&direct=true" -o pat.gif
 
 ---
 
+## 🧩 Cómo agregar o editar un endpoint
+
+Todo se toca, como mucho, en **3 archivos** y **sin clonar el repo**: en GitHub, abrí el archivo y
+tocá el lápiz (**Edit file**) → *Commit changes* → *Propose changes* → *Create pull request*.
+
+| Archivo | Qué se edita ahí | ¿Obligatorio? |
+|---|---|---|
+| [`src/catalog/<categoría>.js`](src/catalog) | La **ficha**: `id`, `desc` y `params`. Alimenta `/docs`, la web y el probador TEST. | ✅ Siempre |
+| [`src/routes/<categoría>.js`](src/routes) | El **código** que responde `GET /<categoría>/:id`. | Solo si es nuevo |
+| [`src/canvas/generators/<id>.js`](src/canvas/generators) | El **dibujo** (PNG) de un canvas. | Solo en canvas |
+
+Guía completa y plantillas para copiar: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+Atajos para editar directo en GitHub (`✏️`):
+
+| Categoría | Ficha (parámetros y textos) | Código (respuesta) |
+|---|---|---|
+| **Anime** | [`src/catalog/anime.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/catalog/anime.js) | [`src/routes/anime.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/routes/anime.js) |
+| **Canvas** | [`src/catalog/canvas.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/catalog/canvas.js) | [`src/routes/canvas.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/routes/canvas.js) |
+| **Tools** | [`src/catalog/tools.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/catalog/tools.js) | [`src/routes/tools.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/routes/tools.js) |
+| **Downloader** | [`src/catalog/downloader.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/catalog/downloader.js) | [`src/routes/download.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/routes/download.js) |
+| **Searcher** | [`src/catalog/searcher.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/catalog/searcher.js) | [`src/routes/searcher.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/routes/searcher.js) |
+| **Reactions** | [`src/catalog/reactions.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/catalog/reactions.js) | [`src/routes/reactions.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/routes/reactions.js) |
+| **Canvas: medidas** | [`src/canvas/layouts.js`](https://github.com/lyanvalentinmail-prog/Velirius-api/edit/main/src/canvas/layouts.js) | [`src/canvas/generators/`](https://github.com/lyanvalentinmail-prog/Velirius-api/tree/main/src/canvas/generators) |
+
+### Editar algo que ya existe
+
+- **Descripción, ejemplo o parámetros** → `src/catalog/<categoría>.js`. Es texto: cambiá lo que
+  quieras y listo (la web y `/docs` lo leen de ahí).
+- **Valores por defecto de un canvas** (posición, color, tamaño) → `src/canvas/layouts.js`, en el
+  bloque del canvas (`text`, `photo`, `bubble`, `msg`, `time`…).
+- **El dibujo de un canvas** → `src/canvas/generators/<id>.js`. Cada canvas es **un archivo suelto**
+  con una sola función.
+- **Una fuente nueva para Downloader/Reactions** → `src/utils/providers.js` (primero
+  [`assets/defaults/`](assets/defaults) y luego el `try/catch` de fuentes ya existente).
+
+### Agregar un endpoint de texto/JSON (3 pasos)
+
+1. **La ruta** — `src/routes/tools.js`:
+
+   ```js
+   router.get('/emoji', (req, res) => {
+     const text = String(req.query.text || 'hola').slice(0, 100);
+     return sendSuccess(res, { text, length: text.length });
+   });
+   ```
+
+2. **La ficha** — `src/catalog/tools.js`:
+
+   ```js
+   { id: 'emoji', desc: 'Cuenta las letras de un texto', params: [
+     P('text', 'hola', 'Texto a medir'),
+     O('upper', 'false', 'true = devolver en MAYÚSCULAS')
+   ] },
+   ```
+
+3. **Validar** — `npm run check` y `npm test`. La ruta aparece sola en `/home`, `/docs` y la web
+   (los routers se montan una sola vez en `src/server.js`).
+
+Parámetros: `P()` requerido · `O()` opcional · `S()` opcional con lista desplegable ·
+`AV`/`AV2` avatar por defecto · `...textStyle()` / `...photoStyle()` estilos de texto y foto.
+
+### Agregar un canvas (imagen) (4 pasos)
+
+1. **El generador** — creá `src/canvas/generators/<id>.js` (se registra solo, no hay índice que
+   tocar):
+
+   ```js
+   // src/canvas/generators/ejemplo.js
+   const { sharp, P, partsOf, boxOf, txt, textLayer, templateMeta } = require('./_helpers');
+
+   module.exports = async function ejemplo(q) {
+     const parts = partsOf('ejemplo');
+     const { buf, width: W, height: H } = await templateMeta(parts.template);
+     const box = boxOf('ejemplo', 'text', q);
+     const layer = textLayer({
+       text: txt(q, 'Mi texto'), width: Math.round((box.x1 - box.x0) * W),
+       height: Math.round((box.y1 - box.y0) * H), family: 'sans', weight: 700,
+       maxFont: 64, maxLines: 3, align: 'middle', fill: '#ffffff'
+     });
+     return sharp(buf).composite([{
+       input: layer.svg, left: Math.round(box.x0 * W), top: Math.round(box.y0 * H)
+     }]).png().toBuffer();
+   };
+   ```
+
+2. **Las medidas** — `src/canvas/layouts.js`:
+
+   ```js
+   ejemplo: {
+     label: 'Ejemplo',
+     parts: {
+       template: 'ejemplo.jpg',                    // assets/templates/
+       text: { box: { x0: 0.08, y0: 0.55, x1: 0.92, y1: 0.8 },
+               font: { family: 'sans', weight: 700, maxFont: 64 }, fill: '#ffffff' }
+     }
+   },
+   ```
+
+3. **La ficha** — `src/catalog/canvas.js`:
+
+   ```js
+   { id: 'ejemplo', desc: 'Plantilla de ejemplo con tu texto', params: [
+     P('text', 'Mi texto', 'Texto del cartel'), ...textStyle()
+   ] },
+   ```
+
+4. **Validar** — `npm run check` + `npm test`, y mirá `GET /canvas/ejemplo?text=hola`.
+
+**Reglas de oro de los canvas** (para no romper la fidelidad):
+
+- Nada de `<text>` en SVG: siempre `textLayer()` (fuentes empaquetadas → nunca `▯▯▯`).
+- El texto **crece** hacia abajo (más líneas, no letra más chica) y nunca se corta.
+- Sin medidas clavadas en el código: van en `layouts.js` y se leen con `P`/`boxOf`.
+- Todo parámetro nuevo tiene que poder pisarse por query (`<parte>.<clave>=valor`).
+
+### Editar sin tocar código
+
+Cada clave de `layouts.js` se puede pisar por URL:
+
+```bash
+curl "http://localhost:3000/canvas/iqc?msg.size=1.3&msg.color=ffe066&time.color=9ad0ff"
+curl "http://localhost:3000/canvas/brat?text.size=1.2&text.fill=ff0044&canvas.bg=8ACE00"
+```
+
+| Clave | Qué controla |
+|---|---|
+| `x0, y0, x1, y1` | Área en fracciones (0–1) del lienzo/plantilla |
+| `fill` / `color` / `bg` | Colores (hex sin `#`, o `white`, `black`…) |
+| `size`, `font`, `weight`, `align`, `spacing`, `lineHeight`, `uppercase`, `rotate` | Tipografía |
+| `radius`, `pad`, `zoom`, `opacity` | Formas, márgenes y foto |
+
+### Antes de abrir el Pull Request
+
+```bash
+npm run check   # catálogo: ids, desc, parámetros, routers y canvas ↔ catálogo
+npm test        # smoke: web, tools, /docs y los 31 canvas
+```
+
+La CI (`.github/workflows/ci.yml`) corre los dos comandos en cada PR. Hay además una plantilla de
+PR con el checklist y un formulario de *issue* para pedir endpoints nuevos.
+
 ## Desarrollo
 
 ```bash
 npm install
 npm start        # http://localhost:3000/home
 npm run dev      # con --watch
-npm test         # smoke: web, catálogo, tools, /docs y los 33 canvas
+npm run check    # valida el catálogo (ids, parámetros, canvas ↔ catálogo)
+npm test         # smoke: web, catálogo, tools, /docs y los 31 canvas
 ```
 
 Estructura:
 
 ```
 src/
-  catalog.js            → catálogo único (home, categorías, /docs y probador TEST)
-  server.js             → Express + CORS abierto + páginas + routers
+  catalog/                → el catálogo (home, categorías, /docs y probador TEST)
+    index.js              → junta las categorías y define el orden de /home
+    helpers.js            → P(), O(), S(), AV, AV2, textStyle(), photoStyle()
+    anime.js canvas.js tools.js downloader.js searcher.js reactions.js
+  server.js               → Express + CORS abierto + páginas + routers
   routes/
-    anime.js            → /anime (neko, waifu, maid, pokemon)
-    canvas.js           → /canvas/:id (PNG / MP4 / WebM)
-    tools.js            → /tools (calculator, translator, morse)
-    download.js         → /downloader (+ alias /download)
-    searcher.js         → /searcher (+ alias /search)
-    reactions.js        → /reactions
-    pages.js            → web (/, /home, /<categoría>, /information, /docs)
+    anime.js canvas.js tools.js download.js searcher.js reactions.js pages.js
+  canvas/                 → motor de las 33 plantillas
+    generators/           → un archivo por canvas (se cargan solos)
+      _helpers.js         → piezas compartidas (carteles, huecos, medidores)
+    layouts.js            → medidas y estilos por defecto de cada canvas
+    parts.js              → overrides por query (<parte>.<clave>=valor)
+    core.js               → sharp, texto, máscaras, lente…
   utils/
-    providers.js        → todas las fuentes públicas (SFW)
-    textEngine.js       → texto vectorial con fuentes empaquetadas (sin tofu)
-    canvasEngine.js     → render de las 33 plantillas con parámetros
-    video.js            → bratvideo (MP4) y attp (WebM)
-    image.js            → helpers de sharp/SVG
+    providers.js          → todas las fuentes públicas (SFW)
+    textEngine.js         → texto vectorial con fuentes empaquetadas (sin tofu)
+    canvasEngine.js       → fachada de src/canvas
+    video.js              → bratvideo (MP4) y attp (WebM)
+    image.js              → helpers de sharp/SVG
 assets/
-  templates/            → plantillas de la carpeta CategoriaCanvas de Drive
-  fonts/                → Inter, Playfair Display, JetBrains Mono y NotoEmoji
-scripts/smoke.js        → npm test
+  templates/              → plantillas de la carpeta CategoriaCanvas de Drive
+  fonts/                  → Inter, Playfair Display, JetBrains Mono y NotoEmoji
+scripts/
+  smoke.js                → npm test
+  validate-catalog.js     → npm run check
+.github/workflows/ci.yml  → corre check + test en cada PR
 ```
 
 ### Despliegue

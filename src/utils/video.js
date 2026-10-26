@@ -127,4 +127,8 @@ async function attpVideo(text, opts = {}) {
   }
 }
 
-module.exports = { bratVideo, attpVideo, bratFrame, attpFrame };
+// Endpoints de video: no viven en src/canvas/generators (son MP4/WebM animados)
+// sino acá. `scripts/validate-catalog.js` los usa para cuadrar el catálogo.
+const VIDEO_IDS = ['bratvideo', 'attp'];
+
+module.exports = { bratVideo, attpVideo, bratFrame, attpFrame, VIDEO_IDS };
