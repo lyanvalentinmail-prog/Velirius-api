@@ -197,6 +197,26 @@ Para empezar copiá el canvas más parecido:
 
 ---
 
+## 4-bis. De dónde salen los datos (`src/utils/providers.js`)
+
+Cada endpoint arma una lista de **proveedores en orden** y usa el primero que responda
+(`firstSuccess`). Si un servicio se cae se agrega otro a la lista, no se toca la ruta.
+
+| Qué | Fuentes (en orden) |
+|---|---|
+| YouTube (búsqueda y formatos) | `youtubei.js` → InnerTube → Invidious → Piped — en `src/utils/youtube.js` |
+| Buscar en la web | Google → DuckDuckGo lite → DuckDuckGo → Bing |
+| Anime (`neko`/`waifu`/`maid`) | nekos.best · danbooru · safebooru · konachan · purrbot · pic.re |
+
+**Video con audio (Downloader).** YouTube casi siempre publica el video y el audio por
+separado (DASH). En modo automático (`quality=auto`):
+
+1. se usa el formato **progresivo** (video + audio en el mismo archivo) si existe;
+2. si no existe, `src/utils/youtube.js` baja las dos pistas y las pega con **ffmpeg**
+   (`-c copy`, sin recodificar) en un MP4 temporal, que se sirve con `Range` (`sendFile`).
+
+Los MP4 pegados viven en `os.tmpdir()/velirius-yt` y se borran solos a los 15 minutos.
+
 ## 5. Agregar una categoría nueva (poco frecuente)
 
 1. `src/catalog/<id>.js` copiando otro (`id`, `name`, `endpoints`).

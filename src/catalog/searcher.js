@@ -23,20 +23,20 @@ module.exports = {
   id: 'searcher',
   name: 'SEARCHER',
   endpoints: [
-    { id: 'tiktok', desc: 'Busca videos en TikTok (TikWM)', media: 'image', params: [
+    { id: 'tiktok', desc: 'Busca videos en TikTok con portada, autor y estadísticas (TikWM)', media: 'image', params: [
       P('query', 'anime edit', 'Palabra clave'),
       O('limit', '10', 'Cantidad de resultados (1-30)')
     ] },
-    { id: 'youtube', desc: 'Busca videos en YouTube', media: 'image', params: [
+    { id: 'youtube', desc: 'Busca videos en YouTube (título, canal, duración y vistas)', media: 'image', params: [
       P('query', 'Twice', 'Palabra clave'),
       O('limit', '10', 'Cantidad de resultados (1-30)')
     ] },
-    { id: 'google', desc: 'Busca en Google (con respaldo en DuckDuckGo)', params: [
+    { id: 'google', desc: 'Busca en la web (Google → DuckDuckGo → Bing, el primero que responda)', params: [
       P('query', 'Velirius API', 'Qué quieres buscar'),
       O('limit', '10', 'Cantidad de resultados (1-20)'),
       O('lang', 'es', 'Idioma de la búsqueda (es, en, pt…)')
     ] },
-    { id: 'wikipedia', desc: 'Busca artículos en Wikipedia con extracto e imagen', media: 'image', params: [
+    { id: 'wikipedia', desc: 'Busca artículos en Wikipedia con extracto e imagen (cualquier idioma)', media: 'image', params: [
       P('query', 'One Piece', 'Tema a buscar'),
       O('limit', '8', 'Cantidad de artículos (1-20)'),
       O('lang', 'es', 'Idioma de Wikipedia (es, en, pt…)')

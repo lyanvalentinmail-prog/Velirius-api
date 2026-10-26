@@ -278,13 +278,25 @@ curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
 | Endpoint | Parámetros |
 |---|---|
 | `GET /downloader/tiktok` | `url`, `direct` (`mp4` / `mp3`) — sin marca de agua |
-| `GET /downloader/youtube` | `url` o `query`, `quality`, `direct` (`mp4` / `mp3`) |
+| `GET /downloader/youtube` | `url` o `query`, `quality` (`auto` por defecto), `direct` (`mp4` / `mp3`) |
 | `GET /downloader/facebook` | `url`, `direct` (`mp4`), `quality` (`hd` / `sd`) |
 | `GET /downloader/instagram` | `url`, `direct` |
 | `GET /downloader/mp3` | `url` o `query`, `direct` |
-| `GET /downloader/mp4` | `url` o `query`, `quality`, `direct` |
+| `GET /downloader/mp4` | `url` o `query`, `quality` (`auto` por defecto), `direct` |
 | `GET /downloader/play` | `query`, `direct` |
 | `GET /downloader/lyric` | `query`, `format` (`json` / `txt` / `lrc`) |
+
+**El video siempre se reproduce con audio y video.** En modo automático (`quality=auto`,
+que es el valor por defecto) se busca el mejor formato **progresivo** (video + audio en el
+mismo archivo); si YouTube sólo publicó las pistas por separado (DASH), el servidor las
+**pega con ffmpeg** (`-c copy`, sin recodificar) y entrega un MP4 con sonido. El JSON lo dice
+en `hasAudio` y `video.mergedWithFfmpeg`.
+
+- `quality` acepta `auto` (mejor disponible), `360`, `480`, `720`, `1080`, o `hd`/`fhd`.
+- YouTube se resuelve con `youtubei.js` (InnerTube al día: firmas y `n`-token); los
+  respaldos viejos (InnerTube crudo, Invidious, Piped) siguen ahí por si acaso.
+- `direct=mp4` reproduce/descarga en streaming con `Range 206`; si el archivo se pegó con
+  ffmpeg también acepta `Range`, así que se puede buscar dentro del video.
 
 ```bash
 curl "https://<host>/downloader/tiktok?url=https://vt.tiktok.com/ZS43DntHW/"          # JSON
@@ -297,10 +309,20 @@ curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc
 
 | Endpoint | Parámetros |
 |---|---|
-| `GET /searcher/tiktok` | `query`, `limit` |
-| `GET /searcher/youtube` | `query`, `limit` |
-| `GET /searcher/google` | `query`, `limit`, `lang` (respaldo automático en DuckDuckGo) |
+| `GET /searcher/tiktok` | `query`, `limit` (TikWM: portada, autor, estadísticas) |
+| `GET /searcher/youtube` | `query`, `limit` (youtubei.js → InnerTube → Invidious → Piped) |
+| `GET /searcher/google` | `query`, `limit`, `lang` (Google → DuckDuckGo lite → DuckDuckGo → Bing) |
 | `GET /searcher/wikipedia` | `query`, `limit`, `lang` (extracto + imagen + URL) |
+
+Cada buscador prueba sus motores en orden y devuelve `source`/`engine` con el que respondió,
+así que si uno bloquea las peticiones los demás siguen funcionando.
+
+```bash
+curl "https://<host>/searcher/tiktok?query=anime%20edit&limit=5"
+curl "https://<host>/searcher/youtube?query=Twice&limit=5"
+curl "https://<host>/searcher/google?query=Velirius%20API&lang=es"
+curl "https://<host>/searcher/wikipedia?query=One%20Piece&lang=es"
+```
 
 ## 💞 Reactions — 26 (proveedores de GIFs)
 

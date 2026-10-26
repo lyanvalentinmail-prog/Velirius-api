@@ -6,10 +6,13 @@
 //  · Nada de IA: no hay generación de texto/imagen por modelos, solo APIs públicas.
 //
 // Fuentes: PokeAPI · nekos.best · purrbot · danbooru · safebooru · konachan · pic.re ·
-// waifu.pics (reacciones) · otakugifs · TikWM · YouTube (InnerTube + Invidious/Piped)
-// · Facebook · Instagram · LRCLIB/lyrics.ovh · Google · DuckDuckGo · Wikipedia
-// · Google Translate · MyMemory.
+// waifu.pics (reacciones) · otakugifs · TikWM · YouTube (youtubei.js + InnerTube +
+// Invidious/Piped) · Facebook · Instagram · LRCLIB/lyrics.ovh · Google · DuckDuckGo
+// (lite y html) · Bing · Wikipedia · Google Translate · MyMemory.
 const { fetchJson, postJson, fetchText, firstSuccess, UA_DESKTOP, UA_MOBILE } = require('./http');
+// YouTube "de verdad": youtubei.js resuelve firmas y n-token (los respaldos
+// Invidious/Piped quedaron casi todos con la API apagada).
+const YT = require('./youtube');
 
 const clampLimit = (v, def = 10, max = 25) => {
   const n = parseInt(v, 10);
@@ -433,9 +436,16 @@ async function tiktokDownload(url) {
 }
 async function tiktokSearch(query, limit) {
   const count = clampLimit(limit, 10, 30);
-  const j = await fetchJson(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(query)}&count=${count}&cursor=0`);
-  if (j.code !== 0) throw new Error(j.msg || 'TikWM search falló');
-  return (j.data?.videos || []).map(mapTikTokVideo);
+  let j;
+  try {
+    j = await fetchJson(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(query)}&count=${count}&cursor=0`, { timeoutMs: 15000 });
+  } catch (e) {
+    throw friendly(e);
+  }
+  if (j.code !== 0) throw new Error(j.msg || 'TikWM no pudo buscar en TikTok');
+  const videos = (j.data?.videos || []).map(mapTikTokVideo).filter(v => v.id);
+  if (!videos.length) throw new Error('TikTok no devolvió resultados para esa búsqueda');
+  return videos;
 }
 
 // ---------------- YouTube (InnerTube + Invidious/Piped) ----------------
@@ -496,7 +506,9 @@ async function youtubeSearchInnerTube(query, limit) {
 
 async function youtubeSearch(query, limit) {
   const n = clampLimit(limit, 10, 30);
-  const producers = [['innertube', () => youtubeSearchInnerTube(query, n)]];
+  const producers = [];
+  if (YT.disponible()) producers.push(['youtubei', () => YT.buscar(query, n)]);
+  producers.push(['innertube', () => youtubeSearchInnerTube(query, n)]);
   for (const base of await invidiousInstances()) {
     producers.push([base, async () => {
       const j = await fetchJson(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { timeoutMs: 10000 });
@@ -555,6 +567,11 @@ function pickVideo(formats, quality = 720) {
 
 async function youtubeStreams(id) {
   const producers = [];
+  if (YT.disponible()) producers.push(['youtubei', async () => {
+    const { meta, formats } = await YT.formatos(id);
+    if (!formats.length) throw new Error('sin formatos');
+    return { ...meta, formats };
+  }]);
   for (const base of await invidiousInstances()) {
     producers.push([base, async () => {
       const j = await fetchJson(`${base}/api/v1/videos/${id}`, { timeoutMs: 12000 });
@@ -597,6 +614,71 @@ async function youtubeStreams(id) {
   }
   const { value, source } = await firstSuccess(producers);
   return { ...value, source };
+}
+
+/**
+ * Calidad pedida por query string: '' / 'auto' / 'mejor' → 0 (= la mejor).
+ * Acepta 360, 720, '1080p', 'hd'…
+ */
+function normalizarCalidad(v) {
+  const s = String(v == null ? '' : v).toLowerCase().trim();
+  if (!s || s === 'auto' || s === 'mejor' || s === 'best' || s === 'max') return 0;
+  if (s === 'hd') return 720;
+  if (s === 'fhd' || s === 'fullhd') return 1080;
+  if (s === 'sd') return 480;
+  const n = parseInt(s.replace(/[^0-9]/g, ''), 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/**
+ * Devuelve un video REPRODUCIBLE (con imagen y sonido) de YouTube.
+ * 1º youtubei.js: formato progresivo o pegado con ffmpeg.
+ * 2º respaldo Invidious/Piped: se usa el formato muxeado si existe.
+ * @returns {Promise<{url?:string, file?:string, hasAudio:boolean, height?:number, quality?:string, muxed?:boolean, source:string}>}
+ */
+async function youtubePlayable(id, quality = 0) {
+  const q = normalizarCalidad(quality);
+  const errores = [];
+  if (YT.disponible()) {
+    try {
+      return { ...(await YT.videoReproducible(id, q)), source: 'youtubei' };
+    } catch (e) { errores.push(`youtubei: ${e.message}`); }
+  }
+  try {
+    const info = await youtubeStreams(id);
+    const audio = pickAudio(info.formats);
+    const video = pickVideo(info.formats, q || 720);
+    if (!video && !audio) throw new Error('sin formatos');
+    if (video?.hasAudio) {
+      return { url: video.url, hasAudio: true, height: video.height || null, quality: video.quality || null, muxed: false, source: info.source };
+    }
+    // Video sin audio: se avisa (el respaldo no puede pegarlos sin ffmpeg).
+    return { url: (video || audio).url, hasAudio: Boolean(video?.hasAudio), height: video?.height || null, quality: video?.quality || null, muxed: false, source: info.source, audioUrl: audio?.url || null };
+  } catch (e) { errores.push(`respaldo: ${e.message}`); }
+
+  const err = new Error('No se pudo obtener un video reproducible de YouTube.');
+  err.details = errores;
+  throw err;
+}
+
+/** Audio reproducible (para /mp3 y /play). */
+async function youtubeAudio(id) {
+  const errores = [];
+  if (YT.disponible()) {
+    try {
+      const a = await YT.audioReproducible(id);
+      return { ...a, provider: 'youtubei' };
+    } catch (e) { errores.push(`youtubei: ${e.message}`); }
+  }
+  try {
+    const info = await youtubeStreams(id);
+    const audio = pickAudio(info.formats);
+    if (!audio) throw new Error('sin audio');
+    return { url: audio.url, mime: audio.mime || 'audio/mp4', bitrate: audio.bitrate || null, provider: info.source };
+  } catch (e) { errores.push(`respaldo: ${e.message}`); }
+  const err = new Error('No se pudo obtener el audio de YouTube.');
+  err.details = errores;
+  throw err;
 }
 
 async function resolveYoutubeTarget({ url, query }) {
@@ -814,6 +896,29 @@ function decodeGoogleUrl(href) {
   return null;
 }
 
+/**
+ * Google dejó de mandar `/url?q=…`: ahora el enlace es directo y el título va
+ * dentro de un `<h3>`. Se buscan los `<a href="http…">` que envuelvan un `<h3>`.
+ */
+function parseGoogleModerno(html, limit) {
+  const out = [];
+  const re = /<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>((?:(?!<\/a>)[\s\S]){0,800}?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < limit) {
+    const url = m[1];
+    if (/^(?:https?:\/\/)?(?:www\.)?(google\.[a-z.]+\/|accounts\.google|policies\.google|support\.google|gstatic\.|youtube\.com\/redirect)/i.test(url)) continue;
+    const titulo = m[2].match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+    if (!titulo) continue;
+    const title = stripTags(titulo[1]);
+    if (!title || title.length < 3) continue;
+    if (out.some(r => r.url === url)) continue;
+    const after = html.slice(m.index + m[0].length, m.index + m[0].length + 1200);
+    out.push({ title, url, snippet: stripTags(after).slice(0, 260) });
+  }
+  return out;
+}
+
+/** Versión vieja (enlaces `/url?q=…`), todavía aparece en `gbv=1`. */
 function parseGoogle(html, limit) {
   const out = [];
   const re = /<a[^>]+href="(\/url\?q=[^"]+|https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
@@ -826,44 +931,98 @@ function parseGoogle(html, limit) {
     if (!title || title.length < 3) continue;
     if (out.some(r => r.url === url)) continue;
     const after = html.slice(m.index + m[0].length, m.index + m[0].length + 900);
-    const snippet = stripTags(after).slice(0, 260);
-    out.push({ title, url, snippet });
+    out.push({ title, url, snippet: stripTags(after).slice(0, 260) });
   }
   return out;
 }
 
-function parseDuckDuckGo(html, limit) {
+/**
+ * DuckDuckGo "lite". El marcado es `<a rel="nofollow" href="…" class='result-link'>`
+ * (el class va DESPUÉS del href, por eso se mira el tag entero) y el extracto en
+ * `<td class='result-snippet'>`.
+ */
+function parseDuckDuckGoLite(html, limit) {
   const out = [];
-  const re = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const snips = [];
+  const reSnip = /class=['"][^'"]*result-snippet[^'"]*['"][^>]*>([\s\S]*?)<\/td>/gi;
+  let ms;
+  while ((ms = reSnip.exec(html))) snips.push(stripTags(ms[1]).slice(0, 260));
+  const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
   let m;
+  let idx = 0;
   while ((m = re.exec(html)) && out.length < limit) {
-    let url = m[1];
+    if (!/result-link/.test(m[1])) continue;
+    const href = (m[1].match(/href=["']([^"']+)["']/i) || [])[1];
+    if (!href) continue;
+    let url = href.replace(/&amp;/g, '&');
     const uddg = url.match(/[?&]uddg=([^&]+)/);
     if (uddg) { try { url = decodeURIComponent(uddg[1]); } catch (_) { /* deja la original */ } }
     const title = stripTags(m[2]);
-    const after = html.slice(m.index + m[0].length, m.index + m[0].length + 1200);
-    const sn = after.match(/class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-    out.push({ title, url, snippet: sn ? stripTags(sn[1]).slice(0, 260) : '' });
+    if (!title || !/^https?:/i.test(url)) continue;
+    if (out.some(r => r.url === url)) continue;
+    out.push({ title, url, snippet: snips[idx] || '' });
+    idx++;
+  }
+  return out;
+}
+
+/** Bing: cada resultado vive en un `<li class="b_algo">` con `<h2><a href>`. */
+function parseBing(html, limit) {
+  const out = [];
+  const bloques = String(html || '').split(/<li class="b_algo"/i).slice(1);
+  for (const bloque of bloques) {
+    if (out.length >= limit) break;
+    const a = bloque.match(/<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!a) continue;
+    const url = decodeGoogleUrl(a[1].replace(/&amp;/g, '&'));
+    if (!url || !/^https?:/i.test(url)) continue;
+    if (out.some(r => r.url === url)) continue;
+    const title = stripTags(a[2]);
+    if (!title) continue;
+    const p = bloque.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    out.push({ title, url, snippet: p ? stripTags(p[1]).slice(0, 260) : '' });
   }
   return out;
 }
 
 async function googleSearch(query, limit, lang = 'es') {
   const n = clampLimit(limit, 10, 20);
-  const headers = { 'User-Agent': UA_DESKTOP, 'Accept-Language': `${lang}-ES,${lang};q=0.9` };
+  const headers = {
+    'User-Agent': UA_DESKTOP,
+    'Accept-Language': `${lang}-ES,${lang};q=0.9`,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    // Evita la pantalla de consentimiento de la UE que tapa los resultados.
+    Cookie: 'CONSENT=YES+cb; SOCS=CAI'
+  };
+  const q = encodeURIComponent(query);
   let results, source;
   try {
     ({ value: results, source } = await firstSuccess([
       ['google', async () => {
-        const html = await fetchText(`https://www.google.com/search?q=${encodeURIComponent(query)}&num=${n}&hl=${encodeURIComponent(lang)}&pws=0`, { headers, timeoutMs: 15000 });
-        const found = parseGoogle(html, n);
-        if (!found.length) throw new Error('Google sin resultados parseables');
+        const html = await fetchText(`https://www.google.com/search?q=${q}&num=${n}&hl=${encodeURIComponent(lang)}&gbv=1&pws=0&filter=0`, { headers, timeoutMs: 15000 });
+        const vistos = new Set();
+        const found = [...parseGoogleModerno(html, n), ...parseGoogle(html, n)]
+          .filter(r => !vistos.has(r.url) && vistos.add(r.url))
+          .slice(0, n);
+        if (!found.length) throw new Error('Google no devolvió resultados parseables');
+        return found;
+      }],
+      ['duckduckgo-lite', async () => {
+        const html = await fetchText(`https://lite.duckduckgo.com/lite/?q=${q}`, { headers, timeoutMs: 15000 });
+        const found = parseDuckDuckGoLite(html, n);
+        if (!found.length) throw new Error('DuckDuckGo lite sin resultados');
         return found;
       }],
       ['duckduckgo', async () => {
-        const html = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=wt-wt`, { headers, timeoutMs: 15000 });
+        const html = await fetchText(`https://html.duckduckgo.com/html/?q=${q}&kl=wt-wt`, { headers, timeoutMs: 15000 });
         const found = parseDuckDuckGo(html, n);
         if (!found.length) throw new Error('DuckDuckGo sin resultados');
+        return found;
+      }],
+      ['bing', async () => {
+        const html = await fetchText(`https://www.bing.com/search?q=${q}&count=${n}&setlang=${encodeURIComponent(lang)}`, { headers, timeoutMs: 15000 });
+        const found = parseBing(html, n);
+        if (!found.length) throw new Error('Bing sin resultados');
         return found;
       }]
     ]));
@@ -872,7 +1031,7 @@ async function googleSearch(query, limit, lang = 'es') {
     if (!err.details && e.details) err.details = e.details.map(d => d.replace(/fetch failed/gi, 'sin conexión'));
     throw err;
   }
-  return { query, engine: source, count: results.length, results };
+  return { query, engine: source, lang, count: results.length, results };
 }
 
 async function wikipediaSearch(query, limit, lang = 'es') {
@@ -926,8 +1085,10 @@ module.exports = {
   // downloader
   tiktokDownload, tiktokSearch, mapTikTokVideo,
   youtubeId, youtubeSearch, youtubeStreams, resolveYoutubeTarget, pickAudio, pickVideo,
+  youtubePlayable, youtubeAudio, normalizarCalidad,
   facebookDownload, instagramDownload,
   lyricsSearch, lyricFor,
   // searcher
-  googleSearch, wikipediaSearch
+  googleSearch, wikipediaSearch,
+  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing
 };
