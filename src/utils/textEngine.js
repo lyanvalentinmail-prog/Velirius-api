@@ -97,7 +97,7 @@ function measure(text, { family = 'sans', weight = 700, size = 48, letterSpacing
 function wrapLines(text, maxWidth, opts = {}) {
   const { maxLines = 6 } = opts;
   const paragraphs = String(text ?? '').replace(/\r/g, '').split('\n');
-  const lines = [];
+  let lines = [];
   for (const paragraph of paragraphs) {
     const words = paragraph.split(/\s+/).filter(Boolean);
     if (!words.length) continue;
@@ -135,10 +135,13 @@ function wrapLines(text, maxWidth, opts = {}) {
  */
 function fitText(text, { width, height, maxFont = 72, minFont = 14, maxLines = 6, lineHeight = 1.18, letterSpacing = 0, family = 'sans', weight = 700 } = {}) {
   const opts = { family, weight, letterSpacing };
+  // las palabras no deben partirse: si la más larga no cabe, hay que reducir
+  const words = String(text).split(/\s+/).filter(Boolean);
   let best = { fontSize: minFont, lines: wrapLines(text, width, { ...opts, size: minFont, maxLines }) };
   for (let size = Math.round(maxFont); size >= minFont; size -= 1) {
     const lines = wrapLines(text, width, { ...opts, size, maxLines });
-    const tooWide = lines.some(l => measure(l, { ...opts, size }) > width + 0.5);
+    const wordTooWide = words.some(w => measure(w, { ...opts, size }) > width + 0.5);
+    const tooWide = wordTooWide || lines.some(l => measure(l, { ...opts, size }) > width + 0.5);
     const totalH = lines.length * size * lineHeight;
     const ellipsized = lines.length && /…$/.test(lines[lines.length - 1]) && lines.length === maxLines;
     if (!tooWide && totalH <= height && !ellipsized) {
