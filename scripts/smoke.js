@@ -58,6 +58,16 @@ async function main() {
     ok('GET / (portada con INITIALIZE DASHBOARD)', landing.status === 200 && landingHtml.includes('INITIALIZE DASHBOARD') && landingHtml.includes('href="/home"'));
     ok('La portada no es un redirect: es la primera pantalla', !landing.type.includes('text/html') === false && landingHtml.includes('landing'));
 
+    // ---- Nuevas capturas de Drive en la portada + video del dashboard ----
+    const mediaStatus = JSON.parse((await get(port, '/media/status')).body.toString());
+    ok(`Multimedia de Drive (${mediaStatus.result.captures.length} capturas + video)`,
+      mediaStatus.status === true && mediaStatus.result.captures.length === 4 && /drive\.usercontent\.google\.com/.test(mediaStatus.result.video.direct));
+    ok('Portada con la galería de capturas nuevas', landingHtml.includes('class="shots"') && mediaStatus.result.captures.every(c => landingHtml.includes(c.id)));
+    const homeVid = homeHtml.includes('demo-video') && homeHtml.includes('/media/dashboardvid.mp4');
+    ok('Dashboard con el video DashboardVid.mp4', homeVid);
+    ok('El video tiene fallback al enlace directo de Drive', homeHtml.includes('drive.usercontent.google.com/download'));
+    ok('Preview del canvas sin marco (sin borde)', catCss.includes('.tester .result img') && /\.tester \.result img[^{]*\{[^}]*border: 0/.test(catCss));
+
     // ---- Opciones avanzadas plegadas en el probador ----
     const advCount = CATEGORIES.reduce((n, c) => n + c.endpoints.reduce((m, e) => m + e.params.filter(p => p.advanced).length, 0), 0);
     ok(`Opciones avanzadas marcadas (${advCount})`, advCount > 0 && catJs.includes('adv-toggle') && catJs.includes('adv-fields') && catCss.includes('.adv-toggle'));
