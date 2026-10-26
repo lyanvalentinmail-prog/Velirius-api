@@ -206,4 +206,19 @@ src/
 scripts/smoke.js        → npm test
 ```
 
-Despliegue: **Vercel** (`vercel.json` → `api/index.js`) o **Render** (`render.yaml` → `npm start`).
+### Despliegue
+
+**Render** (`render.yaml`): build `npm install`, start `npm start`. Es la opción recomendada para los
+endpoints de descarga (sin límite de tamaño de respuesta).
+
+**Vercel**: `vercel.json` ya declara `"framework": null` para que Vercel **no** intente usar el preset de
+Next.js (`NEXT_NO_VERSION`), empaqueta `assets/**` (plantillas de Canvas), `public/**` y el binario de
+ffmpeg, y enruta todo a la función `api/index.js`.
+
+1. Importa el repo en Vercel y elige **Framework Preset: Other**.
+2. En *Settings → Git → Production Branch* selecciona **`main`** (no una rama de `arena/…`).
+3. Redeploy.
+
+> En Vercel las respuestas de una función tienen un tope de ~4.5 MB: los Canvas (PNG/MP4/WebM) caben
+> sin problema, pero los archivos grandes de `/downloader/*?direct=…` conviene servirlos desde Render.
+
