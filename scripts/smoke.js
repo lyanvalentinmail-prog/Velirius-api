@@ -37,9 +37,11 @@ async function main() {
     const t = totals();
     const home = await get(port, '/home');
     const homeHtml = home.body.toString();
-    ok('GET /home', home.status === 200 && homeHtml.includes('Velirius API') && /Sincronizaci/i.test(homeHtml));
+    ok('GET /home', home.status === 200 && homeHtml.includes('Velirius API') && homeHtml.includes('Aquí están las carpetas'));
+    ok('Home con las píldoras de Apireon', homeHtml.includes('Información del Sistema') && homeHtml.includes('Catálogo JSON (/docs)') && homeHtml.includes('Cuenta de GitHub'));
+    ok('Home con barra de estado (ESTADO / RUTAS / ENDPOINTS)', /Estado:/i.test(homeHtml) && /Rutas:/i.test(homeHtml) && /Endpoints:/i.test(homeHtml));
     ok(`Home muestra ${t.routers} routers / ${t.endpoints} endpoints`, homeHtml.includes(String(t.endpoints)));
-    ok('Home lista las 6 categorías', CATEGORIES.every(c => homeHtml.includes(`/${c.id}`)));
+    ok('Home lista las 6 categorías en tarjetas', CATEGORIES.every(c => homeHtml.includes(`/${c.id}`)) && (homeHtml.match(/cat-card/g) || []).length === CATEGORIES.length);
 
     for (const cat of CATEGORIES) {
       const page = await get(port, `/${cat.id}`);
@@ -50,7 +52,7 @@ async function main() {
     const catJs = (await get(port, '/js/category.js')).body.toString();
     const catCss = (await get(port, '/css/style.css')).body.toString();
     ok('Botón TEST despliega el panel hacia abajo', catJs.includes('function setOpen') && catJs.includes('tester-inner') && catCss.includes('grid-template-rows: 0fr') && catCss.includes('.tester.open'));
-    ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('Subir foto'));
+    ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('Galería') && catJs.includes('Opcional • URL o galería'));
     ok('Panel con CÓMO USAR EL ENDPOINT + URL + fetch', catJs.includes('Cómo usar el endpoint') && catJs.includes('code-url') && catJs.includes('code-fetch'));
     ok('Chips REQUERIDO/OPCIONAL por parámetro', catJs.includes('chip-opt') && catJs.includes('Requerido') && catJs.includes('Opcional'));
     ok('Resultado con 200 OK, ms y DESCARGAR', catJs.includes('chip-status') && catJs.includes('res-meta') && catJs.includes('Descargar'));

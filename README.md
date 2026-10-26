@@ -1,8 +1,8 @@
 # Velirius API
 
-Web estilo [api.delirius.online](https://api.delirius.online/home) (tarjeta blanca punteada, borde negro,
-tipografía mono, botones `VIEW` / `TEST`, barra de estado y buscador) con **78 endpoints REST sin token**
-repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
+negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
+buscador) con **78 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, waifu.pics, waifu.im, nekos.life, purrbot,
@@ -23,8 +23,13 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
 - **Portada** (`/`) con el diseño de las capturas de referencia: hoja de papel rayado con marco
   negro, titular mono espaciado, píldora `V. x.y.z // STATUS: ONLINE`, **video del dashboard** como
   hero (con sombra dura), caja `SECURITY ALERT` y botón **`INITIALIZE DASHBOARD`** que entra a `/home`.
-- **Dashboard** (`/home`) con las carpetas: `SINCRONIZACIÓN COMPLETA`, enlaces, iconos, barra negra
-  `ESTADO: EN LÍNEA · RUTAS · ENDPOINTS` y un botón **VER** por categoría.
+- **Dashboard** (`/home`) copia literal de Apireon: intro *"Aquí están las carpetas con todas las APIS…"*,
+  *(No Requiere Token)* + enlace a GitHub, cuatro píldoras (`Información del Sistema`, `Catálogo JSON (/docs)`,
+  `Cuenta de GitHub`, `Repositorio Velirius`), barra negra `ESTADO: EN LÍNEA · RUTAS · ENDPOINTS` y rejilla
+  de tarjetas monoespaciadas (`anime\`, `canvas\`…) con el contador de endpoints y el enlace **VER**.
+- **Parámetros con los mismos nombres que Apireon** en los canvas: `quotly` (`text, username, image, bg`),
+  `iqc` (`text, replyText, replyName, time`), `ship`/`friendship` (`name1, name2, percentage, text, image1,
+  image2`, avatares opcionales), `gaycard` (`name, percentage, url`), `bratestirado`/`bratvideo` (`bg, color`).
 - El video vive en `public/media/dashboardvid.mp4` (se sirve directo, sin depender de Drive).
 - Los parámetros de estilo (`color`, `size`, `font`, `rotate`, `zoom`…) están **plegados** detrás del botón
   **`⚙ OPCIONES AVANZADAS`** dentro del probador: solo se ven los campos que importan y el panel no queda
