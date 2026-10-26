@@ -79,6 +79,23 @@ curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
 modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
 
+### Cada canvas está dividido en **partes**
+
+Las medidas de cada canvas viven en `src/canvas/layouts.js`, separadas por partes con nombre
+(`canvas`, `text`, `photo`, `sign`, `bubble`, `quote`, `name`, `hole1`…). El generador sólo dibuja:
+no tiene números clavados. Así se cambia un canvas sin tocar el motor y **cualquier valor se puede
+pisar desde la URL** con `<parte>.<clave>`:
+
+```bash
+/canvas/bobesponja?sign.x1=0.80&sign.y0=0.30      # agrandar el cartel
+/canvas/iqc?quote.size=1.15&msg.y=0.55            # cita más grande, mensaje más abajo
+/canvas/bratestirado?lens.stretch=1.6&lens.aspect=1.5   # lente más marcada
+/canvas/sebusca?photo.zoom=1.3&name.size=1.2      # acerca la foto y agranda el nombre
+```
+
+Las fotos del usuario **siempre llenan su hueco** (recorte centrado tipo *cover*, sin deformar):
+`zoom=1` es el encuadre justo y de ahí para arriba sólo acerca.
+
 ### Tipografías: nunca más cuadrados ▯▯▯
 
 El texto **no** se dibuja con `<text font-family="…">`. Cada letra se traduce a un **path vectorial**
@@ -106,7 +123,7 @@ porque **no depende de las tipografías del sistema** (fontconfig).
 | `x`, `y` | desplazamiento en % (-50 … 50) |
 | `rotate` | rotación en grados (-180 … 180) |
 | `spacing` | espacio extra entre letras en px |
-| `zoom` | zoom de la foto del usuario (0.5 … 3) |
+| `zoom` | zoom de la foto del usuario (1 = llena el hueco justo, 2 … 4 = más de cerca) |
 | `grayscale` | `true` = foto en blanco y negro |
 | `shadow` | `true` = sombra suave bajo el texto (mejor lectura sobre fotos) |
 

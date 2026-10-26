@@ -5,6 +5,7 @@ const path = require('path');
 const http = require('http');
 const app = require('../src/server');
 const { CATEGORIES, totals } = require('../src/catalog');
+const LAYOUTS = require('../src/canvas/layouts');
 const { generateCanvas, CANVAS_IDS } = require('../src/utils/canvasEngine');
 const { sharp } = require('../src/utils/image');
 const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
@@ -150,10 +151,9 @@ async function main() {
     const missing = await get(port, '/canvas/noexiste');
     ok('canvas inexistente → 404', missing.status === 404);
 
-    // ---- Imágenes de la galería (data:) y subida con URL corta ----
-    const rojo = await sharp({ create: { width: 120, height: 120, channels: 3, background: '#ff0000' } }).png().toBuffer();
-    const dataUrl = 'data:image/png;base64,' + rojo.toString('base64');
-
+    // ---- La foto del usuario entra y LLENA su hueco en todos los canvas con imagen ----
+    const solid = await sharp({ create: { width: 600, height: 900, channels: 3, background: '#ff00ff' } }).png().toBuffer();
+    const foto = 'data:image/png;base64,' + solid.toString('base64');
     const post = (port2, p2, body) => new Promise((resolve, reject) => {
       const data = Buffer.from(JSON.stringify(body));
       const req = http.request({
@@ -167,6 +167,62 @@ async function main() {
       req.on('error', reject);
       req.end(data);
     });
+
+    const isMagenta = (r, g, b) => r > 180 && g < 110 && b > 180;
+    // % del área (fracciones 0-1) que quedó tapada por la foto magenta
+    async function cobertura(buf, box) {
+      const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const x0 = Math.round(box.x0 * info.width), x1 = Math.round(box.x1 * info.width);
+      const y0 = Math.round(box.y0 * info.height), y1 = Math.round(box.y1 * info.height);
+      let hit = 0, total = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * info.width + x) * info.channels;
+          total++;
+          if (isMagenta(data[i], data[i + 1], data[i + 2])) hit++;
+        }
+      }
+      return Math.round((hit / Math.max(1, total)) * 100);
+    }
+
+    // 1) Todos los canvas con imagen aceptan la foto (POST) y no rompen con zoom bajo
+    const conImagen = [];
+    for (const cat of CATEGORIES.filter(c => c.id === 'canvas')) {
+      for (const ep of cat.endpoints || []) {
+        const imgs = ep.params.filter(p => /^(url|url2|url3|image|image1|image2|img)$/.test(p.name)).map(p => p.name);
+        if (imgs.length) conImagen.push({ cat: cat.id, id: ep.id, imgs });
+      }
+    }
+    let rotos = [];
+    for (const ep of conImagen) {
+      const body = {};
+      ep.imgs.forEach(n => { body[n] = foto; });
+      const res = await post(port, `/${ep.cat}/${ep.id}`, body);
+      const okBase = res.status === 200 && (res.type.includes('image/png') || res.type.includes('video/')) && res.body.length > 500;
+      const resZoom = await post(port, `/${ep.cat}/${ep.id}?zoom=0.5`, body);
+      if (!okBase || resZoom.status >= 500) rotos.push(`${ep.cat}/${ep.id}(${res.status}/${resZoom.status})`);
+    }
+    ok(`canvas con imagen: ${conImagen.length} aceptan la foto del usuario`, conImagen.length > 0 && rotos.length === 0, rotos.join(' '));
+
+    // 2) La foto tiene que ocupar el hueco de la plantilla (no quedar chica ni fuera de lugar)
+    const huecos = [
+      ['bobesponja', 'sign', 95], ['bobesponja2', 'sign', 95], ['bobesponja3', 'sign', 95],
+      ['canvatextoxd', 'sign', 95], ['bratpinguino', 'sign', 95], ['imagencanba', 'photo', 95],
+      ['storyreply', 'photo', 85], ['sebusca', 'photo', 80], ['canvaimagen', 'photo', 55], ['fotopc', 'photo', 65]
+    ];
+    const chicos = [];
+    for (const [id, part, min] of huecos) {
+      const res = await post(port, `/canvas/${id}`, { url: foto, image: foto });
+      const def = LAYOUTS.get(id);
+      if (!res.body.length || !def || !def.parts[part]) { chicos.push(`${id}(sin render)`); continue; }
+      const pct = await cobertura(res.body, def.parts[part].box);
+      if (pct < min) chicos.push(`${id} ${pct}%<${min}%`);
+    }
+    ok('la foto llena el hueco de cada canvas', chicos.length === 0, chicos.join(' '));
+
+    // ---- Imágenes de la galería (data:) y subida con URL corta ----
+    const rojo = await sharp({ create: { width: 120, height: 120, channels: 3, background: '#ff0000' } }).png().toBuffer();
+    const dataUrl = 'data:image/png;base64,' + rojo.toString('base64');
 
     const up = await post(port, '/upload', { image: dataUrl });
     let upJson = {};

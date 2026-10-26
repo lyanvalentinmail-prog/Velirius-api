@@ -32,7 +32,7 @@ module.exports = async function brat(q) {
   const text = txt(q, 'Welcome to Velirius API').toLowerCase();
   const body = ov.uppercase || t.uppercase ? text.toUpperCase() : text;
 
-  const pad = Math.round(P.num(q, 'text', 'pad', 0.06, 0, 0.2) * S);
+  const pad = Math.round(P.num(q, 'text', 'pad', parts.text.pad ?? 0.06, 0, 0.2) * S);
   const boxW = Math.round((box.x1 - box.x0) * S);
   const boxH = Math.round((box.y1 - box.y0) * S);
 
@@ -47,7 +47,7 @@ module.exports = async function brat(q) {
     family,
     weight: t.weight,
     letterSpacing: t.spacing + (ov.spacing || 0),
-    maxLines: 12
+    maxLines: parts.text.font.maxLines || 8
   });
 
   const layer = textLayer({

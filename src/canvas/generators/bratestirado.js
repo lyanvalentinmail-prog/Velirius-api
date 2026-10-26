@@ -45,14 +45,16 @@ module.exports = async function bratestirado(q) {
   // veces y el estirón vertical ocupa `aspect`, así que el bloque de texto se
   // achica proporcionalmente para no salirse del lienzo.
   const box = P.area(q, 'text', parts.text.box);
-  const availW = ((box.x1 - box.x0) * S) / growth;
-  const availH = ((box.y1 - box.y0) * S) / (growth * aspect);
+  const pad = Math.round(P.num(q, 'text', 'pad', parts.text.pad ?? 0.04, 0, 0.2) * S);
+  const inset = P.num(q, 'text', 'inset', parts.text.inset ?? 0.94, 0.5, 1);
+  const availW = ((box.x1 - box.x0) * S) / growth - pad * 2;
+  const availH = ((box.y1 - box.y0) * S) / (growth * aspect) - pad * 2;
 
   // Elige el tamaño más grande que entra partiendo por palabras (nunca corta ni
   // parte una palabra) y deja crecer el bloque hacia abajo si hay más líneas.
   const fit = fitLines(text, {
     width: Math.round(availW),
-    height: Math.round(availH * 0.92), // un poco de aire: el texto no toca el borde
+    height: Math.round(availH * inset), // un poco de aire: el texto no toca el borde
     // `?size=` (escala global) y `?text.size=` se multiplican
     maxFont: Math.round(parts.text.font.maxFont * t.size * ov.scale),
     minFont: 12,
@@ -60,7 +62,7 @@ module.exports = async function bratestirado(q) {
     family,
     weight: t.weight,
     letterSpacing: spacing,
-    maxLines: 8
+    maxLines: parts.text.maxLines || 6
   });
 
   const size = fit.size;
