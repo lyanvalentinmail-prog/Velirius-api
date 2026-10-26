@@ -30,6 +30,16 @@
       document.querySelectorAll('.list .row[data-endpoint]').forEach(row => {
         row.style.display = !term || row.textContent.toLowerCase().includes(term) ? '' : 'none';
       });
+      // Ocultar las secciones (grupos) que se quedaron sin resultados.
+      document.querySelectorAll('.group').forEach(group => {
+        const visible = [...group.querySelectorAll('.row[data-endpoint]')].some(r => r.style.display !== 'none');
+        group.style.display = visible ? '' : 'none';
+      });
+      document.querySelectorAll('.chips .chip').forEach(chip => {
+        const target = chip.getAttribute('href').slice(1);
+        const group = document.getElementById(target);
+        chip.style.display = group && group.style.display === 'none' ? 'none' : '';
+      });
       document.querySelectorAll('.tester.open').forEach(t => {
         const row = t.previousElementSibling;
         if (row && row.style.display === 'none') setOpen(t, false);

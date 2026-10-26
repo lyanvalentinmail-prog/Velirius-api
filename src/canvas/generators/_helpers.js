@@ -10,7 +10,7 @@ const L = require('../layouts');
 const {
   sharp, loadImageBuffer, txt, imgParam, parsePercent, normColor, styleOf,
   circleImage, heartImage, textLayer, twemoji, svgPng, chromaInsert, faceCanvas,
-  signCanvas
+  signCanvas, fitLines
 } = C;
 
 const partsOf = id => L.get(id).parts;
@@ -161,7 +161,95 @@ async function meter(kind, q) {
   return sharp(base).composite(layers).png().toBuffer();
 }
 
+
+// ======================= CAPTION (pov: / x:) =======================
+/**
+ * Texto tipo meme sobre una imagen: `pov: …` o `x: …`.
+ *
+ * La imagen (o la foto por defecto) se escala sin recortar y el texto se dibuja
+ * arriba, centrado, con contorno negro para que se lea sobre cualquier foto.
+ * Todo sale de layouts.js: `canvas` (tamaño máximo) y `text` (caja, tipografía,
+ * color y grosor del contorno).
+ */
+async function captionPart(id, q, prefix) {
+  const parts = partsOf(id);
+  const ov = styleOf(q);
+  const maxW = Math.round(P.num(q, 'canvas', 'width', parts.canvas.maxWidth, 200, 2048));
+  const maxH = Math.round(P.num(q, 'canvas', 'height', parts.canvas.maxHeight, 200, 2600));
+  const raw = await loadImageBuffer(imgParam(q, 'image', 'url', 'img'));
+  const base = await sharp(raw)
+    .rotate()
+    .resize({ width: maxW, height: maxH, fit: 'inside', withoutEnlargement: false })
+    .png()
+    .toBuffer();
+  const meta = await sharp(base).metadata();
+  const W = meta.width || maxW;
+  const H = meta.height || maxH;
+
+  const box = boxOf(id, 'text', q);
+  const t = P.style(q, 'text', parts.text.font);
+  const fill = ov.fill || P.color(q, 'text', 'fill', parts.text.fill);
+  const strokeColor = P.color(q, 'text', 'stroke', parts.text.stroke.color);
+  const strokeW = P.num(q, 'text', 'stroke', parts.text.stroke.width, 0, 0.2);
+  const pad = Math.round(Math.min(W, H) * 0.045);
+
+  // El texto puede traer saltos de línea (`\n` reales o literales): se respetan,
+  // así los memes tipo "x:" quedan en varias líneas como se escribieron.
+  const srcLines = String(txt(q, '') || '')
+    .replace(/\\n/g, '\n')
+    .split('\n')
+    .map(l => l.replace(/\s+/g, ' ').trim());
+  while (srcLines.length > 1 && !srcLines[srcLines.length - 1]) srcLines.pop();
+  const body = [`${prefix} ${srcLines[0] || ''}`.trim(), ...srcLines.slice(1)].join('\n');
+  const boxW = Math.round((box.x1 - box.x0) * W);
+  const boxH = Math.round((box.y1 - box.y0) * H);
+
+  const fit = fitLines(body, {
+    width: boxW - pad * 2,
+    height: boxH - pad * 2,
+    maxFont: Math.round(parts.text.font.maxFont * t.size * ov.scale),
+    minFont: 14,
+    lineHeight: t.lineHeight,
+    family: ov.font || t.family,
+    weight: t.weight,
+    letterSpacing: t.spacing + (ov.spacing || 0),
+    maxLines: parts.text.font.maxLines || 5
+  });
+
+  const layer = textLayer({
+    text: fit.lines.join('\n'),
+    width: boxW,
+    height: boxH,
+    family: ov.font || t.family,
+    weight: t.weight,
+    fontSize: fit.size,
+    autoFit: false,
+    maxFont: fit.size,
+    minFont: 14,
+    maxLines: fit.lines.length,
+    lineHeight: t.lineHeight,
+    letterSpacing: t.spacing + (ov.spacing || 0),
+    fill,
+    align: 'middle',
+    padding: 0,
+    stroke: strokeColor,
+    strokeWidth: Math.max(2, Math.round(fit.size * strokeW)),
+    rotate: t.rotate + (ov.rotate || 0),
+    offsetX: Math.round(ov.dx * W),
+    offsetY: Math.round(ov.dy * H)
+  });
+
+  return sharp(base)
+    .composite([{
+      input: layer.svg,
+      left: Math.round(box.x0 * W),
+      top: Math.round(box.y0 * H)
+    }])
+    .png()
+    .toBuffer();
+}
+
 module.exports = {
   ...C,
-  P, L, partsOf, boxOf, fillOf, signPart, chromaPart, facePart, meter
+  P, L, partsOf, boxOf, fillOf, signPart, chromaPart, facePart, meter, captionPart
 };

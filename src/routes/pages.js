@@ -170,12 +170,14 @@ router.get('/docs', (req, res) => {
       id: c.id,
       name: c.name,
       count: c.endpoints.length,
+      ...(Array.isArray(c.groups) ? { groups: c.groups.map(g => ({ id: g.id, name: g.name, desc: g.desc || '' })) } : {}),
       endpoints: c.endpoints.map(e => ({
         id: e.id,
         method: 'GET',
         path: `/${c.id}/${e.id}`,
         description: e.desc,
         media: e.media || 'json',
+        group: e.group || null,
         params: e.params.map(p => ({
           name: p.name,
           required: !!p.required,
@@ -195,7 +197,7 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
   if (!cat) return res.status(404).send('Not found');
   const { a1, a2 } = avatars(req);
 
-  const rows = cat.endpoints.map(e => {
+  const rowOf = e => {
     const paramsLine = e.params.length ? e.params.map(p => p.name).join(', ') : 'no params';
     return `
     <div class="row" data-endpoint="${esc(e.id)}" id="row-${esc(e.id)}">
@@ -205,7 +207,30 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
       </div>
       <button type="button" class="btn" data-test-btn="${esc(e.id)}" aria-expanded="false" aria-controls="tester-${esc(e.id)}">Test</button>
     </div>`;
-  }).join('');
+  };
+
+  // Si la categoría trae `groups` (como las carpetas de Drive en Canvas), la
+  // lista se muestra por secciones con un chip por grupo arriba.
+  const groups = Array.isArray(cat.groups) && cat.groups.length ? cat.groups : null;
+  const groupOf = e => e.group || (groups ? groups[0].id : null);
+  const rows = groups
+    ? groups.map(g => {
+        const eps = cat.endpoints.filter(e => groupOf(e) === g.id);
+        if (!eps.length) return '';
+        return `
+    <section class="group" id="grupo-${esc(g.id)}">
+      <h2 class="group-head"><span>${esc(g.name)}</span><span class="group-count">${eps.length}</span></h2>
+      ${eps.map(rowOf).join('')}
+    </section>`;
+      }).join('')
+    : cat.endpoints.map(rowOf).join('');
+
+  const chips = groups
+    ? `<nav class="chips">${groups.map(g => {
+        const n = cat.endpoints.filter(e => groupOf(e) === g.id).length;
+        return n ? `<a class="chip" href="#grupo-${esc(g.id)}">${esc(g.name)} <b>${n}</b></a>` : '';
+      }).join('')}</nav>`
+    : '';
 
   const testerData = {
     category: cat.id,
@@ -232,6 +257,7 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
       <a href="/information" title="Monitor del Sistema">Monitor del Sistema</a>
     </nav>
     <div class="status"><span>Red:&nbsp; En línea</span><span>Lista:&nbsp; ${cat.endpoints.length}</span></div>
+    ${chips}
     <div class="list">${rows}</div>
     <div class="footer">© 2026 | ${esc(config.brand)}</div>`;
 

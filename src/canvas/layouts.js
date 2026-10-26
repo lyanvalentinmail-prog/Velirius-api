@@ -25,6 +25,34 @@ const LAYOUTS = {
     }
   },
 
+  // Texto tipo meme sobre una imagen ("pov: …", "x: …").
+  // `canvas.maxWidth`/`maxHeight` limitan la foto; `text` es la caja del texto.
+  pov: {
+    label: 'POV (texto sobre tu imagen)',
+    parts: {
+      canvas: { maxWidth: 1024, maxHeight: 1280, bg: '#000000' },
+      text: {
+        box: { x0: 0.05, y0: 0.04, x1: 0.95, y1: 0.44 },
+        font: { family: 'sans', weight: 800, maxFont: 76, lineHeight: 1.16, maxLines: 5 },
+        fill: '#ffffff',
+        stroke: { color: '#000000', width: 0.075 }
+      }
+    }
+  },
+
+  x: {
+    label: 'X (texto sobre tu imagen)',
+    parts: {
+      canvas: { maxWidth: 1024, maxHeight: 1280, bg: '#000000' },
+      text: {
+        box: { x0: 0.05, y0: 0.04, x1: 0.95, y1: 0.44 },
+        font: { family: 'sans', weight: 800, maxFont: 76, lineHeight: 1.16, maxLines: 5 },
+        fill: '#ffffff',
+        stroke: { color: '#000000', width: 0.075 }
+      }
+    }
+  },
+
   bratestirado: {
     label: 'Brat estirado (lente esférica)',
     parts: {

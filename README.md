@@ -2,7 +2,7 @@
 
 Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
 negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
-buscador) con **78 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+buscador) con **80 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, waifu.pics, waifu.im, nekos.life, purrbot,
@@ -110,6 +110,11 @@ porque **no depende de las tipografías del sistema** (fontconfig).
 | `grayscale` | `true` = foto en blanco y negro |
 | `shadow` | `true` = sombra suave bajo el texto (mejor lectura sobre fotos) |
 
+La web agrupa estas canvas por **categorías**, igual que las carpetas de Drive `CategoriaCanvas`:
+**Textos** (quotly, ttp, attp, iqc, pov, x…), **Brats**, **Porcentajes**, **Imágenes**, **Filtros** y
+**Personajes**. El orden y los nombres viven en `src/catalog/canvas.js` → `GROUPS`, y cada endpoint
+declara su carpeta con el campo `group`. Para mover una canvas de sección sólo se cambia ese campo.
+
 Los canvas con plantilla de Drive están **calibrados con las coordenadas reales de cada imagen**
 (burbuja de cita de `iqc`, fila de `cuentatiktok`, cartel del pingüino, hoja de Bob Esponja, marco de
 `sebusca`…).
@@ -172,6 +177,8 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/bratpinguino` | `BratPinguino.jpg` | `text` o `image`, `mode` + estilo |
 | `/canvas/ttp` | (generado) | `text`, `color`, `bg`, `size` |
 | `/canvas/attp` | (generado, WebM) | `text`, `size` |
+| `/canvas/pov` | (generado) | `text` (se muestra como `pov: …`), `image`/`url`, `color`, `size` |
+| `/canvas/x` | (generado) | `text` (se muestra como `x: …`), `image`/`url`, `color`, `size` |
 | `/canvas/iqc` | `iqc.jpg` | `text` (la burbuja crece), `quote`, `username`, `time` + estilo |
 | `/canvas/cuentatiktok` | `CuentaTiktok.jpg` | `username`, `image`, `status` |
 | `/canvas/storyreply` | `StoryReply.jpg` | `url`, `text`, `color`, `size`, `zoom` |

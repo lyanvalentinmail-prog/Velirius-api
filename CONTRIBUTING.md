@@ -212,7 +212,7 @@ Para empezar copiá el canvas más parecido:
 - [ ] Sin `▯▯▯`: todo texto pasa por `textLayer`.
 - [ ] Sin claves de IA ni contenido NSFW (fuentes `/sfw/`).
 - [ ] Si agregaste o borraste un endpoint, actualizá su tabla en el README
-      (sección de la categoría) y el contador del título (`78 endpoints`).
+      (sección de la categoría) y el contador del título (`80 endpoints`).
 
 Con eso, el Pull Request se revisa y se mergea. La CI de GitHub corre `npm run check` y `npm test`
 en cada PR.
