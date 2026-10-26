@@ -39,10 +39,12 @@ module.exports = {
       O('size', '1', 'Escala del texto (0.5 - 2)'),
       O('rotate', '0', 'Rotar el texto en grados')
     ] },
-    { id: 'bratvideo', desc: 'Genera un video MP4 animado estilo Brat donde las palabras aparecen progresivamente.', media: 'video', params: [
+    { id: 'bratvideo', desc: 'Video MP4 estilo Brat: las palabras aparecen una por una, con un máximo de 5 por pantalla; después entran las que siguen.', media: 'video', params: [
       P('text', 'Welcome to Velirius API', 'Frase animada palabra por palabra (admite emojis)'),
-      O('bg', '8ACE00', 'Color de fondo hex (ej. 8ACE00 o ffffff)'),
-      O('color', '000000', 'Color del texto hex')
+      O('words', '5', 'Cuántas palabras entran como máximo en cada pantalla (1 - 8)'),
+      O('bg', 'ffffff', 'Color de fondo hex (ej. 8ACE00 o ffffff)'),
+      O('color', '000000', 'Color del texto hex'),
+      O('size', '1', 'Escala del texto (0.5 - 2)')
     ] },
     { id: 'bratestirado', desc: 'Genera el cartel Brat con estiramiento esférico: las letras se curvan alrededor de un bulto 3D.', params: [
       P('text', 'i <3 money', 'Texto a estirar'),
