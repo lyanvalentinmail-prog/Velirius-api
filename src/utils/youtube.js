@@ -136,16 +136,36 @@ function mejorAudioDash(lista) {
  * Pide la info de un video y devuelve los grupos de formatos ya separados.
  * @param {string} id
  */
+// Clientes InnerTube que se prueban en orden. YouTube bloquea ("Sign in to
+// confirm you're not a bot") según el cliente y la IP del servidor; si el
+// primero falla, se reintenta con otro antes de darse por vencido.
+const CLIENTES = [null, 'TV', 'IOS', 'ANDROID', 'WEB_EMBEDDED'];
+
 async function info(id) {
   const y = await clienteYt();
-  const data = await y.getInfo(id);
-  const estado = data.playability_status?.status;
-  if (estado && estado !== 'OK') {
-    const motivo = data.playability_status?.reason || estado;
-    throw new Error(`YouTube no permite reproducir este video (${motivo})`);
+  let data = null;
+  let ultimo = null;
+  for (const client of CLIENTES) {
+    try {
+      const intento = client ? await y.getInfo(id, { client }) : await y.getInfo(id);
+      const estado = intento.playability_status?.status;
+      if (estado && estado !== 'OK') {
+        const motivo = intento.playability_status?.reason || estado;
+        ultimo = new Error(`YouTube no permite reproducir este video (${motivo})`);
+        continue;
+      }
+      if (!intento.streaming_data) {
+        ultimo = new Error('YouTube no devolvió formatos para este video');
+        continue;
+      }
+      data = intento;
+      break;
+    } catch (e) {
+      ultimo = e;
+    }
   }
+  if (!data) throw ultimo || new Error('YouTube no devolvió formatos para este video');
   const sd = data.streaming_data;
-  if (!sd) throw new Error('YouTube no devolvió formatos para este video');
   return {
     y,
     data,

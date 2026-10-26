@@ -373,16 +373,71 @@ async function main() {
     const bing = P.parseBing(htmlBing, 5);
     ok('Bing: lee b_algo → h2 → a', bing.length === 1 && bing[0].url === 'https://ejemplo.com/cuatro' && bing[0].snippet.includes('Bing'));
 
-    // ---- WALLPAPER: los parsers de fondos (Bing y Google imágenes) ----
-    const bingM = '{"murl":"https://ejemplo.com/fondo.jpg","turl":"https://ejemplo.com/mini.jpg","t":"Fondo 4K","mw":3840,"mh":2160,"purl":"https://ejemplo.com/pagina"}';
-    const bingImg = P.parseBingImages(`<a class="iusc" m='${bingM}'>x</a>`, 5);
-    ok('Wallpaper: Bing imágenes lee murl + tamaño', bingImg.length === 1 && bingImg[0].width === 3840 && bingImg[0].orientation === 'landscape');
-    // Google manda ["url", alto, ancho]: el vertical (1080x1920) es el primero.
-    const googleImg = P.parseGoogleImages('x["https://ejemplo.com/vertical.jpg",1920,1080]y["https://ejemplo.com/otro.png",800,1200]', 5);
-    ok('Wallpaper: Google imágenes lee url + alto/ancho',
-      googleImg.length === 2 && googleImg[0].width === 1080 && googleImg[0].height === 1920 && googleImg[0].orientation === 'portrait');
+    // ---- PINTEREST: pines normalizados (imagen, carrusel y video) ----
+    const pinImg = P.mapPinterestPin({
+      id: '123',
+      grid_title: 'gato aesthetic',
+      images: { orig: { url: 'https://i.pinimg.com/originals/a.jpg', width: 1000, height: 1500 }, '236x': { url: 'https://i.pinimg.com/236x/a.jpg' } },
+      pinner: { username: 'velirius' }
+    });
+    ok('Pinterest: el pin usa la imagen original y arma su URL',
+      pinImg.type === 'image' && pinImg.image === 'https://i.pinimg.com/originals/a.jpg'
+      && pinImg.url === 'https://www.pinterest.com/pin/123/' && pinImg.author === 'velirius');
+    const pinVideo = P.mapPinterestPin({
+      id: '9',
+      images: { orig: { url: 'https://i.pinimg.com/originals/b.jpg' } },
+      videos: { video_list: { V_480P: { url: 'https://v.pinimg.com/480.mp4', width: 480 }, V_720P: { url: 'https://v.pinimg.com/720.mp4', width: 720 } } }
+    });
+    ok('Pinterest: los pines de video eligen el MP4 más grande', pinVideo.type === 'video' && pinVideo.video === 'https://v.pinimg.com/720.mp4');
+    ok('Pinterest: se reconoce el ID desde cualquier forma de la URL',
+      P.pinterestPinId('https://www.pinterest.com/pin/9876543210/') === '9876543210'
+      && P.pinterestPinId('https://pin.it/abc') === null
+      && P.pinterestPinId('9876543210') === '9876543210');
 
-    for (const ep of ['tiktok', 'youtube', 'google', 'wikipedia', 'wallpaper']) {
+    // ---- INSTAGRAM: el parser de los mirrors (video, foto y carrusel) ----
+    const igVideo = P.parseInstagramHtml(
+      '<meta property="og:video" content="https://scontent.cdninstagram.com/v/reel.mp4">'
+      + '<meta property="og:image" content="https://scontent.cdninstagram.com/v/portada.jpg">', 'ABC');
+    ok('Instagram: detecta el reel y su portada',
+      igVideo.media.length === 1 && igVideo.media[0].type === 'video'
+      && igVideo.media[0].url === 'https://scontent.cdninstagram.com/v/reel.mp4'
+      && igVideo.media[0].thumbnail === 'https://scontent.cdninstagram.com/v/portada.jpg');
+    const igCarrusel = P.parseInstagramHtml(
+      '<meta property="og:image" content="https://scontent.cdninstagram.com/v/1.jpg">'
+      + '<script>{"display_url":"https://scontent.cdninstagram.com/v/2.jpg"}</script>'
+      + '<script>{"display_url":"https://scontent.cdninstagram.com/v/3.jpg"}</script>', 'XYZ');
+    ok('Instagram: un carrusel devuelve todos los slides sin repetir',
+      igCarrusel.media.length === 2
+      && igCarrusel.media.every(m => m.type === 'image')
+      && igCarrusel.media[0].thumbnail === 'https://scontent.cdninstagram.com/v/1.jpg');
+
+    // ---- FACEBOOK: HD/SD desde el HTML (y fb.watch) ----
+    const fbHtml = '{"playable_url_quality_hd":"https:\\/\\/video.fbcdn.net\\/hd.mp4",'
+      + '"playable_url":"https:\\/\\/video.fbcdn.net\\/sd.mp4"}'
+      + '<meta property="og:title" content="Mi video"><meta property="og:image" content="https://scontent.fbcdn.net/p.jpg">';
+    const fb = P.parseFacebookHtml(fbHtml);
+    ok('Facebook: separa HD y SD aunque vengan escapadas',
+      fb.hd === 'https://video.fbcdn.net/hd.mp4' && fb.sd === 'https://video.fbcdn.net/sd.mp4'
+      && fb.title === 'Mi video' && fb.thumbnail === 'https://scontent.fbcdn.net/p.jpg');
+
+    // ---- COBALT: respaldo universal de descargas ----
+    const COBALT = require('../src/utils/cobalt');
+    ok('cobalt: normaliza la respuesta v10 (tunnel)',
+      COBALT.normalizar({ status: 'tunnel', url: 'https://x/v.mp4', filename: 'v.mp4' }, 'https://api.ejemplo').url === 'https://x/v.mp4');
+    ok('cobalt: normaliza el picker de la v7',
+      COBALT.normalizar({ status: 'picker', picker: [{ url: 'https://x/a.jpg' }] }, 'https://api.ejemplo').url === 'https://x/a.jpg');
+    let cobaltError = null;
+    try { COBALT.normalizar({ status: 'error', error: { code: 'api.youtube.login' } }, 'https://api.ejemplo'); } catch (e) { cobaltError = e; }
+    ok('cobalt: los errores se explican (no se devuelven como archivo)', Boolean(cobaltError) && /login/.test(cobaltError.message));
+    process.env.COBALT_API_URL = 'https://cobalt.midominio.test/';
+    ok('cobalt: se puede apuntar a una instancia propia',
+      COBALT.instancias()[0] === 'https://cobalt.midominio.test');
+    process.env.COBALT_DISABLE = 'true';
+    ok('cobalt: COBALT_DISABLE=true lo apaga', COBALT.disponible() === false);
+    delete process.env.COBALT_DISABLE;
+    delete process.env.COBALT_API_URL;
+
+    for (const ep of ['tiktok', 'youtube', 'google', 'wikipedia', 'pinterest']) {
       const r = await get(port, `/searcher/${ep}`);
       ok(`/searcher/${ep} sin query → 400`, r.status === 400 && /query/i.test(r.body.toString()));
     }
@@ -630,16 +685,29 @@ async function main() {
       (catJsDescargas.match(/btnDescargar\(/g) || []).length >= 4 && catJsDescargas.includes('download=true'));
     ok('La web puede descargar el JSON de cualquier endpoint',
       catJsDescargas.includes('bajarTexto') && catJsDescargas.includes('data-dl-text'));
-    ok('La web manda los archivos del JSON por /downloader/file',
-      catJsDescargas.includes('/downloader/file?url='));
+    ok('La web ya no depende del proxy abierto /downloader/file',
+      !catJsDescargas.includes('/downloader/file'));
 
-    // ---- Proxy de descarga genérico (/downloader/file) ----
-    const fileSinUrl = await get(port, '/downloader/file');
-    ok('/downloader/file sin url → 400', fileSinUrl.status === 400);
-    const fileLocal = await get(port, '/downloader/file?url=' + encodeURIComponent('http://127.0.0.1:9/secreto'));
-    ok('/downloader/file bloquea direcciones internas', fileLocal.status === 400);
-    const filePropio = await get(port, '/downloader/file?url=' + encodeURIComponent('/img/default-avatar.jpg'));
-    ok('/downloader/file exige http(s)', filePropio.status === 400 || filePropio.status === 200);
+    // ---- El proxy abierto y los fondos de pantalla se eliminaron ----
+    for (const ruta of ['/downloader/file', '/downloader/proxy', '/downloader/wallpaper', '/searcher/wallpaper']) {
+      const r = await get(port, ruta);
+      ok(`${ruta} ya no existe → 404`, r.status === 404);
+    }
+    const pinSin = await get(port, '/downloader/pinterest');
+    ok('/downloader/pinterest sin url → 400', pinSin.status === 400);
+    // Una URL inválida es culpa del cliente: 400, no 502.
+    for (const [ruta, q] of [
+      ['/downloader/instagram', 'url=x'],
+      ['/downloader/facebook', 'url=x'],
+      ['/downloader/pinterest', 'url=x'],
+      ['/downloader/youtube', 'url=x'],
+      ['/downloader/mp3', 'url=x'],
+      ['/downloader/mp4', 'url=x']
+    ]) {
+      const r = await get(port, `${ruta}?${q}`);
+      ok(`${ruta} con URL inválida → 400`, r.status === 400);
+    }
+    ok('El catálogo bajó a 100 endpoints (sin wallpaper ni file)', t.endpoints === 100);
 
     // ---- Letra → sticker brat con la canción COMPLETA ----
     {

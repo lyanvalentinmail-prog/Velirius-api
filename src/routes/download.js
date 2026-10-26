@@ -1,8 +1,9 @@
 // src/routes/download.js — DOWNLOADER: TikTok · YouTube · Facebook · Instagram ·
-// MP3 · MP4 · Play · Lyric · Wallpaper.
+// Pinterest · MP3 · MP4 · Play · Lyric.
 // ?direct= devuelve el archivo en streaming (con Range 206) en lugar de JSON.
 const express = require('express');
 const P = require('../utils/providers');
+const COBALT = require('../utils/cobalt');
 const { sendSuccess, sendError, sendText, sendPng, proxyStream, sendFile, wantsDownload } = require('../utils/response');
 const { absoluteUrl, fetchWithTimeout, UA_DESKTOP } = require('../utils/http');
 const { bratFromLyrics } = require('../utils/lyricArt');
@@ -59,11 +60,20 @@ async function videoConAudio(info, quality) {
   return P.youtubePlayable(info.id, q);
 }
 
-/** Audio reproducible: primero el formato adaptativo ya resuelto, si no youtubeAudio. */
+/**
+ * Audio reproducible: primero el formato adaptativo ya resuelto, si no
+ * youtubeAudio (youtubei.js). Si YouTube bloquea al servidor por IP, el último
+ * recurso es cobalt en modo audio: devuelve un MP3 directo.
+ */
 async function audioDe(info) {
   const audio = P.pickAudio(info.formats);
   if (audio?.url) return { ...audio, source: info.source || null };
-  return P.youtubeAudio(info.id);
+  try {
+    return await P.youtubeAudio(info.id);
+  } catch (e) {
+    const r = await COBALT.pedir(`https://www.youtube.com/watch?v=${info.id}`, { downloadMode: 'audio', audioFormat: 'mp3' });
+    return { url: r.url, mime: 'audio/mpeg', quality: 'audio', bitrate: null, source: 'cobalt' };
+  }
 }
 
 const extAudio = (mime = '') => (/webm/i.test(mime) ? 'webm' : /mpeg|mp3/i.test(mime) ? 'mp3' : 'm4a');
@@ -189,99 +199,56 @@ router.get(['/instagram', '/ig'], handle(async (req, res) => {
   const url = String(req.query.url || '').trim();
   if (!url) return sendError(res, 400, 'Falta el parámetro url', 'Ejemplo: /downloader/instagram?url=https://www.instagram.com/reel/…');
   const info = await P.instagramDownload(url);
-  if (wantDirect(req, ['true', '1']) && info.media?.[0]) {
-    const m = info.media[0];
-    return proxyStream(req, res, m.url, { filename: `velirius-ig-${info.shortcode}.${m.type === 'video' ? 'mp4' : 'jpg'}` });
-  }
-  return sendSuccess(res, info);
-}));
-
-// ---------- File (proxy genérico de descarga) ----------
-/**
- * Baja CUALQUIER archivo público (imagen, video, audio, json) desde una URL.
- * Es lo que usa el botón DESCARGA de la web cuando un endpoint devuelve un
- * link dentro del JSON, así "descargar" funciona en todos los endpoints.
- *   /downloader/file?url=https://…/foto.jpg&download=true
- */
-const BLOQUEADOS = /^(?:localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|\[?::1\]?$)/i;
-router.get(['/file', '/proxy'], handle(async (req, res) => {
-  const raw = String(req.query.url || '').trim();
-  if (!raw) return sendError(res, 400, 'Falta el parámetro url', 'Ejemplo: /downloader/file?url=https://…/foto.jpg');
-  let target;
-  try { target = new URL(raw); } catch (_) { return sendError(res, 400, 'URL inválida'); }
-  if (!/^https?:$/.test(target.protocol)) return sendError(res, 400, 'Sólo se permiten URLs http(s)');
-  if (BLOQUEADOS.test(target.hostname)) return sendError(res, 400, 'Esa URL no está permitida');
-  const nombre = cleanName(req.query.filename || path.basename(target.pathname) || 'velirius-archivo');
-  const ext = (nombre.includes('.') ? '' : mimeExt(target.pathname)) || '';
-  return proxyStream(req, res, target.toString(), {
-    filename: `${nombre}${ext}`,
-    headers: { Referer: `${target.origin}/` }
-  });
-}));
-
-/** Extensión razonable cuando el nombre no la trae. */
-function mimeExt(p) {
-  const m = String(p).match(/\.([a-z0-9]{2,5})$/i);
-  return m ? `.${m[1].toLowerCase()}` : '.bin';
-}
-
-// ---------- Wallpaper (fondo de pantalla) ----------
-/**
- * Descarga un fondo de pantalla.
- *   · ?url=…  → baja esa imagen tal cual.
- *   · ?query=… → busca el mejor fondo de esa búsqueda y lo baja (JSON con
- *     `?direct=true` devuelve la imagen, como el resto del downloader).
- */
-router.get(['/wallpaper', '/wallpapers', '/fondo', '/fondos'], handle(async (req, res) => {
-  const query = String(req.query.query || req.query.q || req.query.text || '').trim();
-  const url = String(req.query.url || '').trim();
-  const directo = wantDirect(req, ['true', 'image', 'img', 'jpg', 'png', '1']);
-  if (!query && !url) {
-    return sendError(res, 400, 'Falta el parámetro query o url',
-      'Ejemplo: /downloader/wallpaper?query=anime&direct=true');
-  }
-  let elegido = url ? { url, title: null, width: null, height: null, source: 'url' } : null;
-  let busqueda = null;
-  if (!elegido) {
-    busqueda = await P.wallpaperSearch(query, {
-      limit: 12,
-      page: req.query.page,
-      orientation: req.query.orientation || req.query.type || 'landscape',
-      minWidth: req.query.minWidth || req.query.width,
-      minHeight: req.query.minHeight || req.query.height,
-      source: req.query.source
-    });
-    const index = Math.max(0, Math.min(busqueda.results.length - 1, parseInt(req.query.index ?? req.query.i, 10) || 0));
-    elegido = busqueda.results[index];
-    if (!elegido) throw new Error('La búsqueda no devolvió fondos de pantalla');
-  }
-  const nombre = `${cleanName(elegido.title || query || 'wallpaper')}.jpg`;
-  if (directo) {
-    return proxyStream(req, res, elegido.url, {
-      filename: nombre,
-      headers: { Referer: new URL(elegido.url).origin + '/' }
-    });
-  }
-  // JSON: la imagen completa + el link listo para descargar.
+  const lista = info.media || [];
+  // `index` elige el slide de un carrusel (0 = el primero).
+  const i = Math.max(0, Math.min(Math.max(0, lista.length - 1), parseInt(req.query.index ?? req.query.i, 10) || 0));
   const self = req.originalUrl.split('?')[0];
+  const media = lista.map((m, n) => ({
+    ...m,
+    index: n,
+    downloadUrl: absoluteUrl(req, `${self}?url=${encodeURIComponent(url)}&index=${n}&direct=true&download=true`),
+    directUrl: absoluteUrl(req, `${self}?url=${encodeURIComponent(url)}&index=${n}&direct=true`)
+  }));
+  if (wantDirect(req, ['true', '1', 'mp4', 'jpg', 'image', 'video']) && lista[i]) {
+    const m = lista[i];
+    return proxyStream(req, res, m.url, {
+      filename: `velirius-ig-${info.shortcode || 'post'}-${i + 1}.${m.type === 'video' ? 'mp4' : 'jpg'}`,
+      headers: { Referer: 'https://www.instagram.com/', 'User-Agent': UA_DESKTOP }
+    });
+  }
+  return sendSuccess(res, { ...info, count: media.length, media });
+}));
+
+// ---------- Pinterest ----------
+/**
+ * Descarga un pin de Pinterest (imagen, GIF o video).
+ *   · ?url=https://www.pinterest.com/pin/…  → resuelve y baja el archivo.
+ *   · ?direct=true → devuelve el archivo; sin `direct` devuelve JSON con los
+ *     links (`image`, `video`, `downloadUrl`).
+ */
+router.get(['/pinterest', '/pin'], handle(async (req, res) => {
+  const url = String(req.query.url || '').trim();
+  if (!url) {
+    return sendError(res, 400, 'Falta el parámetro url',
+      'Ejemplo: /downloader/pinterest?url=https://www.pinterest.com/pin/1234567890/');
+  }
+  const pin = await P.pinterestDownload(url);
+  const archivo = pin.video || pin.image;
+  if (!archivo) throw new Error('El pin no tiene imagen ni video público');
+  const ext = pin.video ? 'mp4' : (/\.[a-z0-9]{2,5}(?:\?|$)/i.exec(pin.image || '') || [])[1] || 'jpg';
+  const nombre = `${cleanName(pin.title || `pinterest-${pin.id || 'pin'}`)}.${ext}`;
+  if (wantDirect(req, ['true', 'image', 'img', 'video', 'mp4', '1'])) {
+    return proxyStream(req, res, archivo, {
+      filename: nombre,
+      headers: { Referer: 'https://www.pinterest.com/', 'User-Agent': UA_DESKTOP }
+    });
+  }
+  const self = req.originalUrl.split('?')[0];
+  const base = `${self}?url=${encodeURIComponent(url)}&direct=true`;
   return sendSuccess(res, {
-    query: query || null,
-    source: elegido.source || busqueda?.source || null,
-    count: busqueda?.count ?? 1,
-    wallpaper: {
-      title: elegido.title || null,
-      width: elegido.width || null,
-      height: elegido.height || null,
-      orientation: elegido.orientation || null,
-      image: elegido.url,
-      thumb: elegido.thumb || elegido.url,
-      page: elegido.page || null,
-      downloadUrl: absoluteUrl(req, `${self}?url=${encodeURIComponent(elegido.url)}&download=true`)
-    },
-    results: busqueda ? busqueda.results.map(w => ({
-      ...w,
-      downloadUrl: absoluteUrl(req, `${self}?url=${encodeURIComponent(w.url)}&download=true`)
-    })) : undefined
+    ...pin,
+    downloadUrl: absoluteUrl(req, `${base}&download=true`),
+    directUrl: absoluteUrl(req, base)
   });
 }));
 
