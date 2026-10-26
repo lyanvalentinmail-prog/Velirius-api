@@ -1,4 +1,4 @@
-// src/canvas/generators/sebusca.js — sebusca
+// src/canvas/generators/searched.js — searched
 // Partes: photo · band + name (franja del nombre al pie de la foto) · reward.
 
 // Guía: README.md → "Cómo agregar o editar un endpoint".
@@ -7,20 +7,20 @@ const {
   placeImageArea, P, partsOf, boxOf
 } = require('./_helpers');
 
-module.exports = async function sebusca(q) {
+module.exports = async function searched(q) {
   const ov = styleOf(q);
-  const parts = partsOf('sebusca');
+  const parts = partsOf('searched');
   const { buf, width: W, height: H } = await templateMeta(parts.template);
   const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
   const layers = [
-    await placeImageArea(W, H, boxOf('sebusca', 'photo', q), user, {
+    await placeImageArea(W, H, boxOf('searched', 'photo', q), user, {
       zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate
     })
   ];
 
   const name = String(q.name ?? 'EL MÁS BUSCADO').trim();
   if (name) {
-    const bandBox = boxOf('sebusca', 'band', q);
+    const bandBox = boxOf('searched', 'band', q);
     const bandX = Math.round(bandBox.x0 * W);
     const bandW = Math.round((bandBox.x1 - bandBox.x0) * W);
     const bandY = Math.round(bandBox.y0 * H);

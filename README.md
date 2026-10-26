@@ -102,7 +102,7 @@ pisar desde la URL** con `<parte>.<clave>`:
 /canvas/bobesponja?sign.x1=0.80&sign.y0=0.30      # agrandar el cartel
 /canvas/iqc?quote.size=1.15&msg.y=0.55            # cita más grande, mensaje más abajo
 /canvas/bratestirado?lens.stretch=1.6&lens.aspect=1.5   # lente más marcada
-/canvas/sebusca?photo.zoom=1.3&name.size=1.2      # acerca la foto y agranda el nombre
+/canvas/searched?photo.zoom=1.3&name.size=1.2      # acerca la foto y agranda el nombre
 ```
 
 Las fotos del usuario **siempre llenan su hueco** (recorte centrado tipo *cover*, sin deformar):
@@ -145,13 +145,13 @@ porque **no depende de las tipografías del sistema** (fontconfig).
 | `shadow` | `true` = sombra suave bajo el texto (mejor lectura sobre fotos) |
 
 La web agrupa estas canvas por **categorías**, igual que las carpetas de Drive `CategoriaCanvas`:
-**Textos** (quotly, ttp, attp, iqc, pov, x…), **Brats**, **Porcentajes**, **Imágenes**, **Filtros** y
-**Personajes**. El orden y los nombres viven en `src/catalog/canvas.js` → `GROUPS`, y cada endpoint
+**Textos** (quotly, ttp, attp, iqc, pov, x…), **Brats**, **Efectos**, **Porcentajes**, **Imágenes**,
+**Filtros** y **Personajes**. El orden y los nombres viven en `src/catalog/canvas.js` → `GROUPS`, y cada endpoint
 declara su carpeta con el campo `group`. Para mover una canvas de sección sólo se cambia ese campo.
 
 Los canvas con plantilla de Drive están **calibrados con las coordenadas reales de cada imagen**
 (burbuja de cita de `iqc`, fila de `cuentatiktok`, cartel del pingüino, hoja de Bob Esponja, marco de
-`sebusca`…).
+`searched`…).
 
 **El texto nunca lleva una caja de fondo.** El texto de ejemplo de la plantilla se borra detectando su
 caja real y repintando esa zona con el color mediano del propio fondo, con bordes difuminados; después
@@ -220,11 +220,17 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/bobesponja` | `BobEsponja.jpg` | `text` o `url`, `mode` + estilo |
 | `/canvas/bobesponja2` | `BobEsponja2.jpg` | `text` o `url`, `mode` + estilo |
 | `/canvas/bobesponja3` | `BobEsponja3.jpg` | `text` o `url`, `mode` + estilo |
-| `/canvas/canvatextoxd` | `CanvaTextoxD.jpg` | `text` o `url`, `mode` + estilo |
-| `/canvas/imagencanba` | `ImagenCanba.jpg` | `url` o `text`, `mode`, `zoom` + estilo |
+| `/canvas/cartelboy` | `CartelBoy.jpg` | `text` o `url`, `mode` + estilo |
+| `/canvas/pcquote` | `PcQuote.jpg` | `url` o `text`, `mode`, `zoom` + estilo |
 | `/canvas/canvaimagen` | `CanvaImagen.jpg` | `url`, `zoom`, `grayscale`, `rotate` |
-| `/canvas/fotopc` | `FotoPc.jpg` | `url`, `zoom`, `grayscale`, `rotate` |
-| `/canvas/sebusca` | `SeBusca.jpg` | `url`, `name`, `reward`, `zoom` |
+| `/canvas/laptop` | `Laptop.jpg` | `url`, `zoom`, `grayscale`, `rotate` |
+| `/canvas/searched` | `Searched.jpg` | `url`, `name`, `reward`, `zoom` |
+| `/canvas/pc` | `Pc.jpg` | `url` (chroma-key del monitor) + estilo |
+| `/canvas/google` | `Google.jpg` | `url` (los 5 resultados), `url2`…`url5`, `avatar` |
+| `/canvas/carcel` | `Carcel.jpg` | `url` (chroma-key: quedás detrás de las rejas) + estilo |
+| `/canvas/sunglass` | `SunGlass.jpg` | `url` (chroma-key: los lentes van encima) + estilo |
+| `/canvas/trollface` | `TrollFace.jpg` | `url` (chroma-key: la cara va encima) + estilo |
+| `/canvas/badface` | `BadFace.jpg` | `url` (chroma-key: la cara va encima) + estilo |
 | `/canvas/pokemoncard` | `PokemonCard.jpg` | `name`, `hp`, `url`, `type`, `attack`, `damage`, `description` |
 | `/canvas/ship` | `ship.png` | `image1`, `name1`, `image2`, `name2`, `percentage`, `text`, `color` |
 | `/canvas/friendship` | `friendship.png` | igual que `ship` (círculos + 👍) |
@@ -238,6 +244,10 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/galletita` | `Canvas Personajes/Galletita.jpg` | `url`, `zoom`, `rotate` |
 | `/canvas/minions` | `Canvas Personajes/Minions.jpg` | `url`, `url2`, `url3`, `zoom` |
 
+Cada `id` es el **nombre del archivo de Drive** en minúsculas (`CartelBoy.jpg` → `cartelboy`,
+`Laptop.jpg` → `laptop`, `Searched.jpg` → `searched`, `PcQuote.jpg` → `pcquote`). Los nombres viejos
+siguen funcionando como alias: `canvatextoxd`, `fotopc`, `sebusca` e `imagencanba`.
+
 En los carteles con texto **o** imagen: deja `text` vacío y envía `url`/`image` (o `mode=image`)
 para pegar la foto en el cartel.
 
@@ -247,8 +257,8 @@ Todos los canvas aceptan la foto de dos maneras:
 
 | Cómo | Ejemplo |
 |---|---|
-| **URL** (http/https, o `dominio.com/foto.jpg` sin esquema) | `/canvas/sebusca?url=https://i.imgur.com/x.jpg` |
-| **Galería** (imagen `data:` en el cuerpo del POST) | `POST /canvas/sebusca` con `{ "url": "data:image/jpeg;base64,..." }` |
+| **URL** (http/https, o `dominio.com/foto.jpg` sin esquema) | `/canvas/searched?url=https://i.imgur.com/x.jpg` |
+| **Galería** (imagen `data:` en el cuerpo del POST) | `POST /canvas/searched` con `{ "url": "data:image/jpeg;base64,..." }` |
 | **Subida con URL corta** (lo que hace la web) | `POST /upload` → `{ "result": { "url": "…/upload/abc123" } }` → usá esa URL en cualquier canvas |
 
 - Si **no mandás** imagen, se usa la foto predeterminada (`assets/defaults/`) — es a propósito.

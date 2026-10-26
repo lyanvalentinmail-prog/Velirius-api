@@ -216,8 +216,8 @@ async function main() {
     // 2) La foto tiene que ocupar el hueco de la plantilla (no quedar chica ni fuera de lugar)
     const huecos = [
       ['bobesponja', 'sign', 95], ['bobesponja2', 'sign', 95], ['bobesponja3', 'sign', 95],
-      ['canvatextoxd', 'sign', 95], ['bratpinguino', 'sign', 95], ['imagencanba', 'photo', 95],
-      ['storyreply', 'photo', 85], ['sebusca', 'photo', 80], ['canvaimagen', 'photo', 55], ['fotopc', 'photo', 65]
+      ['cartelboy', 'sign', 95], ['bratpinguino', 'sign', 95], ['pcquote', 'photo', 95],
+      ['storyreply', 'photo', 85], ['searched', 'photo', 80], ['canvaimagen', 'photo', 55], ['laptop', 'photo', 65]
     ];
     const chicos = [];
     for (const [id, part, min] of huecos) {
@@ -242,17 +242,17 @@ async function main() {
     const upGet = upUrl ? await get(port, new URL(upUrl).pathname) : { status: 0, type: '', body: Buffer.alloc(0) };
     ok('GET /upload/:id devuelve la imagen', upGet.status === 200 && upGet.type.startsWith('image/') && upGet.body.length > 50);
 
-    const conGaleria = upUrl ? await get(port, `/canvas/sebusca?name=GALERIA&url=${encodeURIComponent(upUrl)}`) : { status: 0, body: Buffer.alloc(0) };
+    const conGaleria = upUrl ? await get(port, `/canvas/searched?name=GALERIA&url=${encodeURIComponent(upUrl)}`) : { status: 0, body: Buffer.alloc(0) };
     ok('canvas usa la imagen subida (?url=/upload/…)', conGaleria.status === 200 && isPng(conGaleria.body));
 
-    const conBody = await post(port, '/canvas/sebusca', { name: 'GALERIA', url: dataUrl });
+    const conBody = await post(port, '/canvas/searched', { name: 'GALERIA', url: dataUrl });
     ok('canvas usa la imagen de la galería (POST con data:)', conBody.status === 200 && isPng(conBody.body));
 
     // La imagen enviada tiene que cambiar el resultado (antes caía a la foto por defecto).
-    const porDefecto = await get(port, '/canvas/sebusca?name=GALERIA');
+    const porDefecto = await get(port, '/canvas/searched?name=GALERIA');
     ok('la imagen enviada cambia el resultado', isPng(porDefecto.body) && Buffer.compare(porDefecto.body, conBody.body) !== 0);
 
-    const urlMala = await get(port, '/canvas/sebusca?url=no-es-una-url');
+    const urlMala = await get(port, '/canvas/searched?url=no-es-una-url');
     ok('URL inválida → 400 (no foto por defecto)', urlMala.status === 400 && /no es una URL válida/i.test(urlMala.body.toString()));
 
     // ---- Anime: respaldo de proveedores y filtro SFW ----

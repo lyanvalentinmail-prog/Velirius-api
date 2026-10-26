@@ -7,12 +7,23 @@ const { sendPng, sendMedia, sendError } = require('../utils/response');
 const { findEndpoint } = require('../catalog');
 
 const router = express.Router();
+
+// Nombres viejos → nombre actual (igual al archivo de Drive).
+// Se mantienen para que las URLs que ya circulan no se rompan.
+const ALIASES = {
+  canvatextoxd: 'cartelboy',
+  fotopc: 'laptop',
+  sebusca: 'searched',
+  imagencanba: 'pcquote'
+};
+const resolveId = id => ALIASES[id] || id;
 // Las imágenes de la galería llegan en el cuerpo (JSON) para no meter un
 // `data:` enorme en la URL: POST /canvas/quotly  { "text": "...", "image": "data:..." }
 const jsonBody = express.json({ limit: '12mb' });
 
 async function handleCanvas(req, res) {
-  const id = String(req.params.id || '').toLowerCase();
+  const pedido = String(req.params.id || '').toLowerCase();
+  const id = resolveId(pedido);
   // Parámetros del POST + query string (el body manda).
   const q = { ...req.query, ...(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) };
   if (!findEndpoint('canvas', id)) {

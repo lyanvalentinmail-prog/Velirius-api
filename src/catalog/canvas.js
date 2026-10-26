@@ -29,6 +29,7 @@ const { P, O, S, AV, AV2, textStyle, photoStyle } = require('./helpers');
 const GROUPS = [
   { id: 'textos', name: 'Textos', desc: 'Stickers y capturas de chat' },
   { id: 'brats', name: 'Brats', desc: 'La familia brat: stickers, videos y carteles' },
+  { id: 'efectos', name: 'Efectos', desc: 'Tu foto con algo encima: lentes, caras, rejas' },
   { id: 'porcentajes', name: 'Porcentajes', desc: 'Medidores, cartas y porcentajes' },
   { id: 'imagenes', name: 'Imágenes', desc: 'Tu foto o tu texto dentro de un meme' },
   { id: 'filtros', name: 'Filtros', desc: 'Efectos sobre tu foto' },
@@ -152,13 +153,13 @@ module.exports = {
       S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
       ...textStyle()
     ] },
-    { id: 'canvatextoxd', group: 'brats', desc: 'Muñeco 3D con cartel en blanco', params: [
+    { id: 'cartelboy', group: 'brats', desc: 'Muñeco 3D con cartel en blanco', params: [
       O('text', 'tu texto aquí', 'Texto del cartel'),
       O('url', '', 'Imagen para el cartel (reemplaza el texto)'),
       S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
       ...textStyle()
     ] },
-    { id: 'imagencanba', group: 'imagenes', desc: 'Tu imagen (o texto) dentro de MS Paint', params: [
+    { id: 'pcquote', group: 'imagenes', desc: 'Tu imagen o tu texto dibujados en el MS Paint', params: [
       O('url', AV, 'Imagen dentro del lienzo'),
       O('text', '', 'Texto dentro del lienzo (reemplaza la imagen)'),
       S('mode', '', 'auto = decide por parámetros', ['', 'text', 'image']),
@@ -170,11 +171,24 @@ module.exports = {
       P('url', AV, 'Tu imagen'),
       ...photoStyle()
     ] },
-    { id: 'fotopc', group: 'imagenes', desc: 'Tu imagen en la pantalla de la PC', params: [
+    { id: 'laptop', group: 'imagenes', desc: 'Tu imagen en la pantalla de la laptop', params: [
       P('url', AV, 'Tu imagen'),
       ...photoStyle()
     ] },
-    { id: 'sebusca', group: 'imagenes', desc: 'Cartel SE BUSCA vivo o muerto', params: [
+    { id: 'pc', group: 'imagenes', desc: 'Tu imagen en el monitor de la PC', params: [
+      P('url', AV, 'Tu imagen'),
+      ...photoStyle()
+    ] },
+    { id: 'google', group: 'imagenes', desc: 'Búsqueda de imágenes de Google con tus fotos en los resultados', params: [
+      O('url', AV, 'Imagen que se repite en los 5 resultados'),
+      O('url2', AV, 'Solo el segundo resultado (opcional)'),
+      O('url3', AV, 'Solo el tercer resultado (opcional)'),
+      O('url4', AV, 'Solo el cuarto resultado (opcional)'),
+      O('url5', AV, 'Solo el quinto resultado (opcional)'),
+      O('avatar', AV, 'Foto del círculo de la cuenta (arriba a la derecha)'),
+      ...photoStyle()
+    ] },
+    { id: 'searched', group: 'imagenes', desc: 'Cartel SE BUSCA vivo o muerto', params: [
       P('url', AV, 'Foto del buscado'),
       O('name', 'EL MAS BUSCADO', 'Apodo bajo la foto'),
       O('zoom', '1', 'Zoom de la foto')
@@ -215,6 +229,22 @@ module.exports = {
     ] },
     { id: 'invert', group: 'filtros', desc: 'Invierte los colores de tu foto', params: [
       P('url', AV, 'Tu foto')
+    ] },
+    { id: 'carcel', group: 'efectos', desc: 'Rejas de cárcel encima de tu foto', params: [
+      P('url', AV, 'Tu foto (queda detrás de las rejas)'),
+      ...photoStyle()
+    ] },
+    { id: 'sunglass', group: 'efectos', desc: 'Lentes de píxeles encima de tu foto', params: [
+      P('url', AV, 'Tu foto (los lentes van arriba)'),
+      ...photoStyle()
+    ] },
+    { id: 'trollface', group: 'efectos', desc: 'TrollFace encima de tu foto', params: [
+      P('url', AV, 'Tu foto de fondo'),
+      ...photoStyle()
+    ] },
+    { id: 'badface', group: 'efectos', desc: 'Cara de asco (megusta) encima de tu foto', params: [
+      P('url', AV, 'Tu foto de fondo'),
+      ...photoStyle()
     ] },
     { id: 'rata', group: 'personajes', desc: 'Tu cara en la rata', params: [
       P('url', AV, 'Tu foto o cara'),
