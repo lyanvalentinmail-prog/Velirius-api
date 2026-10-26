@@ -3,7 +3,7 @@
 //
 // Convención de las áreas: fracciones (0-1) del ancho/alto de la plantilla.
 // Desde la URL se puede sobreescribir cualquier valor con `<parte>.<clave>`:
-//   /canvas/sebusca?photo.y1=0.66&photo.zoom=1.2&name.size=1.4&reward.size=0.9
+//   /canvas/searched?photo.y1=0.66&photo.zoom=1.2&name.size=1.4&reward.size=0.9
 //
 // Partes típicas:  canvas (lienzo) · bg · photo · text · name · reward · band ·
 //                  bubble · quote · msg · time · avatar · badge · bar · title
@@ -249,28 +249,28 @@ const LAYOUTS = {
     }
   },
 
-  canvatextoxd: {
+  cartelboy: {
     label: 'Muñeco con cartel',
     parts: {
-      template: 'canvatextoxd.jpg',
+      template: 'cartelboy.jpg',
       sign: { box: { x0: 0.405, y0: 0.425, x1: 0.885, y1: 0.735 } },
       text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 46, maxLines: 4, rotate: -1.5 }, fill: '#3a3a3a' }
     }
   },
 
-  imagencanba: {
+  pcquote: {
     label: 'Foto dentro de MS Paint',
     parts: {
-      template: 'imagencanba.jpg',
+      template: 'pcquote.jpg',
       photo: { box: { x0: 0.152, y0: 0.128, x1: 0.935, y1: 0.700 } },
       text: { box: { x0: 0.152, y0: 0.128, x1: 0.935, y1: 0.700 }, font: { family: 'sans', weight: 700, maxFont: 72, maxLines: 4 }, fill: '#1f2937' }
     }
   },
 
-  sebusca: {
+  searched: {
     label: 'Se busca (cartel del oeste)',
     parts: {
-      template: 'sebusca.jpg',
+      template: 'searched.jpg',
       photo: { box: { x0: 0.284, y0: 0.303, x1: 0.770, y1: 0.642 } },
       band: { box: { x0: 0.278, y0: 0.5955, x1: 0.777, y1: 0.645 }, bg: '#000000', opacity: 0.74 },
       name: { box: { x0: 0.283, y0: 0.6000, x1: 0.772, y1: 0.6420 }, font: { family: 'serif', weight: 900, maxLines: 1 }, fill: '#ffffff' },
@@ -368,13 +368,51 @@ const LAYOUTS = {
     label: 'Pan con tu foto',
     parts: { template: 'pan.jpg', photo: { box: { x0: 0.29, y0: 0.34, x1: 0.74, y1: 0.78 } } }
   },
-  fotopc: {
+  laptop: {
     label: 'Foto en la pantalla del PC',
-    parts: { template: 'fotopc.jpg', photo: { box: { x0: 0.52, y0: 0.29, x1: 1, y1: 0.68 } } }
+    parts: { template: 'laptop.jpg', photo: { box: { x0: 0.52, y0: 0.29, x1: 1, y1: 0.68 } } }
   },
   canvaimagen: {
     label: 'Soyjaks con tu foto de fondo',
     parts: { template: 'canvaimagen.jpg', photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+  },
+
+  /* ============================ EFECTOS ============================ */
+  /* Pantalla verde que se reemplaza por tu foto: la parte NO verde de la
+     plantilla (los lentes, la cara, las rejas…) queda siempre encima. */
+  sunglass: {
+    label: 'Lentes de píxeles',
+    parts: { template: 'sunglass.jpg', photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+  },
+  trollface: {
+    label: 'TrollFace encima de tu foto',
+    parts: { template: 'trollface.jpg', photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+  },
+  badface: {
+    label: 'Cara de asco encima de tu foto',
+    parts: { template: 'badface.jpg', photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+  },
+  carcel: {
+    label: 'Rejas de cárcel',
+    parts: { template: 'carcel.jpg', photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 } } }
+  },
+  pc: {
+    label: 'TU foto en el monitor',
+    parts: { template: 'pc.jpg', photo: { box: { x0: 0.0625, y0: 0.145, x1: 0.4675, y1: 0.4675 } } }
+  },
+  /* Buscador de Google con tus imágenes en los resultados. Cada panel tiene su
+     propio `url` (url1…url5) y el avatar de la cuenta usa `avatar`. */
+  google: {
+    label: 'Búsqueda de imágenes de Google',
+    parts: {
+      template: 'google.jpg',
+      photo1: { box: { x0: 0.0239, y0: 0.3104, x1: 0.4846, y1: 0.5126 } },
+      photo2: { box: { x0: 0.5126, y0: 0.3104, x1: 0.9733, y1: 0.5126 } },
+      photo3: { box: { x0: 0.0225, y0: 0.5300, x1: 0.4846, y1: 0.9352 } },
+      photo4: { box: { x0: 0.5126, y0: 0.5292, x1: 0.9747, y1: 0.7314 } },
+      photo5: { box: { x0: 0.5126, y0: 0.7480, x1: 0.9747, y1: 0.9305 } },
+      avatar: { box: { x0: 0.8371, y0: 0.0411, x1: 0.9438, y1: 0.1011 } }
+    }
   },
   gay: {
     label: 'Filtro arcoíris',

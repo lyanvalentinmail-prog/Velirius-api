@@ -1,4 +1,4 @@
-// src/canvas/generators/imagencanba.js — imagencanba
+// src/canvas/generators/pcquote.js — pcquote
 
 // Guía: README.md → "Cómo agregar o editar un endpoint".
 const {
@@ -6,8 +6,8 @@ const {
   placeTextArea, P, partsOf, boxOf
 } = require('./_helpers');
 
-module.exports = async function imagencanba(q) {
-  const parts = partsOf('imagencanba');
+module.exports = async function pcquote(q) {
+  const parts = partsOf('pcquote');
   const { buf, width: W, height: H } = await templateMeta(parts.template);
   const ov = styleOf(q);
   const imageUrl = imgParam(q, 'url', 'image', 'img');
@@ -17,10 +17,10 @@ module.exports = async function imagencanba(q) {
   const layers = [];
   if (useImage) {
     const user = await loadImageBuffer(imageUrl);
-    layers.push(await placeImageArea(W, H, boxOf('imagencanba', 'photo', q), user, { zoom: ov.zoom }));
+    layers.push(await placeImageArea(W, H, boxOf('pcquote', 'photo', q), user, { zoom: ov.zoom }));
   } else {
     const t = P.style(q, 'text', parts.text.font);
-    layers.push(placeTextArea(W, H, boxOf('imagencanba', 'text', q), text || 'dibujo god', {
+    layers.push(placeTextArea(W, H, boxOf('pcquote', 'text', q), text || 'dibujo god', {
       family: t.family, weight: t.weight, fill: ov.fill || t.fill,
       maxFont: Math.round(parts.text.font.maxFont * t.size), maxLines: parts.text.font.maxLines, ov
     }));

@@ -7,7 +7,7 @@
 //
 //   /canvas/iqc?msg.size=1.3&msg.color=ffe066&bubble.width=0.6&time.color=9ad0ff
 //   /canvas/bratestirado?text.size=1.2&text.fill=ff0044&lens.stretch=1.3
-//   /canvas/sebusca?photo.y0=0.32&photo.zoom=1.2&name.size=1.4
+//   /canvas/searched?photo.y0=0.32&photo.zoom=1.2&name.size=1.4
 //
 // Claves reconocidas en cualquier parte:
 //   x0, y0, x1, y1   área en fracciones (0-1) de la plantilla/lienzo
