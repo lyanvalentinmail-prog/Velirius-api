@@ -9,21 +9,23 @@ repartidos en **6 categorías**, lista para **Vercel** o **Render**.
   otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
 - **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan únicamente
   rutas `/sfw/` o `is_nsfw=false`.
-- El resultado del probador se muestra **sin marco**: la imagen o el video del canvas van sin borde ni
-esquinas redondeadas, para que se vea la pieza tal cual sale de la API.
+- El probador sigue el diseño de las capturas: al abrir, la fila se pone **negra** con el botón TEST
+invertido, arriba aparece **CÓMO USAR EL ENDPOINT** (GET + URL + snippet `fetch`, con COPIAR URL y
+ABRIR), después **PARÁMETROS** con chip `REQUERIDO`/`OPCIONAL` por campo y el botón **TEST** grande.
+
+La pieza se muestra **sin marco**, sobre un **damero de transparencia**, con la barra de estado
+(`200 OK · Imagen HD · ms`) y el botón **DESCARGAR**.
 
 El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el probador con **parámetros
   modificables**: campos de texto, listas desplegables (`select`), subida de foto desde la galería,
   ejecución sin salir de la página, abrir el endpoint directo y copiar la URL final.
   Tocando `TEST` otra vez el panel se cierra (solo uno abierto a la vez).
-- **Portada** (`/`) igual a la de Delirius: presentación, aviso y botón grande
-  **`INITIALIZE DASHBOARD`** que entra al dashboard (`/home`), más la **galería de capturas**
-  nuevas que salen de la carpeta `Velirius api` de Drive.
-- **Dashboard** (`/home`) con el video **`DashboardVid.mp4`** arriba de las carpetas
-  (`<video>` autoplay/muted/loop con poster y fallback al enlace directo de Drive).
-- `GET /media/status` devuelve los IDs/URLs de esa multimedia y
-  `GET /media/dashboardvid.mp4` sirve el video con caché en memoria (si el host no tiene salida
-  a internet, redirige al enlace de Drive y el navegador lo reproduce igual).
+- **Portada** (`/`) con el diseño de las capturas de referencia: hoja de papel rayado con marco
+  negro, titular mono espaciado, píldora `V. x.y.z // STATUS: ONLINE`, **video del dashboard** como
+  hero (con sombra dura), caja `SECURITY ALERT` y botón **`INITIALIZE DASHBOARD`** que entra a `/home`.
+- **Dashboard** (`/home`) con las carpetas: `SINCRONIZACIÓN COMPLETA`, enlaces, iconos, barra negra
+  `ESTADO: EN LÍNEA · RUTAS · ENDPOINTS` y un botón **VER** por categoría.
+- El video vive en `public/media/dashboardvid.mp4` (se sirve directo, sin depender de Drive).
 - Los parámetros de estilo (`color`, `size`, `font`, `rotate`, `zoom`…) están **plegados** detrás del botón
   **`⚙ OPCIONES AVANZADAS`** dentro del probador: solo se ven los campos que importan y el panel no queda
   lleno. Los campos de texto libre se escriben en un **área multilínea** (texto largo sin scroll horizontal).

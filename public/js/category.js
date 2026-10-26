@@ -1,11 +1,18 @@
-// public/js/category.js — Buscador + probador TEST con parámetros modificables.
-// El botón TEST de cada endpoint despliega hacia abajo el probador: edita los
-// parámetros (o sube una foto), ejecuta sin salir de la página y copia la URL.
-// Tocando TEST de nuevo el panel se vuelve a cerrar (uno abierto a la vez).
+// public/js/category.js — Buscador + probador TEST (diseño de las capturas).
+// El botón TEST de cada endpoint despliega el panel: la fila se pone negra, arriba
+// se ve CÓMO USAR EL ENDPOINT con la URL y el fetch, después PARÁMETROS con chips
+// REQUERIDO/OPCIONAL (los estilos van plegados en "Opciones avanzadas"), el botón
+// TEST grande y el resultado con 200 OK + tipo + ms + DESCARGAR sobre damero.
 (function () {
   const data = window.VELIRIUS || { category: '', endpoints: [] };
   const byId = {};
   data.endpoints.forEach(e => { byId[e.id] = e; });
+
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const IMAGE_PARAMS = ['url', 'image', 'img', 'avatar', 'image1', 'image2', 'url1', 'url2', 'url3'];
+  const LONG_PARAMS = ['text', 'caption', 'quote', 'message', 'desc', 'query'];
+  const isImageParam = name => IMAGE_PARAMS.includes(String(name).toLowerCase());
+  const isLongParam = name => LONG_PARAMS.includes(String(name).toLowerCase());
 
   // ---------- Buscador ----------
   const searchBtn = document.querySelector('[data-search-btn]');
@@ -20,23 +27,17 @@
   if (searchInput) {
     searchInput.addEventListener('input', () => {
       const term = searchInput.value.trim().toLowerCase();
-      document.querySelectorAll('.list .row').forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = !term || text.includes(term) ? '' : 'none';
+      document.querySelectorAll('.list .row[data-endpoint]').forEach(row => {
+        row.style.display = !term || row.textContent.toLowerCase().includes(term) ? '' : 'none';
       });
-      document.querySelectorAll('.tester').forEach(t => {
+      document.querySelectorAll('.tester.open').forEach(t => {
         const row = t.previousElementSibling;
         if (row && row.style.display === 'none') setOpen(t, false);
       });
     });
   }
 
-  // ---------- Helpers ----------
-  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const IMAGE_PARAMS = ['url', 'image', 'img', 'avatar', 'image1', 'image2', 'url1', 'url2', 'url3'];
-
-  function isImageParam(name) { return IMAGE_PARAMS.includes(String(name).toLowerCase()); }
-
+  // ---------- Utilidades ----------
   function fileToDataUrl(file, cb) {
     const img = new Image();
     const objUrl = URL.createObjectURL(file);
@@ -59,15 +60,25 @@
     const params = new URLSearchParams();
     tester.querySelectorAll('[data-param]').forEach(inp => {
       const v = String(inp.value || '').trim();
-      if (v) params.set(inp.dataset.param, v);
+      if (v && !v.startsWith('data:')) params.set(inp.dataset.param, v);
     });
     const qs = params.toString();
     return `/${cat}/${id}${qs ? '?' + qs : ''}`;
   }
 
-  function refreshUrlLine(tester) {
-    const line = tester.querySelector('.url-line');
-    if (line) line.textContent = location.origin + buildPath(tester);
+  function absolutePath(tester) {
+    return location.origin + buildPath(tester);
+  }
+
+  function refreshUrl(tester) {
+    const path = buildPath(tester);
+    const urlEl = tester.querySelector('.code-url');
+    if (urlEl) urlEl.textContent = location.origin + path;
+    const fetchEl = tester.querySelector('.code-fetch');
+    if (fetchEl) {
+      const short = path.length > 96 ? path.slice(0, 93) + '…' : path;
+      fetchEl.textContent = `fetch("${short}")\n  .then(r => r.blob())\n  .then(b => URL.createObjectURL(b));`;
+    }
   }
 
   function findPreviewImage(json) {
@@ -82,41 +93,66 @@
       if (first) return first.image || first.gif || first.thumbnail || first.cover || first.trayIcon || first.url || null;
       if (Array.isArray(r) && r[0]) return r[0].image || r[0].gif || r[0].cover || r[0].url || null;
       if (Array.isArray(r.images) && r.images[0]) return r.images[0].url || r.images[0].image || null;
-    } catch (_) {}
+    } catch (_) { /* noop */ }
     return null;
   }
 
+  // ---------- Ejecutar ----------
   async function executeTest(tester) {
     const result = tester.querySelector('.result');
+    const runBtn = tester.querySelector('[data-act="exec"]');
     const path = buildPath(tester);
+    if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Probando…'; }
     result.innerHTML = '<div class="loading">CARGANDO…</div>';
+    const t0 = performance.now();
     try {
       const res = await fetch(path, { headers: { 'x-velirius-client': 'ui' } });
+      const ms = Math.round(performance.now() - t0);
       const type = (res.headers.get('content-type') || '').toLowerCase();
+      const okChip = `<span class="chip-status${res.ok ? '' : ' bad'}">${res.status} ${res.ok ? 'OK' : 'ERROR'}</span>`;
+
       if (type.startsWith('image/')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        result.innerHTML = `<img src="${url}" alt="canvas"><a class="dl" href="${url}" download>⬇ DESCARGAR IMAGEN</a>`;
+        const kb = Math.round(blob.size / 1024);
+        result.innerHTML = `
+          <div class="res-bar">${okChip}<span class="res-meta">Imagen HD · ${ms} ms · ${kb} KB</span>
+            <a class="chip-btn" href="${url}" download="${tester.dataset.endpoint}.png">Descargar</a></div>
+          <div class="preview"><img src="${url}" alt="resultado de ${esc(tester.dataset.endpoint)}"></div>`;
       } else if (type.startsWith('video/')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        result.innerHTML = `<video src="${url}" controls autoplay loop muted playsinline></video><a class="dl" href="${path}" target="_blank" rel="noopener">↗ ABRIR VIDEO DIRECTO</a>`;
+        result.innerHTML = `
+          <div class="res-bar">${okChip}<span class="res-meta">Video · ${ms} ms</span>
+            <a class="chip-btn" href="${path}" target="_blank" rel="noopener">Abrir</a></div>
+          <div class="preview"><video src="${url}" controls autoplay loop muted playsinline></video></div>`;
       } else if (type.startsWith('audio/')) {
-        result.innerHTML = `<audio src="${path}" controls autoplay></audio><a class="dl" href="${path}" target="_blank" rel="noopener">↗ ABRIR AUDIO DIRECTO</a>`;
+        result.innerHTML = `
+          <div class="res-bar">${okChip}<span class="res-meta">Audio · ${ms} ms</span></div>
+          <div class="preview" style="padding:12px"><audio src="${path}" controls autoplay style="width:100%"></audio></div>`;
       } else if (type.includes('application/json')) {
         const json = await res.json();
         const preview = findPreviewImage(json);
-        result.innerHTML = `${preview ? `<img src="${esc(preview)}" alt="">` : ''}<pre>${esc(JSON.stringify(json, null, 2))}</pre>`;
+        result.innerHTML = `
+          <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span></div>
+          ${preview ? `<div class="preview"><img src="${esc(preview)}" alt=""></div>` : ''}
+          <pre>${esc(JSON.stringify(json, null, 2))}</pre>`;
       } else {
         const text = await res.text();
-        result.innerHTML = `<pre>${esc(text.slice(0, 8000))}</pre>`;
+        result.innerHTML = `
+          <div class="res-bar">${okChip}<span class="res-meta">Texto · ${ms} ms</span></div>
+          <pre>${esc(text.slice(0, 8000))}</pre>`;
       }
     } catch (e) {
-      result.innerHTML = `<pre>Error de red: ${esc(e.message)}\n\nPrueba con el botón ABRIR (endpoint directo).</pre>`;
+      result.innerHTML = `
+        <div class="res-bar"><span class="chip-status bad">ERROR DE RED</span><span class="res-meta">0 ms</span></div>
+        <div class="error-box">${esc(e.message)}\n\nPrueba con el botón ABRIR o revisa que el servidor esté levantado.</div>`;
+    } finally {
+      if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Test'; }
     }
   }
 
-  // ---------- Abrir / cerrar el panel TEST (se despliega hacia abajo) ----------
+  // ---------- Abrir / cerrar ----------
   function setOpen(tester, open) {
     if (open) {
       document.querySelectorAll('.tester.open').forEach(other => {
@@ -128,18 +164,21 @@
     if ('inert' in tester) tester.inert = !open;
     const row = tester.previousElementSibling;
     const btn = row ? row.querySelector('[data-test-btn]') : null;
+    if (row) row.classList.toggle('open', open);
     if (btn) {
       btn.classList.toggle('active', open);
       btn.setAttribute('aria-expanded', String(open));
+      btn.textContent = 'Test';
     }
-    if (open) setTimeout(() => tester.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 400);
+    if (open) setTimeout(() => tester.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 380);
   }
 
-  // ---------- Construir probadores ----------
+  // ---------- Construir el probador ----------
   document.querySelectorAll('.row[data-endpoint]').forEach(row => {
     const id = row.dataset.endpoint;
     const ep = byId[id];
     if (!ep) return;
+
     const tester = document.createElement('div');
     tester.className = 'tester';
     tester.id = `tester-${id}`;
@@ -148,57 +187,62 @@
     tester.setAttribute('aria-hidden', 'true');
     if ('inert' in tester) tester.inert = true;
 
-    // Los parámetros de estilo (color, size, font, x, y, rotate…) van detrás de
-    // "Opciones avanzadas" para que el panel no quede lleno de campos.
-    const LONG_PARAMS = ['text', 'caption', 'quote', 'message', 'desc', 'query'];
     const fieldOf = p => {
       const up = isImageParam(p.name)
-        ? `<label class="upload">SUBIR FOTO<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label>`
+        ? `<label class="upload">Subir foto<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label>`
         : '';
       let control;
       if (Array.isArray(p.options) && p.options.length) {
         control = `<select data-param="${esc(p.name)}">${p.options.map(o =>
           `<option value="${esc(o)}"${String(o) === String(p.value || '') ? ' selected' : ''}>${esc(o === '' ? 'automático' : o)}</option>`).join('')}</select>`;
-      } else if (LONG_PARAMS.includes(String(p.name).toLowerCase())) {
+      } else if (isLongParam(p.name)) {
         control = `<textarea data-param="${esc(p.name)}" rows="${p.name === 'text' ? 3 : 2}" spellcheck="false" placeholder="${esc(p.value || '')}">${esc(p.value || '')}</textarea>`;
       } else {
         control = `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
       }
-      return `<label><b>?${esc(p.name)}</b>${p.required ? '' : ' (opcional)'}${p.desc ? ' — ' + esc(p.desc) : ''}</label>
-        <div class="field-row">${control}${up}</div>`;
+      return `<div class="param">
+        <div class="param-top"><b>${esc(p.name)}</b><span class="chip-opt${p.required ? ' req' : ''}">${p.required ? 'Requerido' : 'Opcional'}</span></div>
+        ${p.desc ? `<div class="param-desc">${esc(p.desc)}</div>` : ''}
+        <div class="field-row">${control}${up}</div>
+      </div>`;
     };
 
-    let fields = '';
-    if (!ep.params.length) fields = '<label>Este endpoint no necesita parámetros.</label>';
-    const basicParams = ep.params.filter(p => !p.advanced);
-    const advParams = ep.params.filter(p => p.advanced);
-    basicParams.forEach(p => { fields += fieldOf(p); });
-    const advFields = advParams.map(fieldOf).join('');
-    const advBlock = advParams.length
-      ? `<button type="button" class="btn small ghost adv-toggle" data-act="adv" aria-expanded="false">⚙ OPCIONES AVANZADAS (${advParams.length})</button>
-         <div class="adv-fields" hidden>${advFields}</div>`
+    const basic = ep.params.filter(p => !p.advanced);
+    const adv = ep.params.filter(p => p.advanced);
+    const advBlock = adv.length
+      ? `<button type="button" class="btn small ghost adv-toggle" data-act="adv" aria-expanded="false">Opciones avanzadas (${adv.length})</button>
+         <div class="adv-fields" hidden>${adv.map(fieldOf).join('')}</div>`
       : '';
 
     tester.innerHTML = `
-    <div class="tester-inner"><div class="t-pad">
-      <div class="t-title">▶ Test · GET /${esc(data.category)}/${esc(id)}</div>
-      ${ep.desc ? `<div class="t-desc">${esc(ep.desc)}</div>` : ''}
-      ${fields}
-      ${advBlock}
-      <div class="url-line"></div>
-      <div class="actions">
-        <button type="button" class="btn small" data-act="exec">Ejecutar</button>
-        <button type="button" class="btn small ghost" data-act="open">Abrir</button>
-        <button type="button" class="btn small ghost" data-act="copy">Copiar URL</button>
-      </div>
-      <div class="result"></div>
-    </div></div>`;
+      <div class="tester-inner"><div class="t-pad">
+        ${ep.desc ? `<p class="t-desc">${esc(ep.desc)}</p>` : ''}
+
+        <div class="t-use-head">
+          <h4>Cómo usar el endpoint</h4>
+          <div class="t-use-actions">
+            <button type="button" class="chip-btn" data-act="copy">Copiar URL</button>
+            <button type="button" class="chip-btn" data-act="open">Abrir ↗</button>
+          </div>
+        </div>
+        <div class="code">
+          <div class="code-line"><span class="chip-get">GET</span><span class="code-url"></span></div>
+          <div class="code-line faint code-fetch"></div>
+        </div>
+
+        ${ep.params.length ? '<div class="t-params-head">Parámetros</div>' : '<div class="t-params-head">Parámetros</div><div class="param-desc">Este endpoint no necesita parámetros.</div>'}
+        ${basic.map(fieldOf).join('')}
+        ${advBlock}
+
+        <button type="button" class="run" data-act="exec">Test</button>
+        <div class="result"></div>
+      </div></div>`;
 
     row.insertAdjacentElement('afterend', tester);
-    refreshUrlLine(tester);
+    refreshUrl(tester);
 
-    tester.addEventListener('input', () => refreshUrlLine(tester));
-    tester.addEventListener('change', () => refreshUrlLine(tester));
+    tester.addEventListener('input', () => refreshUrl(tester));
+    tester.addEventListener('change', () => refreshUrl(tester));
     tester.addEventListener('keydown', ev => {
       if (ev.key === 'Enter' && ev.target.matches('input[data-param]')) { ev.preventDefault(); executeTest(tester); }
     });
@@ -208,33 +252,38 @@
         if (!file) return;
         fileToDataUrl(file, dataUrl => {
           const target = tester.querySelector(`input[data-param="${CSS.escape(fileInp.dataset.uploadFor)}"]`);
-          if (target) { target.value = dataUrl; refreshUrlLine(tester); }
+          if (target) { target.value = dataUrl; refreshUrl(tester); }
         });
       });
     });
+
     const advBtn = tester.querySelector('[data-act="adv"]');
     if (advBtn) {
       advBtn.addEventListener('click', () => {
         const box = tester.querySelector('.adv-fields');
-        const open = box.hasAttribute('hidden');
-        if (open) box.removeAttribute('hidden'); else box.setAttribute('hidden', '');
-        advBtn.setAttribute('aria-expanded', String(open));
-        advBtn.textContent = open
-          ? '⚙ OCULTAR OPCIONES AVANZADAS'
-          : `⚙ OPCIONES AVANZADAS (${tester.querySelectorAll('.adv-fields [data-param]').length})`;
+        const opening = box.hasAttribute('hidden');
+        if (opening) box.removeAttribute('hidden'); else box.setAttribute('hidden', '');
+        advBtn.setAttribute('aria-expanded', String(opening));
+        advBtn.textContent = opening
+          ? 'Ocultar opciones avanzadas'
+          : `Opciones avanzadas (${tester.querySelectorAll('.adv-fields [data-param]').length})`;
       });
     }
+
     tester.querySelector('[data-act="exec"]').addEventListener('click', () => executeTest(tester));
     tester.querySelector('[data-act="open"]').addEventListener('click', () => window.open(buildPath(tester), '_blank', 'noopener'));
     tester.querySelector('[data-act="copy"]').addEventListener('click', async ev => {
-      try { await navigator.clipboard.writeText(location.origin + buildPath(tester)); ev.target.textContent = '¡Copiada!'; setTimeout(() => { ev.target.textContent = 'Copiar URL'; }, 1400); }
-      catch (_) { window.prompt('Copia la URL:', location.origin + buildPath(tester)); }
+      try {
+        await navigator.clipboard.writeText(absolutePath(tester));
+        ev.target.textContent = '¡Copiada!';
+        setTimeout(() => { ev.target.textContent = 'Copiar URL'; }, 1400);
+      } catch (_) {
+        window.prompt('Copia la URL:', absolutePath(tester));
+      }
     });
 
     const testBtn = row.querySelector('[data-test-btn]');
-    if (testBtn) {
-      testBtn.addEventListener('click', () => setOpen(tester, !tester.classList.contains('open')));
-    }
+    if (testBtn) testBtn.addEventListener('click', () => setOpen(tester, !tester.classList.contains('open')));
     if (location.hash === '#' + id) setOpen(tester, true);
   });
 })();

@@ -3,7 +3,6 @@ const express = require('express');
 const config = require('../config');
 const { CATEGORIES, totals, findCategory, exampleQuery } = require('../catalog');
 const { absoluteUrl } = require('../utils/http');
-const { driveImage } = require('./media');
 
 const router = express.Router();
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -20,7 +19,7 @@ const I = {
   stack: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>'
 };
 
-function layout({ title, body, script = '' }) {
+function layout({ title, body, script = '', bare = false }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,9 +31,7 @@ function layout({ title, body, script = '' }) {
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-<div class="wrap"><main class="card">
-${body}
-</main></div>
+${bare ? `<main class="page">${body}</main>` : `<div class="wrap"><main class="card">${body}</main></div>`}
 ${script}
 </body>
 </html>`;
@@ -48,43 +45,49 @@ function avatars(req) {
 }
 
 // ---------- / (portada) y /home (dashboard) ----------
-// Portada igual a la de Delirius: gif + presentación + botón INITIALIZE DASHBOARD.
+// Portada calcada de la referencia: hoja de papel, titular grande, píldora de
+// versión, hero con el video del dashboard, caja SECURITY ALERT y botón al dashboard.
 router.get('/', (req, res) => {
   const base = absoluteUrl(req, '');
+  const t = totals();
   const body = `
-    <div class="landing">
-      <div class="hero-wrap">
-        <img class="hero" src="https://64.media.tumblr.com/b23db1a71574932c7aeac88889db2e26/5c99f1f3f43b892d-32/s400x600/1c207a89903c35489d1dc06d39713bc89dd9cc02.gif" alt="Velirius" loading="lazy" onerror="this.style.display='none'">
+    <div class="paper">
+      <div class="sheet">
+        <header class="masthead">
+          <h1 class="brand">VELIRIUS API</h1>
+          <div class="pill">V. ${esc(config.version)} // STATUS: ONLINE</div>
+        </header>
+
+        <figure class="hero">
+          <video src="/media/dashboardvid.mp4" poster="/img/banner.jpg" autoplay muted loop playsinline controls
+                 aria-label="Velirius API en funcionamiento"></video>
+        </figure>
+
+        <p class="para"><strong>Velirius</strong> is a free-access API designed to optimize workflows without the friction of <strong>API Keys</strong>. What started as a personal toolset has evolved into a public resource driven by the community.</p>
+
+        <p class="para">Every router &mdash; <strong>Anime</strong>, <strong>Canvas</strong>, <strong>Tools</strong>, <strong>Downloader</strong>, <strong>Searcher</strong> and <strong>Reactions</strong> &mdash; runs on <strong>Node.js + Sharp</strong>, so images, stickers and videos are generated on the fly and nothing depends on the fonts installed on the host.</p>
+
+        <div class="alert">
+          <span class="alert-tag">&#9888; Security alert</span>
+          <p>If you detect third parties commercializing access to this API, report it immediately. This resource is free and open-source for all developers.</p>
+        </div>
+
+        <p class="para" style="font-size:13.5px">Explore the <a href="/home">dashboard</a> with all the folders, or read the <a href="/docs">JSON docs</a>. Base URL: <code>${esc(base)}</code> &middot; ${t.endpoints} endpoints in ${t.routers} routers.</p>
+
+        <div class="cta-wrap"><a class="cta" href="/home">Initialize dashboard</a></div>
+
+        <div class="sheet-footer">&copy; 2026 &mdash; ${esc(config.storeFooter)}</div>
       </div>
-      <h1 class="title">VELIRIUS</h1>
-      <div class="sync">Stay Vibing</div>
-      <p class="lead"><strong>Velirius</strong> is a free-access API designed to optimize workflows without the friction of <strong>API Keys</strong>. What started as a personal toolset has evolved into a public resource driven by the community.</p>
-      <p class="lead">Anime, Canvas, Tools, Downloader, Searcher and Reactions routers &mdash; all in one place, <strong>100% free</strong>, with no token and no rate-limit keys. Built on <strong>Node.js + Sharp</strong> so every image and sticker is generated on the fly.</p>
-      <blockquote class="quote">If you detect third parties commercializing access to this API, report it immediately. This resource is free and open-source for all developers.</blockquote>
-      <p class="lead small">Base URL: <code>${esc(base)}</code> &middot; ${totals().endpoints} endpoints in ${totals().routers} routers</p>
-      <a class="cta" href="/home">INITIALIZE DASHBOARD</a>
-      <div class="shots-title">Capturas</div>
-      <div class="shots">
-        ${config.media.captures.map((c, i) => `
-        <a class="shot" href="https://drive.google.com/file/d/${esc(c.id)}/view" target="_blank" rel="noopener">
-          <img src="${esc(driveImage(c.id, 1000))}" alt="Captura ${i + 1} de Velirius API" loading="lazy">
-          <span>${esc(c.name.replace('.jpg', ''))} / ${String(config.media.captures.length).padStart(2, '0')}</span>
-        </a>`).join('')}
-      </div>
-      <div class="landing-links">
-        <a href="/information">Information</a>
-        <a href="/docs">JSON Docs</a>
-        <a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">GitHub</a>
-      </div>
-      <div class="footer">&copy; 2026 | ${esc(config.storeFooter)}</div>
     </div>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.send(layout({ title: 'Velirius API', body }));
+  return res.send(layout({ title: 'Velirius API', body, bare: true }));
 });
+
 // Alias antiguos → rutas nuevas
 router.get('/download', (req, res) => res.redirect('/downloader'));
 router.get('/search', (req, res) => res.redirect('/searcher'));
 
+// ---------- /home (dashboard de carpetas) ----------
 router.get('/home', (req, res) => {
   const t = totals();
   const rows = CATEGORIES.map(c => `
@@ -94,24 +97,14 @@ router.get('/home', (req, res) => {
         <h3>${esc(c.name)}</h3>
         <div class="meta">${c.endpoints.length} endpoints</div>
       </div>
-      <a class="btn" href="/${c.id}">View</a>
+      <a class="btn" href="/${c.id}">Ver</a>
     </div>`).join('');
 
   const body = `
     <h1 class="title">Velirius API</h1>
-    <div class="sync">Sync Complete</div>
-    <p class="intro">Here are the folders with all the <strong>APIS</strong> available on this website.<br><strong>(Not Required Token)</strong></p>
-    <div class="demo">
-      <video class="demo-video" poster="${esc(driveImage(config.media.dashboard[0].id, 1200))}" autoplay muted loop playsinline controls preload="metadata" aria-label="Dashboard de Velirius API en funcionamiento">
-        <source src="/media/dashboardvid.mp4" type="video/mp4">
-        <source src="${esc(config.media.video.direct)}" type="video/mp4">
-      </video>
-      <div class="demo-tag">
-        <span class="dot"></span> ${esc(config.media.video.name.replace('.mp4', ''))} &middot; dashboard en vivo
-        <a href="https://drive.google.com/file/d/${esc(config.media.video.id)}/view" target="_blank" rel="noopener">abrir en Drive ↗</a>
-      </div>
-    </div>
-    <div class="follow"><a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">Follow my github account</a></div>
+    <div class="sync">Sincronización completa</div>
+    <p class="intro">Aquí están las carpetas con todas las <strong>APIS</strong> disponibles en este sitio web.<br><strong>(No Requiere Token)</strong></p>
+    <div class="follow"><a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">Sigue mi cuenta de GitHub</a></div>
     <div class="icons">
       <div class="left">
         <a href="/information" title="Information">${I.activity}</a>
@@ -121,19 +114,19 @@ router.get('/home', (req, res) => {
       </div>
       <button type="button" data-search-btn title="Search" aria-label="Search">${I.search}</button>
     </div>
-    <div class="searchbox"><input type="text" placeholder="Search endpoints… (ej: brat, tiktok, pokemon)"><div class="search-results"></div></div>
+    <div class="searchbox"><input type="text" placeholder="Buscar endpoints… (ej: brat, tiktok, pokemon)"><div class="search-results"></div></div>
     <div class="status">
-      <span>Status:&nbsp; Online</span>
+      <span>Estado:&nbsp; En línea</span>
       <span class="right">
-        <span class="stat">${I.folder} Routers:&nbsp; ${t.routers}</span>
+        <span class="stat">${I.folder} Rutas:&nbsp; ${t.routers}</span>
         <span class="stat">${I.stack} Endpoints:&nbsp; ${t.endpoints}</span>
       </span>
     </div>
     <div class="list">${rows}</div>
-    <div class="footer">© 2026 | ${esc(config.storeFooter)}</div>`;
+    <div class="footer">© 2026 | ${esc(config.brand)}</div>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.send(layout({ title: 'Velirius 疯狂 - API Rest', body, script: '<script src="/js/home.js"></script>' }));
+  return res.send(layout({ title: 'Velirius API', body, script: '<script src="/js/home.js"></script>' }));
 });
 
 // ---------- /information ----------
@@ -142,8 +135,8 @@ router.get('/information', (req, res) => {
   const base = absoluteUrl(req, '');
   const body = `
     <h1 class="title">Information</h1>
-    <div class="sync">Database Synced</div>
-    <p class="intro">You can do <strong>fetching</strong> just by clicking on the <strong>test</strong> button<br>(the panel opens downwards with editable parameters)</p>
+    <div class="sync">Base de datos sincronizada</div>
+    <p class="intro">Puedes hacer <strong>peticiones</strong> simplemente pulsando en <strong>test</strong><br>(el panel se abre hacia abajo con los parámetros editables)</p>
     <div class="icons">
       <div class="left">
         <a href="/home" title="Home">${I.home}</a>
@@ -152,7 +145,7 @@ router.get('/information', (req, res) => {
       </div>
       <span></span>
     </div>
-    <div class="status"><span>Net:&nbsp; Online</span><span>List:&nbsp; ${t.endpoints}</span></div>
+    <div class="status"><span>Red:&nbsp; En línea</span><span>Lista:&nbsp; ${t.endpoints}</span></div>
     <div class="info-block">
       <div><b>API:</b> Velirius API (estilo Delirius, sin token)</div>
       <div><b>Base URL:</b> ${esc(base)}/</div>
@@ -240,8 +233,8 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
 
   const body = `
     <h1 class="title">${esc(cat.name)}</h1>
-    <div class="sync">Database Synced</div>
-    <p class="intro">You can do <strong>fetching</strong> just by clicking on the <strong>test</strong> button<br>(the panel opens downwards with editable parameters)</p>
+    <div class="sync">Base de datos sincronizada</div>
+    <p class="intro">Puedes hacer <strong>peticiones</strong> simplemente pulsando en <strong>test</strong></p>
     <div class="icons">
       <div class="left">
         <a href="/home" title="Home">${I.home}</a>
@@ -250,8 +243,8 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
       </div>
       <button type="button" data-search-btn title="Search" aria-label="Search">${I.search}</button>
     </div>
-    <div class="searchbox"><input type="text" placeholder="Search in ${esc(cat.name)}…"></div>
-    <div class="status"><span>Net:&nbsp; Online</span><span>List:&nbsp; ${cat.endpoints.length}</span></div>
+    <div class="searchbox"><input type="text" placeholder="Buscar en ${esc(cat.name)}…"></div>
+    <div class="status"><span>Red:&nbsp; En línea</span><span>Lista:&nbsp; ${cat.endpoints.length}</span></div>
     <div class="list">${rows}</div>
     <div class="footer">© 2026 | ${esc(config.brand)}</div>`;
 
