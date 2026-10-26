@@ -76,10 +76,63 @@ async function firstSuccess(producers) {
   throw err;
 }
 
+/**
+ * Igual que `firstSuccess` pero **en paralelo**: dispara todos los productores a
+ * la vez y devuelve el primero que responda. Sirve para no comerse el límite de
+ * tiempo de Vercel (10 s) cuando la primera fuente está caída o lenta: antes se
+ * probaban una por una y una fuente muerta (12-15 s) tumbaba la petición entera.
+ *
+ * `timeoutMs` es el presupuesto TOTAL: si nadie contestó en ese tiempo, corta.
+ */
+function firstFast(producers, { timeoutMs = 7000 } = {}) {
+  const lista = (producers || []).filter(p => p && typeof p[1] === 'function');
+  const errors = [];
+  const fallo = (extra) => {
+    const err = new Error('Ninguna fuente pública respondió a tiempo. Intenta de nuevo en unos segundos.');
+    err.details = extra ? errors.concat(extra) : errors.slice();
+    return err;
+  };
+  if (!lista.length) return Promise.reject(fallo('sin proveedores'));
+  return new Promise((resolve, reject) => {
+    let resuelto = false;
+    let pendientes = lista.length;
+    const timer = setTimeout(() => {
+      if (resuelto) return;
+      resuelto = true;
+      reject(fallo(`tiempo agotado (${timeoutMs} ms)`));
+    }, timeoutMs);
+    const terminar = (fn, arg) => {
+      if (resuelto) return;
+      resuelto = true;
+      clearTimeout(timer);
+      fn(arg);
+    };
+    const restar = () => {
+      pendientes -= 1;
+      if (pendientes <= 0 && !resuelto) terminar(reject, fallo());
+    };
+    for (const [label, fn] of lista) {
+      Promise.resolve()
+        .then(fn)
+        .then(valor => {
+          if (valor === null || valor === undefined) {
+            errors.push(`${label}: sin datos`);
+            return restar();
+          }
+          terminar(resolve, { value: valor, source: label, errors });
+        })
+        .catch(e => {
+          errors.push(`${label}: ${(e && e.message) || e}`);
+          restar();
+        });
+    }
+  });
+}
+
 function absoluteUrl(req, path) {
   const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0];
   const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost';
   return `${proto}://${host}${path}`;
 }
 
-module.exports = { UA_DESKTOP, UA_MOBILE, fetchWithTimeout, fetchJson, postJson, fetchText, fetchBuffer, firstSuccess, absoluteUrl };
+module.exports = { UA_DESKTOP, UA_MOBILE, fetchWithTimeout, fetchJson, postJson, fetchText, fetchBuffer, firstSuccess, firstFast, absoluteUrl };

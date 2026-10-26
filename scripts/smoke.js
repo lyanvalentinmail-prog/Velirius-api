@@ -12,8 +12,9 @@ const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
 const { textLayer, measure, FAMILIES, FONTS_DIR } = require('../src/utils/textEngine');
 const P = require('../src/utils/providers');
 const {
-  REACTION_LIST, ANIME_KINDS, ANIME_SOURCES, mapDanbooru, mapSafebooru, mapKonachan
+  REACTION_LIST, REACTION_PROVIDERS, ANIME_KINDS, ANIME_SOURCES, mapDanbooru, mapSafebooru, mapKonachan
 } = P;
+const { firstFast } = require('../src/utils/http');
 
 function get(port, p) {
   return new Promise((resolve, reject) => {
@@ -267,6 +268,35 @@ async function main() {
       const opciones = ((param && param.options) || []).filter(Boolean);
       ok(`Anime ${kind}: ?provider= coincide con las fuentes`, opciones.length === names.length && opciones.every(o => names.includes(o)),
         opciones.join(' · '));
+    }
+
+    // Todas las fuentes tienen que traer `yande.re` (el booru sin Cloudflare) y
+    // `waifu.pics` no puede volver: está apagado desde 2025.
+    ok('Anime: yande.re cubre neko, waifu y maid', ANIME_KINDS.every(k => ANIME_SOURCES[k]['yande.re']));
+    ok('Anime: waifu.pics quedó fuera de la cadena', ANIME_KINDS.every(k => !ANIME_SOURCES[k]['waifu.pics']));
+    ok('Reactions: waifu.pics quedó fuera de la cadena', !REACTION_PROVIDERS['waifu.pics']);
+
+    // La cadena automática va en paralelo: gana la fuente más rápida aunque la
+    // primera de la lista esté caída (antes una fuente muerta agotaba Vercel).
+    {
+      const t0 = Date.now();
+      const { value, source, errors } = await firstFast([
+        ['caida', () => Promise.reject(new Error('sin respuesta'))],
+        ['lenta', () => new Promise(res => setTimeout(() => res('lenta'), 1500))],
+        ['rapida', () => Promise.resolve('lista')]
+      ], { timeoutMs: 4000 });
+      const ms = Date.now() - t0;
+      ok(`Anime/reacciones: la primera fuente que responde gana (${source} en ${ms} ms)`,
+        value === 'lista' && source === 'rapida' && ms < 1000 && errors.some(e => /caida/.test(e)), errors.join(' · '));
+    }
+    {
+      let detalles = [];
+      try {
+        await firstFast([['muerta', () => Promise.reject(new Error('sin respuesta'))],
+          ['vacia', () => Promise.resolve(null)]], { timeoutMs: 2000 });
+      } catch (e) { detalles = e.details || []; }
+      ok('Anime: si fallan todas, el error explica qué pasó', detalles.length === 2 && /sin respuesta/.test(detalles.join(' ')),
+        detalles.join(' · '));
     }
 
     // Ningún post no-seguro debe sobrevivir al normalizador de los boorus.

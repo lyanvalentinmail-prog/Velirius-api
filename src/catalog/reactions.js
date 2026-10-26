@@ -24,10 +24,10 @@ module.exports = {
   name: 'REACTIONS',
   endpoints: Object.entries(require('../utils/providers').REACTIONS).map(([id, label]) => ({
     id,
-    desc: `GIF de ${label.toLowerCase()} (nekos.best · waifu.pics · purrbot · otakugifs)`,
+    desc: `GIF de ${label.toLowerCase()} (nekos.best · purrbot · otakugifs)`,
     media: 'image',
     params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'purrbot', 'otakugifs']),
+      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'purrbot', 'otakugifs']),
       O('direct', 'false', 'true = devuelve el GIF directamente'),
       O('download', 'false', 'true = descarga el GIF como archivo')
     ]

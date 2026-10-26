@@ -6,7 +6,7 @@ buscador) con **80 endpoints REST sin token** repartidos en **6 categorías**, l
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
-  pic.re, waifu.pics, otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
+  yande.re, pic.re, otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
 - **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan rutas `/sfw/`,
   el espejo seguro de konachan (`.net`) o los boorus con filtro de rating (`rating:g` / `rating:general`).
 - El probador sigue el diseño de las capturas: al abrir, la fila se pone **negra** con el botón TEST
@@ -63,18 +63,21 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
 
 | Endpoint | Proveedores (en orden) | Parámetros |
 |---|---|---|
-| `GET /anime/neko` | `nekos.best` · `danbooru` · `purrbot` · `safebooru` · `konachan` | `provider`, `amount`, `direct` |
-| `GET /anime/waifu` | `nekos.best` · `danbooru` · `safebooru` · `pic.re` · `konachan` | `provider`, `amount`, `direct` |
-| `GET /anime/maid` | `danbooru` · `safebooru` · `konachan` | `provider`, `amount`, `direct` |
+| `GET /anime/neko` | `nekos.best` · `purrbot` · `danbooru` · `safebooru` · `konachan` · `yande.re` | `provider`, `amount`, `direct` |
+| `GET /anime/waifu` | `nekos.best` · `danbooru` · `pic.re` · `safebooru` · `konachan` · `yande.re` | `provider`, `amount`, `direct` |
+| `GET /anime/maid` | `danbooru` · `safebooru` · `konachan` · `yande.re` | `provider`, `amount`, `direct` |
 | `GET /anime/pokemon` | PokeAPI | `query`, `shiny`, `direct` |
 
-- `provider` fuerza una fuente; si se deja vacío se prueban en orden hasta que una responda.
+- `provider` fuerza una fuente; si se deja vacío se prueban **todas a la vez** (`firstFast`, 8 s de
+  presupuesto) y gana la primera que conteste. Antes iban una por una y una fuente muerta agotaba el
+  tiempo de la función en Vercel (10 s) → el endpoint parecía roto.
 - `amount` (1-10) devuelve varias imágenes: `result.images[]` además de `result.image`.
 - Cada imagen trae `url` (versión liviana), `full` (original), `artist`, `source`, `width`, `height` y `tags`.
 - `direct=true` entrega la imagen/GIF en vez del JSON.
 
 **Todo SFW, filtrado en la propia consulta**: `danbooru` pide `rating:g`, `safebooru` es la copia
-segura de danbooru (`rating:general`) y `konachan` usa el espejo `.net` (`rating:safe`).
+segura de danbooru (`rating:general`), `konachan` usa el espejo `.net` (`rating:safe`) y `yande.re`
+filtra con `rating:s` (y no está detrás de Cloudflare, así que responde también desde el servidor).
 
 > Fuentes retiradas: `waifu.pics` (servicio apagado), `waifu.im` (cierre definitivo el 17/10/2026) y
 > `nekos.life` (Cloudflare bloquea las peticiones del servidor). `nekos.best` no tiene categoría
@@ -86,7 +89,7 @@ curl "https://<host>/anime/maid?provider=safebooru&direct=true" -o maid.jpg
 curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 ```
 
-## 🎨 Canvas — 33 (plantillas de la carpeta `CategoriaCanvas` de Drive)
+## 🎨 Canvas — 41 (plantillas de la carpeta `CategoriaCanvas` de Drive)
 
 Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
 modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
@@ -356,7 +359,8 @@ curl "https://<host>/searcher/wikipedia?query=One%20Piece&lang=es"
 `thumbsup`.
 
 - `GET /reactions/<reaccion>` → `{ reaction, label, provider, gif }`
-- Parámetros: `provider` (`nekos.best` · `waifu.pics` · `purrbot` · `otakugifs`), `direct=true` para el GIF.
+- Parámetros: `provider` (`nekos.best` · `purrbot` · `otakugifs`), `direct=true` para el GIF. Los tres se
+  prueban en paralelo (8 s), igual que anime.
 - `GET /reactions/list` → catálogo de reacciones y proveedores.
 
 ```bash

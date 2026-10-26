@@ -5,11 +5,11 @@
 //    is_nsfw=false. No existe ningún endpoint para adultos.
 //  · Nada de IA: no hay generación de texto/imagen por modelos, solo APIs públicas.
 //
-// Fuentes: PokeAPI · nekos.best · purrbot · danbooru · safebooru · konachan · pic.re ·
-// waifu.pics (reacciones) · otakugifs · TikWM · YouTube (youtubei.js + InnerTube +
+// Fuentes: PokeAPI · nekos.best · purrbot · danbooru · safebooru · konachan.net ·
+// yande.re · pic.re · otakugifs · TikWM · YouTube (youtubei.js + InnerTube +
 // Invidious/Piped) · Facebook · Instagram · LRCLIB/lyrics.ovh · Google · DuckDuckGo
 // (lite y html) · Bing · Wikipedia · Google Translate · MyMemory.
-const { fetchJson, postJson, fetchText, firstSuccess, UA_DESKTOP, UA_MOBILE } = require('./http');
+const { fetchJson, postJson, fetchText, firstSuccess, firstFast, UA_DESKTOP, UA_MOBILE } = require('./http');
 // YouTube "de verdad": youtubei.js resuelve firmas y n-token (los respaldos
 // Invidious/Piped quedaron casi todos con la API apagada).
 const YT = require('./youtube');
@@ -33,7 +33,7 @@ const clampAmount = (v, def = 1, max = 10) => {
 
 async function nekosBest(tag, amount = 1) {
   const n = clampAmount(amount, 1, 20);
-  const j = await fetchJson(`https://nekos.best/api/v2/${tag}?amount=${n}`, { timeoutMs: 12000 });
+  const j = await fetchJson(`https://nekos.best/api/v2/${tag}?amount=${n}`, { timeoutMs: 5000 });
   const list = (j?.results || []).filter(r => r && r.url).map(r => ({
     image: r.url,
     provider: 'nekos.best',
@@ -130,7 +130,7 @@ async function danbooru(tags, amount = 1) {
   const posts = [];
   for (let i = 0; i < n; i += 3) {
     const tanda = await Promise.all(Array.from({ length: Math.min(3, n - i) }, () =>
-      fetchJson(url, { headers: BOORU_UA, timeoutMs: 12000 }).catch(() => null)));
+      fetchJson(url, { headers: BOORU_UA, timeoutMs: 6000 }).catch(() => null)));
     posts.push(...tanda.filter(Boolean));
   }
   const vistos = new Set();
@@ -145,14 +145,19 @@ async function danbooru(tags, amount = 1) {
  */
 async function booruPages(name, buildUrl, mapper, amount, maxPage) {
   const n = clampAmount(amount, 1, 20);
+  let ultimo = null;
   for (let intento = 0; intento < 3; intento++) {
     try {
-      const j = await fetchJson(buildUrl(n, randomPage(maxPage)), { headers: BOORU_UA, timeoutMs: 15000 });
+      const j = await fetchJson(buildUrl(n, randomPage(maxPage)), { headers: BOORU_UA, timeoutMs: 6000 });
       const list = mapper(j);
       if (list.length) return list.slice(0, n);
-    } catch (_) { /* página vacía o XML de error → siguiente intento */ }
+      ultimo = new Error(`${name}: esa página vino vacía`);
+    } catch (e) {
+      ultimo = e; // 403 de Cloudflare, timeout, XML de error…
+    }
   }
-  throw new Error(`${name} sin imágenes`);
+  // Se guarda el motivo real (bloqueo, timeout…) para que el 502 lo muestre.
+  throw new Error(`${name} sin imágenes${ultimo ? ` (${ultimo.message})` : ''}`);
 }
 
 const safebooru = (tags, amount = 1) => booruPages(
@@ -168,12 +173,21 @@ const konachan = (tags, amount = 1) => booruPages(
   mapKonachan, amount, 40
 );
 
+// yande.re usa la misma API que konachan (moebooru) pero **no** está detrás de
+// Cloudflare: es el respaldo que salva `maid` cuando los otros boorus bloquean
+// las IPs de los servidores (Vercel/AWS).
+const yandere = (tags, amount = 1) => booruPages(
+  'yande.re',
+  (n, pid) => `https://yande.re/post.json?limit=${n}&pid=${pid}&tags=${encodeURIComponent(tags)}`,
+  mapKonachan, amount, 40
+);
+
 /** purrbot.site: imágenes por categoría (nekos). */
 async function purrbot(kind, amount = 1) {
   const n = clampAmount(amount, 1, 5);
   const list = [];
   for (let i = 0; i < n; i++) {
-    const j = await fetchJson(`https://api.purrbot.site/v2/img/sfw/${kind}/img`, { timeoutMs: 10000 });
+    const j = await fetchJson(`https://api.purrbot.site/v2/img/sfw/${kind}/img`, { timeoutMs: 5000 });
     if (j?.link) list.push({ image: j.link, provider: 'purrbot' });
   }
   if (!list.length) throw new Error('purrbot sin imágenes');
@@ -186,7 +200,7 @@ async function picre(amount = 1) {
   const list = [];
   const vistos = new Set();
   for (let i = 0; i < n; i++) {
-    const j = await fetchJson('https://pic.re/image.json', { timeoutMs: 12000 });
+    const j = await fetchJson('https://pic.re/image.json', { timeoutMs: 5000 });
     const image = httpsUrl(j?.file_url);
     if (image && !vistos.has(image)) {
       vistos.add(image);
@@ -206,8 +220,9 @@ async function picre(amount = 1) {
   return list;
 }
 
-// Cadena de proveedores por tipo (siempre SFW). El orden importa: `firstSuccess`
-// prueba de arriba hacia abajo. Los caídos se sacaron de la lista:
+// Cadena de proveedores por tipo (siempre SFW). El orden es sólo una pista: se
+// prueban EN PARALELO (`firstFast`) y responde el primero que conteste. Los
+// caídos se sacaron de la lista:
 //   · waifu.pics → el servicio está apagado desde 2025 (API sin respuesta)
 //   · waifu.im   → cierre definitivo anunciado para el 17/10/2026
 //   · nekos.life → Cloudflare bloquea las peticiones del servidor
@@ -215,22 +230,28 @@ async function picre(amount = 1) {
 const ANIME_SOURCES = {
   neko: {
     'nekos.best': (n) => nekosBest('neko', n),
-    'danbooru': (n) => danbooru('cat_ears 1girl solo rating:g', n),
     'purrbot': (n) => purrbot('neko', n),
+    'danbooru': (n) => danbooru('cat_ears 1girl solo rating:g', n),
     'safebooru': (n) => safebooru('cat_ears 1girl solo rating:general', n),
-    'konachan': (n) => konachan('cat_ears rating:safe', n)
+    'konachan': (n) => konachan('cat_ears 1girl solo rating:safe', n),
+    'yande.re': (n) => yandere('cat_ears 1girl solo rating:s', n)
   },
   waifu: {
     'nekos.best': (n) => nekosBest('waifu', n),
     'danbooru': (n) => danbooru('1girl solo rating:g', n),
-    'safebooru': (n) => safebooru('1girl solo rating:general', n),
     'pic.re': (n) => picre(n),
-    'konachan': (n) => konachan('1girl rating:safe', n)
+    'safebooru': (n) => safebooru('1girl solo rating:general', n),
+    'konachan': (n) => konachan('1girl solo rating:safe', n),
+    'yande.re': (n) => yandere('1girl solo rating:s', n)
   },
+  // `maid` no existe en nekos.best/purrbot: van primero los boorus, que tienen
+  // la etiqueta y el filtro de rating seguro. yande.re cierra la lista porque no
+  // bloquea a los servidores.
   maid: {
-    'danbooru': (n) => danbooru('maid rating:g', n),
-    'safebooru': (n) => safebooru('maid rating:general', n),
-    'konachan': (n) => konachan('maid rating:safe', n)
+    'danbooru': (n) => danbooru('maid 1girl solo rating:g', n),
+    'safebooru': (n) => safebooru('maid 1girl solo rating:general', n),
+    'konachan': (n) => konachan('maid 1girl solo rating:safe', n),
+    'yande.re': (n) => yandere('maid 1girl solo rating:s', n)
   }
 };
 
@@ -253,8 +274,11 @@ async function animeImage(kind, { provider = null, amount = 1 } = {}) {
     return { kind: key, provider: name, count: images.length, images };
   }
 
+  // En paralelo: la primera fuente que responde gana. Así una fuente caída ya
+  // no hace esperar 12-15 s (Vercel corta la función a los 10 s y el endpoint
+  // parecía roto). El presupuesto total es de 8 s.
   const producers = Object.entries(sources).map(([name, fn]) => [name, () => fn(amount)]);
-  const { value, source } = await firstSuccess(producers);
+  const { value, source } = await firstFast(producers, { timeoutMs: 8000 });
   return { kind: key, provider: source, count: value.length, images: value };
 }
 
@@ -296,12 +320,6 @@ const REACTION_PROVIDERS = {
   'nekos.best': async (r) => {
     const j = await fetchJson(`https://nekos.best/api/v2/${r}?amount=1`, { timeoutMs: 10000 });
     const u = j?.results?.[0]?.url;
-    if (!u) throw new Error('sin gif');
-    return u;
-  },
-  'waifu.pics': async (r) => {
-    const j = await fetchJson(`https://api.waifu.pics/sfw/${r}`, { timeoutMs: 10000 });
-    const u = j?.url;
     if (!u) throw new Error('sin gif');
     return u;
   },
@@ -369,7 +387,8 @@ async function reaction(name, { provider = null } = {}) {
   const producers = Object.entries(REACTION_PROVIDERS)
     .map(([label, fn]) => [label, () => fn(key)]);
   try {
-    const { value, source } = await firstSuccess(producers);
+    // En paralelo y con presupuesto corto: nunca más de 8 s por petición.
+    const { value, source } = await firstFast(producers, { timeoutMs: 8000 });
     return { reaction: key, label: REACTIONS[key], provider: source, gif: value };
   } catch (e) {
     e.message = `Ningún proveedor de GIFs tiene la reacción "${key}" ahora mismo.`;
