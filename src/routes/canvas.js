@@ -7,9 +7,14 @@ const { sendPng, sendMedia, sendError } = require('../utils/response');
 const { findEndpoint } = require('../catalog');
 
 const router = express.Router();
+// Las imágenes de la galería llegan en el cuerpo (JSON) para no meter un
+// `data:` enorme en la URL: POST /canvas/quotly  { "text": "...", "image": "data:..." }
+const jsonBody = express.json({ limit: '12mb' });
 
-router.get('/:id', async (req, res) => {
+async function handleCanvas(req, res) {
   const id = String(req.params.id || '').toLowerCase();
+  // Parámetros del POST + query string (el body manda).
+  const q = { ...req.query, ...(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) };
   if (!findEndpoint('canvas', id)) {
     return sendError(res, 404, `Canvas "${id}" no existe`, 'Revisa la lista en /canvas');
   }
@@ -17,30 +22,38 @@ router.get('/:id', async (req, res) => {
     if (id === 'bratvideo') {
       // Mismas opciones que /canvas/brat (tipografía y colores) + `words`
       // (cuántas palabras entran por pantalla, 5 por defecto).
-      const ov = styleOf(req.query);
-      const buf = await bratVideo(txt(req.query, 'Welcome to Velirius API'), {
+      const ov = styleOf(q);
+      const buf = await bratVideo(txt(q, 'Welcome to Velirius API'), {
         size: ov.scale,
         bg: ov.bg,
         color: ov.fill,
         font: ov.font,
         uppercase: ov.uppercase,
         spacing: ov.spacing,
-        words: req.query.words,
-        canvasSize: req.query['canvas.size']
+        words: q.words,
+        canvasSize: q['canvas.size']
       });
       return sendMedia(res, buf, 'video/mp4', 'velirius-bratvideo.mp4');
     }
     if (id === 'attp') {
-      const buf = await attpVideo(txt(req.query, 'Welcome to Velirius'), { size: styleOf(req.query).scale });
+      const buf = await attpVideo(txt(q, 'Welcome to Velirius'), { size: styleOf(q).scale });
       return sendMedia(res, buf, 'video/webm', 'velirius-attp.webm');
     }
-    const buf = await generateCanvas(id, req.query);
+    const buf = await generateCanvas(id, q);
     if (!buf) return sendError(res, 404, `Canvas "${id}" no existe`, 'Revisa la lista en /canvas');
     return sendPng(res, buf, `velirius-${id}.png`);
   } catch (e) {
+    // Errores de la imagen que mandó el usuario → 400 con pista, no un 500.
+    if (e.status && Number(e.status) < 500) {
+      console.warn(`[canvas/${id}]`, e.message);
+      return sendError(res, Number(e.status), e.message, e.hint);
+    }
     console.error(`[canvas/${id}]`, e.message);
     return sendError(res, 500, 'No se pudo generar el canvas', e.message);
   }
-});
+}
+
+router.get('/:id', handleCanvas);
+router.post('/:id', jsonBody, handleCanvas);
 
 module.exports = router;

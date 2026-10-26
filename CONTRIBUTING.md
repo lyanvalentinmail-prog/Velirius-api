@@ -3,6 +3,9 @@
 Guía corta y directa. **No hace falta clonar el repo**: casi todo se puede editar desde GitHub
 (`✏️ Edit file` → *Commit changes* → *Propose changes* → *Create pull request*).
 
+> 🔗 Versión **solo navegador**, con capturas del flujo de GitHub (ramas, PR, checks, merge y
+> cómo revertir): **[GUIA-ENDPOINTS-GITHUB.md](GUIA-ENDPOINTS-GITHUB.md)**.
+
 ---
 
 ## 1. Los 3 archivos (y para qué sirve cada uno)

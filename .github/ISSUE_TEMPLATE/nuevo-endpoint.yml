@@ -2,6 +2,7 @@ name: ➕ Endpoint o canvas nuevo
 description: Pedir (o proponer) un endpoint nuevo para la API
 title: "[endpoint] "
 labels: ["endpoint"]
+# Guía paso a paso: GUIA-ENDPOINTS-GITHUB.md
 body:
   - type: input
     id: nombre

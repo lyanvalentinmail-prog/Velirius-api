@@ -205,7 +205,22 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/minions` | `Canvas Personajes/Minions.jpg` | `url`, `url2`, `url3`, `zoom` |
 
 En los carteles con texto **o** imagen: deja `text` vacío y envía `url`/`image` (o `mode=image`)
-para pegar la foto en el cartel. También acepta imágenes `data:` (así funciona "SUBIR FOTO" del probador).
+para pegar la foto en el cartel.
+
+### Imágenes: `url` o **galería**
+
+Todos los canvas aceptan la foto de dos maneras:
+
+| Cómo | Ejemplo |
+|---|---|
+| **URL** (http/https, o `dominio.com/foto.jpg` sin esquema) | `/canvas/sebusca?url=https://i.imgur.com/x.jpg` |
+| **Galería** (imagen `data:` en el cuerpo del POST) | `POST /canvas/sebusca` con `{ "url": "data:image/jpeg;base64,..." }` |
+| **Subida con URL corta** (lo que hace la web) | `POST /upload` → `{ "result": { "url": "…/upload/abc123" } }` → usá esa URL en cualquier canvas |
+
+- Si **no mandás** imagen, se usa la foto predeterminada (`assets/defaults/`) — es a propósito.
+- Si mandás una imagen y **no se puede usar**, la API responde **400** con el motivo
+  (antes caía sin avisar a la foto predeterminada y parecía que el parámetro no hacía nada).
+- `/upload` guarda la imagen **30 minutos** en memoria: sirve para probar, no como hosting.
 
 ```bash
 curl "https://<host>/canvas/brat?text=hola%20mundo&color=ff2d55&size=1.4&rotate=-6" -o brat.png
@@ -285,7 +300,8 @@ tocá el lápiz (**Edit file**) → *Commit changes* → *Propose changes* → *
 | [`src/routes/<categoría>.js`](src/routes) | El **código** que responde `GET /<categoría>/:id`. | Solo si es nuevo |
 | [`src/canvas/generators/<id>.js`](src/canvas/generators) | El **dibujo** (PNG) de un canvas. | Solo en canvas |
 
-Guía completa y plantillas para copiar: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Guías: **[GUIA-ENDPOINTS-GITHUB.md](GUIA-ENDPOINTS-GITHUB.md)** (todo desde el navegador, sin instalar nada)
+y **[CONTRIBUTING.md](CONTRIBUTING.md)** (guía completa con plantillas para copiar).
 
 Atajos para editar directo en GitHub (`✏️`):
 

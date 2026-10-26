@@ -14,7 +14,7 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h' }));
 // CORS abierto: la API es pública y sin token (igual que Delirius)
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-velirius-client, Range');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -33,6 +33,9 @@ app.use('/reactions', require('./routes/reactions'));
 app.use('/tools', require('./routes/tools'));
 app.use(['/downloader', '/download'], require('./routes/download'));
 app.use(['/searcher', '/search'], require('./routes/searcher'));
+
+// Subidas desde la web (Galería del probador): POST /upload → URL corta
+app.use('/upload', require('./routes/upload'));
 
 // Salud
 app.get('/ping', (req, res) => {
