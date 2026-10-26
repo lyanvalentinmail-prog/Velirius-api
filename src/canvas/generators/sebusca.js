@@ -1,0 +1,46 @@
+// src/canvas/generators/sebusca.js — sebusca
+// Partes: photo · band + name (franja del nombre al pie de la foto) · reward.
+
+// Guía: README.md → "Cómo agregar o editar un endpoint".
+const {
+  sharp, loadImageBuffer, templateMeta, textLayer, imgParam, styleOf, flat,
+  placeImageArea, P, partsOf, boxOf
+} = require('./_helpers');
+
+module.exports = async function sebusca(q) {
+  const ov = styleOf(q);
+  const parts = partsOf('sebusca');
+  const { buf, width: W, height: H } = await templateMeta(parts.template);
+  const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
+  const layers = [
+    await placeImageArea(W, H, boxOf('sebusca', 'photo', q), user, {
+      zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate
+    })
+  ];
+
+  const name = String(q.name ?? 'EL MÁS BUSCADO').trim();
+  if (name) {
+    const bandBox = boxOf('sebusca', 'band', q);
+    const bandX = Math.round(bandBox.x0 * W);
+    const bandW = Math.round((bandBox.x1 - bandBox.x0) * W);
+    const bandY = Math.round(bandBox.y0 * H);
+    const bandH = Math.round((bandBox.y1 - bandBox.y0) * H);
+    const opacity = P.num(q, 'band', 'opacity', parts.band.opacity, 0, 1);
+    const band = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${bandW}" height="${bandH}">` +
+      `<rect width="${bandW}" height="${bandH}" fill="${P.color(q, 'band', 'bg', parts.band.bg)}" fill-opacity="${opacity}"/></svg>`
+    );
+    const t = P.style(q, 'name', parts.name.font);
+    const size = Math.round(bandH * P.num(q, 'name', 'size', 0.62, 0.2, 1.1));
+    const nameLayer = textLayer({
+      text: t.uppercase ? name.toUpperCase().slice(0, 26) : name.slice(0, 26),
+      width: bandW, height: bandH, family: t.family, weight: t.weight,
+      maxFont: size, minFont: 8, maxLines: 1, fill: ov.fill || P.color(q, 'name', 'fill', parts.name.fill),
+      align: 'middle'
+    });
+    layers.push({ input: band, left: bandX, top: bandY });
+    layers.push({ input: nameLayer.svg, left: bandX, top: bandY });
+  }
+
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
+};

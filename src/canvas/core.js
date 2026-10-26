@@ -1,8 +1,10 @@
 // src/canvas/core.js — Motor compartido de los canvas.
 // Aquí viven los helpers de parámetros y las piezas reutilizables (texto, foto,
 // chroma-key, huecos de las plantillas, borrado del texto de ejemplo…).
-// Los canvas concretos están partidos en src/canvas/generators*.js y sus medidas
-// en src/canvas/layouts.js.
+// Los canvas concretos viven en src/canvas/generators/<id>.js (un archivo por
+// canvas) y sus medidas en src/canvas/layouts.js.
+//
+// ➕ Guía para agregar un canvas: CONTRIBUTING.md → "Agregar un canvas nuevo".
 const {
   sharp, loadImageBuffer, templateMeta, shapedImage, circleImage, heartImage
 } = require('../utils/image');
@@ -602,6 +604,79 @@ async function faceCanvas(file, holes, q) {
 }
 
 // ---------- utilidades ----------
+/**
+ * Lente esférico (fisheye) sobre una imagen ya renderizada.
+ *
+ * Remapea píxel a píxel con interpolación bilineal: el centro del lienzo se
+ * agranda `stretch` veces y los bordes quedan igual, así el texto se "estira"
+ * de forma continua, sin costuras, sin franjas y sin copias fantasma.
+ *
+ *   stretch  cuánto crece el centro (1 = sin efecto, 1.35 = +35 %)
+ *   bulge    cuánto acompaña el eje horizontal (0 = solo vertical)
+ *   centerY  altura del centro de la lente (0-1)
+ */
+async function lensWarp(buf, { stretch = 1.35, bulge = 0.9, centerY = 0.5 } = {}) {
+  const k = Math.max(0, Math.min(1.5, Number(stretch) - 1 || 0));
+  if (k <= 0.001) return sharp(buf).png().toBuffer();
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width, H = info.height, ch = info.channels;
+  const out = Buffer.allocUnsafe(W * H * ch);
+  const cy = centerY * H, cx = W / 2;
+  const halfH = H / 2, halfW = W / 2;
+
+  const sample = (x, y, o) => {
+    const x0 = x | 0, y0 = y | 0;
+    const x1 = x0 + 1 < W ? x0 + 1 : W - 1;
+    const y1 = y0 + 1 < H ? y0 + 1 : H - 1;
+    const fx = x - x0, fy = y - y0;
+    const i00 = (y0 * W + x0) * ch, i10 = (y0 * W + x1) * ch;
+    const i01 = (y1 * W + x0) * ch, i11 = (y1 * W + x1) * ch;
+    for (let c = 0; c < ch; c++) {
+      const top = data[i00 + c] * (1 - fx) + data[i10 + c] * fx;
+      const bot = data[i01 + c] * (1 - fx) + data[i11 + c] * fx;
+      out[o + c] = (top * (1 - fy) + bot * fy + 0.5) | 0;
+    }
+  };
+
+  for (let y = 0; y < H; y++) {
+    const dy = (y - cy) / halfH;
+    const falloff = 1 - Math.min(1, dy * dy);
+    const mag = 1 + k * falloff;              // eje vertical
+    const magX = 1 + k * bulge * falloff;     // eje horizontal
+    const sy = cy + (y - cy) / mag;
+    for (let x = 0; x < W; x++) {
+      const sx = cx + (x - cx) / magX;
+      sample(Math.max(0, Math.min(W - 1, sx)), Math.max(0, Math.min(H - 1, sy)), (y * W + x) * ch);
+    }
+  }
+  return sharp(out, { raw: { width: W, height: H, channels: ch } }).png().toBuffer();
+}
+
+/**
+ * Elige el tamaño de letra más grande que entra en un área SIN partir palabras
+ * ni recortar líneas. Devuelve { size, lines }.
+ */
+function fitLines(text, { width, height, maxFont = 120, minFont = 12, lineHeight = 1.15,
+  family = 'sans', weight = 700, letterSpacing = 0, maxLines = 8 } = {}) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const wrap = size => wrapLines(text, width, { family, weight, size, letterSpacing, maxLines });
+  // una palabra partida ("mone" + "y") es un error de maquetado: se detecta
+  // comprobando que CADA palabra aparezca entera en alguna línea.
+  const splitsWords = lines => {
+    const tokens = new Set(lines.join(' ').split(/\s+/).filter(Boolean));
+    return words.some(w => !tokens.has(w));
+  };
+  for (let size = Math.round(maxFont); size >= minFont; size -= 1) {
+    const lines = wrap(size);
+    const wordTooWide = words.some(w => measure(w, { family, weight, size, letterSpacing }) > width - 1);
+    const tooTall = lines.length * size * lineHeight > height + 1;
+    const clipped = /…$/.test(lines[lines.length - 1] || '');
+    if (!wordTooWide && !tooTall && !clipped && !splitsWords(lines)) return { size, lines };
+  }
+  const size = minFont;
+  return { size, lines: wrap(size) };
+}
+
 const twemojiCache = new Map();
 async function twemoji(code) {
   if (twemojiCache.has(code)) return twemojiCache.get(code);
@@ -622,5 +697,5 @@ module.exports = {
   flat, expandLayer, innerShade, chromaInsert, ellipseImage, insertRows,
   placeImageArea, placeTextArea, eraseSampleText, signCanvas,
   holeMask, holeLayer, holeInsert, holeInsertMany, faceCanvas,
-  twemoji, svgPng
+  twemoji, svgPng, lensWarp, fitLines
 };

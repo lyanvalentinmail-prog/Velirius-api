@@ -1,0 +1,25 @@
+name: 🐞 Bug
+description: Algo no funciona (endpoint caído, canvas mal dibujado, texto cortado…)
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: URL del endpoint
+      placeholder: "https://<host>/canvas/iqc?text=hola"
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Qué esperabas
+    validations:
+      required: true
+  - type: textarea
+    id: real
+    attributes:
+      label: Qué pasó
+      description: Mensaje de error, captura o el JSON que devolvió.
+    validations:
+      required: true
