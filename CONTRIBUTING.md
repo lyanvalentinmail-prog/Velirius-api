@@ -206,6 +206,7 @@ Cada endpoint arma una lista de **proveedores en orden** y usa el primero que re
 |---|---|
 | YouTube (búsqueda y formatos) | `youtubei.js` → InnerTube → Invidious → Piped — en `src/utils/youtube.js` |
 | Buscar en la web | Google → DuckDuckGo lite → DuckDuckGo → Bing |
+| Audio de una canción (`/downloader/play`) | MP3 con ffmpeg desde YouTube → preview de Deezer → preview de iTunes |
 | Anime (`neko`/`waifu`/`maid`) | nekos.best · danbooru · safebooru · konachan · purrbot · pic.re |
 
 **Video con audio (Downloader).** YouTube casi siempre publica el video y el audio por

@@ -147,6 +147,7 @@ router.get('/information', (req, res) => {
       <div><b>Sin NSFW:</b> todas las fuentes de Anime y Reactions son SFW</div>
       <div><b>Texto limpio:</b> agrega <code>?format=text</code> a cualquier endpoint JSON</div>
       <div><b>Directo:</b> en Download usa <code>?direct=true|mp3|mp4</code> para el archivo (Range 206)</div>
+      <div><b>Descargar:</b> agregá <code>?download=true</code> a cualquier endpoint y el archivo baja como adjunto</div>
       <div><b>Catálogo JSON:</b> <a href="/docs">/docs</a></div>
       <div><b>GitHub:</b> <a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">${esc(config.githubUrl.replace('https://', ''))}</a></div>
     </div>

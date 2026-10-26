@@ -10,7 +10,7 @@
 const express = require('express');
 const { save, get } = require('../utils/uploadStore');
 const { absoluteUrl } = require('../utils/http');
-const { sendError } = require('../utils/response');
+const { sendError, disposicion } = require('../utils/response');
 
 const router = express.Router();
 const jsonBody = express.json({ limit: '12mb' });
@@ -57,6 +57,7 @@ router.get('/:id', (req, res) => {
   res.setHeader('Content-Length', String(file.buffer.length));
   res.setHeader('Cache-Control', 'public, max-age=900');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Disposition', disposicion(req, `velirius-${req.params.id}.${(file.mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, 'velirius.jpg'));
   return res.status(200).send(file.buffer);
 });
 

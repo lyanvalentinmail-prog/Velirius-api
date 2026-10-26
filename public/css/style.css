@@ -9,7 +9,7 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { overflow-x: hidden; }
-.page { padding: 26px 14px 46px; }
+.page { padding: 18px 10px 32px; }
 
 body {
   font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -25,42 +25,42 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 56px 16px;
+  padding: 22px 12px;
 }
 
 .card {
-  width: min(680px, 100%);
+  width: min(700px, 100%);
   background-color: #ffffff;
   background-image: radial-gradient(#e3e3e3 1.2px, transparent 1.2px);
   background-size: 22px 22px;
   border: 2px solid #111111;
-  border-radius: 26px;
-  padding: 42px 38px 28px;
-  box-shadow: 10px 10px 0 #efefef, 0 24px 48px rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  padding: 22px 20px 14px;
+  box-shadow: 6px 6px 0 #efefef, 0 14px 28px rgba(0, 0, 0, 0.05);
 }
 
 h1.title {
   text-align: center;
-  font-size: 38px;
+  font-size: 24px;
   font-weight: 800;
-  letter-spacing: 7px;
+  letter-spacing: 4px;
   text-transform: uppercase;
 }
 
 .sync {
   text-align: center;
-  margin-top: 8px;
+  margin-top: 5px;
   color: #8a8a8a;
-  font-size: 13px;
+  font-size: 10.5px;
   letter-spacing: 2px;
   text-transform: uppercase;
 }
 
 .intro {
   text-align: center;
-  font-size: 15px;
-  line-height: 1.75;
-  margin: 28px auto 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 13px auto 6px;
   max-width: 540px;
 }
 .intro strong { font-weight: 800; }
@@ -78,8 +78,8 @@ h1.title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 30px 0 14px;
-  padding-bottom: 13px;
+  margin: 16px 0 10px;
+  padding-bottom: 9px;
   border-bottom: 1px solid #e7e7e7;
 }
 .icons .left { display: flex; align-items: center; gap: 24px; }
@@ -91,21 +91,21 @@ h1.title {
   display: inline-flex;
   padding: 2px;
 }
-.icons svg { width: 27px; height: 27px; display: block; }
+.icons svg { width: 20px; height: 20px; display: block; }
 .icons a:hover, .icons button:hover { opacity: 0.55; }
 
 /* ---------- Portada (hoja de papel) ---------- */
 .paper {
-  width: min(760px, 100%);
+  width: min(620px, 100%);
   margin: 0 auto;
-  padding: 34px 26px 60px;
+  padding: 16px 12px 28px;
   background-color: #f6f5f1;
   background-image:
     repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.055) 0 1px, transparent 1px 4px),
     radial-gradient(rgba(0, 0, 0, 0.055) 0.8px, transparent 0.8px);
   background-size: auto, 7px 7px;
   border: 2px solid #111111;
-  box-shadow: 0 0 0 10px #ffffff, 0 0 0 12px #111111;
+  box-shadow: 0 0 0 6px #ffffff, 0 0 0 8px #111111;
 }
 .sheet {
   background-color: #fbfaf7;
@@ -114,41 +114,41 @@ h1.title {
     radial-gradient(rgba(0, 0, 0, 0.05) 0.8px, transparent 0.8px);
   background-size: auto, 6px 6px;
   border: 2px solid #111111;
-  padding: 26px 18px 18px;
+  padding: 14px 12px 10px;
 }
-.masthead { text-align: center; padding: 6px 0 18px; border-bottom: 2px solid #111111; }
+.masthead { text-align: center; padding: 4px 0 10px; border-bottom: 2px solid #111111; }
 .masthead .brand {
-  font-size: clamp(28px, 7vw, 40px);
+  font-size: clamp(20px, 5vw, 27px);
   font-weight: 800;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   line-height: 1.1;
 }
 .pill {
   display: inline-block;
-  margin-top: 14px;
+  margin-top: 8px;
   background: #111111;
   color: #ffffff;
-  font-size: 11.5px;
-  letter-spacing: 2.2px;
+  font-size: 9px;
+  letter-spacing: 1.4px;
   text-transform: uppercase;
-  padding: 7px 14px;
+  padding: 4px 9px;
 }
-.hero { margin: 22px 0 6px; padding: 0 12px; }
+.hero { margin: 12px 0 4px; padding: 0 6px; }
 .hero video, .hero img {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 62vh;
+  max-height: 34vh;
   object-fit: cover;
   border: 0;
-  box-shadow: 10px 10px 0 #111111;
+  box-shadow: 6px 6px 0 #111111;
   background: #000000;
 }
 .para {
-  font-size: 15px;
-  line-height: 1.95;
-  margin: 22px 12px 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  margin: 12px 4px 0;
   letter-spacing: 0.2px;
 }
 .para strong {
@@ -162,36 +162,36 @@ h1.title {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.para.small { font-size: 12px; color: #555; word-break: break-all; }
+.para.small { font-size: 10px; color: #555; word-break: break-all; }
 .alert {
   position: relative;
-  margin: 26px 12px 0;
-  border: 2px dashed #111111;
-  padding: 20px 16px 14px;
+  margin: 16px 4px 0;
+  border: 1.5px dashed #111111;
+  padding: 13px 11px 9px;
   background: rgba(255, 255, 255, 0.55);
 }
 .alert-tag {
   position: absolute;
-  top: -11px;
+  top: -9px;
   left: 14px;
   background: #111111;
   color: #ffffff;
-  font-size: 10.5px;
+  font-size: 8.5px;
   letter-spacing: 2px;
   text-transform: uppercase;
   padding: 4px 9px;
 }
-.alert p { font-size: 13.5px; line-height: 1.85; }
-.sheet .cta-wrap { text-align: center; margin: 30px 0 6px; }
+.alert p { font-size: 10.5px; line-height: 1.65; }
+.sheet .cta-wrap { text-align: center; margin: 16px 0 4px; }
 .cta {
   display: inline-block;
   background: #111111;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 4px;
+  letter-spacing: 2.4px;
   text-transform: uppercase;
-  padding: 18px 30px;
+  padding: 10px 18px;
   text-decoration: none;
   border: 2px solid #111111;
   transition: background 0.15s, color 0.15s;
@@ -241,35 +241,35 @@ h1.title {
 .status {
   background: #000000;
   color: #ffffff;
-  border-radius: 8px;
-  padding: 11px 15px;
+  border-radius: 6px;
+  padding: 6px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12.5px;
-  letter-spacing: 1.4px;
+  font-size: 10px;
+  letter-spacing: 1px;
   text-transform: uppercase;
 }
-.status .right { display: flex; align-items: center; gap: 20px; }
+.status .right { display: flex; align-items: center; gap: 12px; }
 .status .stat { display: inline-flex; align-items: center; gap: 7px; }
-.status svg { width: 16px; height: 16px; }
+.status svg { width: 12px; height: 12px; }
 
 /* ---------- Píldoras de navegación (diseño Apireon) ---------- */
 .pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   justify-content: center;
-  margin: 22px 0 18px;
+  margin: 12px 0 10px;
 }
 .pills a {
   display: inline-block;
   border: 1.5px solid #111111;
   border-radius: 999px;
-  padding: 9px 16px;
-  font-size: 12px;
-  letter-spacing: 1.1px;
+  padding: 4px 10px;
+  font-size: 10px;
+  letter-spacing: 0.7px;
   text-transform: uppercase;
   text-decoration: none;
   color: #111111;
@@ -281,44 +281,44 @@ h1.title {
 /* ---------- Rejilla de carpetas (diseño Apireon) ---------- */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 14px;
-  margin-top: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
 }
 .cat-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px 16px 14px;
-  border: 2px solid #111111;
-  border-radius: 14px;
+  gap: 2px;
+  padding: 9px 11px 8px;
+  border: 1.5px solid #111111;
+  border-radius: 9px;
   background: #ffffff;
   text-decoration: none;
   color: #111111;
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
-.cat-card:hover { background: #111111; color: #ffffff; box-shadow: 6px 6px 0 #e6e6e6; }
+.cat-card:hover { background: #111111; color: #ffffff; box-shadow: 3px 3px 0 #e6e6e6; }
 .cat-name {
-  font-size: 19px;
+  font-size: 13.5px;
   font-weight: 700;
-  letter-spacing: 1.5px;
+  letter-spacing: 0.8px;
   text-transform: lowercase;
   display: inline-flex;
   align-items: baseline;
   gap: 2px;
 }
 .cat-name em { font-style: normal; opacity: 0.55; font-weight: 400; }
-.cat-count { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #7a7a7a; }
+.cat-count { font-size: 9px; letter-spacing: 0.9px; text-transform: uppercase; color: #7a7a7a; }
 .cat-card:hover .cat-count { color: #cfcfcf; }
 .cat-ver {
   align-self: flex-start;
-  margin-top: 8px;
-  font-size: 11.5px;
+  margin-top: 4px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 2.4px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  border-bottom: 2px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
   padding-bottom: 1px;
 }
 
@@ -326,19 +326,19 @@ h1.title {
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0 16px;
+  gap: 5px;
+  margin: 8px 0 10px;
 }
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  border: 2px solid #111111;
+  gap: 5px;
+  border: 1.5px solid #111111;
   border-radius: 999px;
-  padding: 5px 13px;
-  font-size: 11px;
+  padding: 2px 8px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   text-decoration: none;
   color: #111111;
@@ -349,7 +349,7 @@ h1.title {
 .chip:hover, .chip:focus-visible { background: #111111; color: #ffffff; }
 .chip:hover b { opacity: 0.8; }
 
-.group { margin-bottom: 26px; }
+.group { margin-bottom: 12px; }
 .group:last-child { margin-bottom: 0; }
 .group-head {
   display: flex;
@@ -357,22 +357,22 @@ h1.title {
   justify-content: space-between;
   gap: 12px;
   margin: 0;
-  padding: 8px 2px 9px;
-  border-bottom: 2px solid #111111;
-  font-size: 14px;
+  padding: 4px 2px 5px;
+  border-bottom: 1.5px solid #111111;
+  font-size: 10.5px;
   font-weight: 800;
-  letter-spacing: 2.6px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
   scroll-margin-top: 12px;
 }
-.group-count { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #8a8a8a; }
+.group-count { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #8a8a8a; }
 
 /* ---------- Lista de carpetas / endpoints ---------- */
 .list {
   margin-top: 4px;
-  max-height: 620px;
+  max-height: 540px;
   overflow-y: auto;
-  padding-right: 16px;
+  padding-right: 10px;
   scrollbar-width: thin;
   scrollbar-color: #111111 transparent;
 }
@@ -383,24 +383,24 @@ h1.title {
 .row {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 20px 2px;
+  gap: 10px;
+  padding: 7px 2px;
   border-bottom: 1px solid #e7e7e7;
   transition: background 0.18s, color 0.18s, padding 0.18s;
 }
-.row .folder svg { width: 31px; height: 31px; display: block; }
+.row .folder svg { width: 20px; height: 20px; display: block; }
 .row .info { flex: 1; min-width: 0; }
 .row h3 {
-  font-size: 21px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 2px;
+  letter-spacing: 1.1px;
   text-transform: uppercase;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 .row h3 .bullet { font-size: 11px; }
-.row .meta { color: #8a8a8a; font-size: 13px; margin-top: 4px; word-break: break-word; }
+.row .meta { color: #8a8a8a; font-size: 10px; margin-top: 1px; word-break: break-word; }
 .row .meta .get { color: #111111; font-weight: 700; }
 
 /* fila abierta: cabecera negra como en la captura */
@@ -408,9 +408,9 @@ h1.title {
   background: #000000;
   color: #ffffff;
   border-bottom-color: #000000;
-  border-radius: 10px 10px 0 0;
-  padding: 18px 14px;
-  margin-top: 4px;
+  border-radius: 8px 8px 0 0;
+  padding: 7px 9px;
+  margin-top: 3px;
 }
 .row.open .meta, .row.open .meta .get { color: #d5d5d5; }
 .row.open .btn { background: #ffffff; color: #000000; border-color: #ffffff; }
@@ -418,13 +418,13 @@ h1.title {
 .btn {
   background: #000000;
   color: #ffffff;
-  border: 2px solid #000000;
-  border-radius: 8px;
+  border: 1.5px solid #000000;
+  border-radius: 6px;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1.6px;
-  padding: 11px 27px;
+  letter-spacing: 1px;
+  padding: 4px 11px;
   cursor: pointer;
   text-decoration: none;
   text-transform: uppercase;
@@ -436,7 +436,7 @@ h1.title {
 .btn[data-test-btn][aria-expanded="true"]::after { content: " ▴"; }
 .btn.ghost { background: #ffffff; color: #000000; }
 .btn.ghost:hover { background: #000000; color: #ffffff; }
-.btn.small { padding: 8px 16px; font-size: 12px; }
+.btn.small { padding: 4px 9px; font-size: 9.5px; }
 
 /* ---------- Probador TEST ---------- */
 .tester {
@@ -454,52 +454,52 @@ h1.title {
   opacity: 1;
   border-width: 2px;
   border-top: 0;
-  margin: 0 0 20px;
+  margin: 0 0 12px;
 }
 .tester-inner { overflow: hidden; min-height: 0; }
-.tester .t-pad { padding: 16px 18px 20px; }
+.tester .t-pad { padding: 11px 13px 13px; }
 
-.tester .t-desc { font-size: 13px; line-height: 1.75; color: #444; }
+.tester .t-desc { font-size: 11px; line-height: 1.55; color: #444; }
 
 .tester .t-use-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 20px 0 10px;
+  margin: 12px 0 6px;
 }
 .tester .t-use-head h4 {
-  font-size: 11.5px;
-  letter-spacing: 1.8px;
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
   font-weight: 800;
   text-transform: uppercase;
 }
 .tester .t-use-actions { display: flex; gap: 8px; }
 .chip-btn {
   font: inherit;
-  font-size: 10.5px;
-  letter-spacing: 1.2px;
+  font-size: 9px;
+  letter-spacing: 0.9px;
   text-transform: uppercase;
   background: #ffffff;
   color: #111111;
   border: 1.5px solid #111111;
-  border-radius: 5px;
-  padding: 5px 9px;
+  border-radius: 4px;
+  padding: 3px 7px;
   cursor: pointer;
 }
 .chip-btn:hover { background: #111111; color: #ffffff; }
 
 .code {
   border: 1.5px solid #dcdcdc;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f7f7f5;
-  padding: 10px 11px;
+  padding: 7px 9px;
   overflow-x: auto;
 }
-.code-line { display: flex; align-items: flex-start; gap: 8px; font-size: 11.5px; line-height: 1.7; }
+.code-line { display: flex; align-items: flex-start; gap: 6px; font-size: 10px; line-height: 1.55; }
 .code-line + .code-line { margin-top: 4px; }
 .code-url { word-break: break-all; }
-.code-line.faint { color: #6a6a6a; font-size: 11px; white-space: pre-wrap; }
+.code-line.faint { color: #6a6a6a; font-size: 9.5px; white-space: pre-wrap; }
 .chip-get {
   flex: none;
   background: #111111;
@@ -513,36 +513,36 @@ h1.title {
 }
 
 .tester .t-params-head {
-  margin: 22px 0 6px;
-  font-size: 11.5px;
-  letter-spacing: 1.8px;
+  margin: 12px 0 3px;
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
   font-weight: 800;
   text-transform: uppercase;
 }
-.param { margin-top: 14px; }
+.param { margin-top: 8px; }
 .param-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.param-top b { font-size: 12.5px; letter-spacing: 0.6px; }
+.param-top b { font-size: 10.5px; letter-spacing: 0.6px; }
 .chip-opt {
-  font-size: 9.5px;
-  letter-spacing: 1.2px;
+  font-size: 8px;
+  letter-spacing: 0.9px;
   text-transform: uppercase;
   color: #555;
   background: #ededed;
-  border-radius: 4px;
-  padding: 3px 7px;
+  border-radius: 3px;
+  padding: 2px 5px;
   white-space: nowrap;
 }
 .chip-opt.req { background: #111111; color: #ffffff; }
-.param-desc { font-size: 11.5px; color: #8a8a8a; margin: 3px 0 7px; line-height: 1.6; }
+.param-desc { font-size: 10px; color: #8a8a8a; margin: 2px 0 4px; line-height: 1.5; }
 .param .field-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .gallery-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .intro a { color: #111111; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 
 .tester input[type="text"], .tester select, .tester textarea {
   flex: 1; min-width: 0; width: 100%;
-  font: inherit; font-size: 13px;
-  padding: 9px 11px;
-  border: 1.5px solid #111111; border-radius: 8px;
+  font: inherit; font-size: 11px;
+  padding: 5px 8px;
+  border: 1.5px solid #111111; border-radius: 6px;
   background: #fff; outline: none;
   cursor: text;
   line-height: 1.5;
@@ -555,18 +555,18 @@ h1.title {
 .tester input[type="text"]:focus, .tester select:focus, .tester textarea:focus { box-shadow: 0 0 0 3px #eeeeee; }
 
 .tester .upload {
-  font-size: 11px; letter-spacing: 1px;
-  border: 1.5px solid #111; border-radius: 8px;
-  padding: 9px 10px; cursor: pointer; background: #fff; white-space: nowrap;
+  font-size: 9.5px; letter-spacing: 0.8px;
+  border: 1.5px solid #111; border-radius: 6px;
+  padding: 5px 8px; cursor: pointer; background: #fff; white-space: nowrap;
 }
 .tester .upload.busy { opacity: 0.55; cursor: progress; }
 .tester .up-thumb {
-  width: 40px; height: 40px; object-fit: cover;
-  border: 1.5px solid #111; border-radius: 8px; background: #fff;
+  width: 30px; height: 30px; object-fit: cover;
+  border: 1.5px solid #111; border-radius: 6px; background: #fff;
 }
 
 .tester .adv-toggle {
-  width: 100%; margin-top: 18px; font-size: 11.5px; letter-spacing: 1.2px;
+  width: 100%; margin-top: 10px; font-size: 9.5px; letter-spacing: 0.9px;
 }
 .tester .adv-fields { margin-top: 10px; padding-top: 6px; border-top: 1px dashed #bdbdbd; }
 .tester .adv-fields[hidden] { display: none; }
@@ -574,44 +574,47 @@ h1.title {
 .run {
   display: block;
   width: 100%;
-  margin-top: 20px;
+  margin-top: 12px;
   background: #111111;
   color: #ffffff;
-  border: 2px solid #111111;
-  border-radius: 6px;
+  border: 1.5px solid #111111;
+  border-radius: 5px;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 3px;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  padding: 14px;
+  padding: 8px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 .run:hover { background: #ffffff; color: #111111; }
 .run:disabled { opacity: 0.55; cursor: progress; }
 
-.tester .result { margin-top: 16px; }
+.tester .result { margin-top: 10px; }
 .res-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 11px;
-  letter-spacing: 1.4px;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: 1px;
   text-transform: uppercase;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 .chip-status {
   background: #111111;
   color: #ffffff;
-  border-radius: 4px;
-  padding: 4px 8px;
+  border-radius: 3px;
+  padding: 2px 6px;
   font-weight: 700;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.9px;
 }
 .chip-status.bad { background: #b3261e; }
 .res-meta { color: #333; }
-.res-bar .chip-btn { margin-left: auto; }
+.res-bar .chip-btn { margin-left: 6px; }
+.res-bar .chip-btn:first-of-type { margin-left: auto; }
+.res-bar .chip-btn.dl { background: #111; color: #fff; border-color: #111; }
+.res-bar .chip-btn.dl:hover { background: #fff; color: #111; }
 /* Damero: la pieza se ve tal cual, sin marco */
 .preview {
   border-radius: 0;
@@ -627,31 +630,31 @@ h1.title {
   padding: 0;
 }
 .preview img, .preview video { display: block; width: 100%; height: auto; border: 0; border-radius: 0; }
-.preview.contain img, .preview.contain video { object-fit: contain; max-height: 520px; }
+.preview.contain img, .preview.contain video { object-fit: contain; max-height: 380px; }
 
 .tester .result pre {
-  font-size: 11.5px; line-height: 1.6;
-  border: 1.5px solid #111111; border-radius: 8px;
-  padding: 12px; overflow: auto; max-height: 420px; background: #fff;
+  font-size: 10px; line-height: 1.5;
+  border: 1.5px solid #111111; border-radius: 6px;
+  padding: 8px; overflow: auto; max-height: 300px; background: #fff;
   white-space: pre-wrap; word-break: break-word;
 }
-.tester .result .dl { display: inline-block; margin-top: 9px; font-size: 12px; color: #111; font-weight: 700; }
-.tester .loading { font-size: 12.5px; letter-spacing: 1px; color: #555; }
+.tester .result .dl { display: inline-block; margin-top: 6px; font-size: 11px; color: #111; font-weight: 700; }
+.tester .loading { font-size: 10.5px; letter-spacing: 1px; color: #555; }
 .tester .error-box { font-size: 12px; border: 1.5px dashed #b3261e; border-radius: 8px; padding: 12px; color: #8c1d18; }
 
 /* ---------- Pie ---------- */
 .footer {
-  border-top: 2px solid #111111;
-  margin-top: 28px;
-  padding-top: 17px;
+  border-top: 1.5px solid #111111;
+  margin-top: 14px;
+  padding-top: 9px;
   text-align: center;
   color: #7a7a7a;
-  font-size: 13px;
-  letter-spacing: 1.6px;
+  font-size: 10px;
+  letter-spacing: 1.1px;
   text-transform: uppercase;
 }
 
-.info-block { font-size: 13.5px; line-height: 2; margin-top: 18px; }
+.info-block { font-size: 11.5px; line-height: 1.8; margin-top: 10px; }
 .info-block b { text-transform: uppercase; letter-spacing: 1px; }
 .info-block a { color: #111; }
 

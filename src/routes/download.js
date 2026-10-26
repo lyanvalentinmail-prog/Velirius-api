@@ -3,14 +3,17 @@
 // ?direct= devuelve el archivo en streaming (con Range 206) en lugar de JSON.
 const express = require('express');
 const P = require('../utils/providers');
-const { sendSuccess, sendError, sendText, proxyStream, sendFile } = require('../utils/response');
+const { sendSuccess, sendError, sendText, proxyStream, sendFile, wantsDownload } = require('../utils/response');
 const { absoluteUrl } = require('../utils/http');
 
 const router = express.Router();
 
 const wantDirect = (req, kinds = ['true']) => {
   const d = String(req.query.direct || '').toLowerCase();
-  return kinds.includes(d) ? d : null;
+  if (kinds.includes(d)) return d;
+  // ?download=true ya implica bajar el archivo (mp4 si el endpoint es de video).
+  if (wantsDownload(req)) return kinds.includes('mp4') ? 'mp4' : kinds[0];
+  return null;
 };
 const cleanName = (s, fb = 'Velirius') =>
   String(s || fb).normalize('NFKD').replace(/[^\x20-\x7E]/g, '').replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_').slice(0, 60) || fb;
@@ -64,6 +67,32 @@ async function audioDe(info) {
 
 const extAudio = (mime = '') => (/webm/i.test(mime) ? 'webm' : /mpeg|mp3/i.test(mime) ? 'mp3' : 'm4a');
 
+/**
+ * Sirve el audio ya convertido a MP3 (lo hace ffmpeg): así suena en cualquier
+ * navegador y se puede descargar como `.mp3`. Si la conversión falla, se manda
+ * el stream original del proveedor.
+ */
+async function enviarAudio(req, res, info) {
+  const base = cleanName(info.title);
+  try {
+    const file = await P.youtubeAudioFile(info.id);
+    return sendFile(res, file, { mime: 'audio/mpeg', filename: `${base}.mp3`, cache: 'public, max-age=3600' });
+  } catch (e) {
+    console.error('[downloader/audio]', e.message);
+  }
+  const audio = await audioDe(info);
+  return proxyStream(req, res, audio.url, { filename: `${base}.${extAudio(audio.mime)}` });
+}
+
+/** URLs públicas del audio: para reproducir y para descargar el mismo archivo. */
+function urlsAudio(req, path, query) {
+  const base = `${path}?${query}`;
+  return {
+    play: absoluteUrl(req, `${base}&direct=true`),
+    download: absoluteUrl(req, `${base}&direct=true&download=true`)
+  };
+}
+
 // ---------- TikTok sin marca de agua ----------
 router.get('/tiktok', handle(async (req, res) => {
   const url = String(req.query.url || '').trim();
@@ -94,10 +123,7 @@ router.get(['/youtube', '/yt'], handle(async (req, res) => {
   const direct = wantDirect(req, ['true', 'mp4', 'mp3', 'video', 'audio']);
   const watch = `https://www.youtube.com/watch?v=${info.id}`;
 
-  if (direct === 'mp3' || direct === 'audio') {
-    const audio = await audioDe(info);
-    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.${extAudio(audio.mime)}` });
-  }
+  if (direct === 'mp3' || direct === 'audio') return enviarAudio(req, res, info);
   if (direct) {
     const playable = await videoConAudio(info, quality);
     return enviarVideo(req, res, playable, `${cleanName(info.title)}.mp4`);
@@ -108,25 +134,32 @@ router.get(['/youtube', '/yt'], handle(async (req, res) => {
   let audio = P.pickAudio(info.formats);
   try { playable = await videoConAudio(info, quality); } catch (e) { console.error('[downloader/youtube]', e.message); }
   try { if (!audio?.url) audio = await audioDe(info); } catch (_) { /* opcional */ }
-  const mp4 = absoluteUrl(req, `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=mp4&quality=${quality || 'auto'}`);
-  const mp3 = absoluteUrl(req, `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=mp3`);
+  const base = `/downloader/youtube?url=${encodeURIComponent(watch)}&direct=`;
+  const mp4 = absoluteUrl(req, `${base}mp4&quality=${quality || 'auto'}`);
+  const mp3 = absoluteUrl(req, `${base}mp3`);
+  const mp4Download = absoluteUrl(req, `${base}mp4&quality=${quality || 'auto'}&download=true`);
+  const mp3Download = absoluteUrl(req, `${base}mp3&download=true`);
 
   return sendSuccess(res, {
     id: info.id, title: info.title, author: info.author, duration: info.duration,
     thumbnail: info.thumbnail, url: watch,
     quality: quality || 'auto',
     hasAudio: Boolean(playable?.hasAudio),
-    audio: audio ? { quality: audio.quality, mime: audio.mime, bitrate: audio.bitrate || null, url: mp3 } : null,
+    audio: audio ? {
+      quality: audio.quality, mime: 'audio/mpeg', bitrate: audio.bitrate || null,
+      url: mp3, downloadUrl: mp3Download
+    } : null,
     video: playable ? {
       quality: playable.quality || null,
       height: playable.height || null,
       mime: playable.mime || 'video/mp4',
       hasAudio: Boolean(playable.hasAudio),
       mergedWithFfmpeg: Boolean(playable.muxed),
-      url: mp4
+      url: mp4,
+      downloadUrl: mp4Download
     } : null,
     formats: info.formats,
-    directUrls: { mp4, mp3 }
+    directUrls: { mp4, mp3, mp4Download, mp3Download }
   });
 }));
 
@@ -165,15 +198,22 @@ router.get(['/instagram', '/ig'], handle(async (req, res) => {
 // ---------- MP3 ----------
 router.get(['/mp3', '/ytmp3'], handle(async (req, res) => {
   const info = await P.resolveYoutubeTarget({ url: req.query.url, query: req.query.query || req.query.q });
-  const audio = await audioDe(info);
-  const directUrl = absoluteUrl(req, `/downloader/mp3?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&direct=true`);
-  if (wantDirect(req, ['true', 'mp3', 'audio', '1'])) {
-    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.${extAudio(audio.mime)}` });
-  }
+  if (wantDirect(req, ['true', 'mp3', 'audio', '1'])) return enviarAudio(req, res, info);
+
+  const query = `url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}`;
+  const urls = urlsAudio(req, '/downloader/mp3', query);
+  const audio = await audioDe(info).catch(() => null);
   return sendSuccess(res, {
     id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
-    audio: { quality: audio.quality || null, mime: audio.mime || 'audio/mp4', bitrate: audio.bitrate || null, url: directUrl },
-    directUrl
+    audio: {
+      quality: audio?.quality || null,
+      mime: 'audio/mpeg',
+      bitrate: audio?.bitrate || null,
+      source: audio?.source || null,
+      url: urls.play
+    },
+    directUrl: urls.play,
+    downloadUrl: urls.download
   });
 }));
 
@@ -181,7 +221,9 @@ router.get(['/mp3', '/ytmp3'], handle(async (req, res) => {
 router.get(['/mp4', '/ytmp4'], handle(async (req, res) => {
   const info = await P.resolveYoutubeTarget({ url: req.query.url, query: req.query.query || req.query.q });
   const quality = P.normalizarCalidad(req.query.quality || req.query.format);
-  const directUrl = absoluteUrl(req, `/downloader/mp4?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&quality=${quality || 'auto'}&direct=true`);
+  const baseMp4 = `/downloader/mp4?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}&quality=${quality || 'auto'}`;
+  const directUrl = absoluteUrl(req, `${baseMp4}&direct=true`);
+  const downloadUrl = absoluteUrl(req, `${baseMp4}&direct=true&download=true`);
   if (wantDirect(req, ['true', 'mp4', 'video', '1'])) {
     const playable = await videoConAudio(info, quality);
     return enviarVideo(req, res, playable, `${cleanName(info.title)}.mp4`);
@@ -198,27 +240,85 @@ router.get(['/mp4', '/ytmp4'], handle(async (req, res) => {
       mime: playable.mime || 'video/mp4',
       hasAudio: Boolean(playable.hasAudio),
       mergedWithFfmpeg: Boolean(playable.muxed),
-      url: directUrl
+      url: directUrl,
+      downloadUrl
     } : null,
-    directUrl
+    directUrl,
+    downloadUrl
   });
 }));
+
+/** Respaldo de /play: 30 s de la canción desde Deezer/iTunes (siempre suena). */
+async function previewDe(query) {
+  const prev = await P.previewAudio(query);
+  if (!prev?.url) throw new Error('No hay preview disponible para esa canción');
+  return prev;
+}
 
 // ---------- Play (audio por búsqueda) ----------
 router.get('/play', handle(async (req, res) => {
   const query = String(req.query.query || req.query.q || req.query.text || '').trim();
   if (!query) return sendError(res, 400, 'Falta el parámetro query', 'Ejemplo: /downloader/play?query=Lisa+Money');
-  const info = await P.resolveYoutubeTarget({ query });
-  const audio = await audioDe(info);
-  const playUrl = absoluteUrl(req, `/downloader/play?query=${encodeURIComponent(query)}&direct=true`);
-  if (wantDirect(req, ['true', 'mp3', 'audio', '1'])) {
-    return proxyStream(req, res, audio.url, { filename: `${cleanName(info.title)}.${extAudio(audio.mime)}` });
+  const directo = wantDirect(req, ['true', 'mp3', 'audio', '1']);
+  const urls = urlsAudio(req, '/downloader/play', `query=${encodeURIComponent(query)}`);
+  const errores = [];
+
+  // 1) YouTube → MP3 convertido con ffmpeg.
+  let info = null;
+  try {
+    info = await P.resolveYoutubeTarget({ query });
+    if (directo) return await enviarAudio(req, res, info);
+  } catch (e) {
+    errores.push(`youtube: ${e.message}`);
+    if (res.headersSent) throw e;
+  }
+
+  if (info && !directo) {
+    const audio = await audioDe(info).catch(() => null);
+    return sendSuccess(res, {
+      query, id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
+      youtubeUrl: `https://www.youtube.com/watch?v=${info.id}`,
+      preview: false,
+      audio: {
+        quality: audio?.quality || null,
+        mime: 'audio/mpeg',
+        bitrate: audio?.bitrate || null,
+        source: audio?.source || 'youtubei',
+        url: urls.play,
+        downloadUrl: urls.download
+      },
+      playUrl: urls.play,
+      downloadUrl: urls.download
+    });
+  }
+
+  // 2) Respaldo: 30 s reales desde Deezer o iTunes.
+  const prev = await previewDe(query);
+  const nombre = cleanName(`${prev.artist} - ${prev.title}`);
+  if (directo) {
+    return proxyStream(req, res, prev.url, { filename: `${nombre}.${extAudio(prev.mime)}` });
   }
   return sendSuccess(res, {
-    query, id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
-    youtubeUrl: `https://www.youtube.com/watch?v=${info.id}`,
-    audio: { quality: audio.quality || null, mime: audio.mime || 'audio/mp4', bitrate: audio.bitrate || null, url: playUrl },
-    playUrl
+    query,
+    id: null,
+    title: prev.title,
+    author: prev.artist,
+    album: prev.album,
+    duration: prev.duration,
+    thumbnail: prev.cover,
+    preview: true,
+    source: prev.source,
+    audio: {
+      quality: 'preview',
+      mime: prev.mime,
+      bitrate: null,
+      source: prev.source,
+      url: urls.play,
+      downloadUrl: urls.download
+    },
+    playUrl: urls.play,
+    downloadUrl: urls.download,
+    hint: `YouTube no respondió (${errores.join(' · ')}). Esto es un preview de 30 s de ${prev.source}.`
   });
 }));
 

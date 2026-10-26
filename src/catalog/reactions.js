@@ -28,7 +28,8 @@ module.exports = {
     media: 'image',
     params: [
       S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'waifu.pics', 'purrbot', 'otakugifs']),
-      O('direct', 'false', 'true = devuelve el GIF directamente')
+      O('direct', 'false', 'true = devuelve el GIF directamente'),
+      O('download', 'false', 'true = descarga el GIF como archivo')
     ]
   }))
 };

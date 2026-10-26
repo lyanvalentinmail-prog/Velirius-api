@@ -2,7 +2,7 @@
 // Todas las fuentes son SFW (rutas /sfw/ o is_nsfw=false).
 const express = require('express');
 const P = require('../utils/providers');
-const { sendSuccess, sendError, proxyStream } = require('../utils/response');
+const { sendSuccess, sendError, proxyStream, wantsDownload } = require('../utils/response');
 
 const router = express.Router();
 
@@ -19,7 +19,13 @@ const handle = fn => async (req, res) => {
   }
 };
 
-const wantsDirect = req => ['true', '1', 'yes'].includes(String(req.query.direct || '').toLowerCase());
+// ?download=true también devuelve el archivo (con Content-Disposition: attachment).
+const wantsDirect = req => ['true', '1', 'yes'].includes(String(req.query.direct || '').toLowerCase()) || wantsDownload(req);
+// ?index=2 permite descargar (o abrir) cualquiera de las imágenes de `?amount=`.
+const indexOf = req => {
+  const i = parseInt(req.query.index, 10);
+  return Number.isNaN(i) || i < 1 ? 1 : Math.min(10, i);
+};
 const amountOf = req => Math.min(10, Math.max(1, parseInt(req.query.amount, 10) || 1));
 
 // ---------- Neko / Waifu / Maid ----------
@@ -27,15 +33,16 @@ for (const kind of ['neko', 'waifu', 'maid']) {
   router.get(`/${kind}`, handle(async (req, res) => {
     const amount = amountOf(req);
     const data = await P.animeImage(kind, { provider: req.query.provider || null, amount });
-    const first = data.images[0];
-    if (wantsDirect(req) && first) {
-      return proxyStream(req, res, first.image, { filename: `velirius-${kind}.${/\.png/i.test(first.image) ? 'png' : /\.webp/i.test(first.image) ? 'webp' : 'jpg'}` });
+    const elegida = data.images[indexOf(req) - 1] || data.images[0];
+    if (wantsDirect(req) && elegida) {
+      const ext = /\.png/i.test(elegida.image) ? 'png' : /\.webp/i.test(elegida.image) ? 'webp' : /\.gif/i.test(elegida.image) ? 'gif' : 'jpg';
+      return proxyStream(req, res, elegida.image, { filename: `velirius-${kind}-${indexOf(req)}.${ext}` });
     }
     return {
       kind: data.kind,
       provider: data.provider,
       count: data.count,
-      image: first?.image || null,
+      image: data.images[0]?.image || null,
       images: data.images.map(i => ({
         url: i.image,
         full: i.full || i.image,

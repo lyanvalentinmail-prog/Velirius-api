@@ -4,11 +4,12 @@
 // (GET /reactions sin sufijo es la página web de la categoría)
 const express = require('express');
 const P = require('../utils/providers');
-const { sendSuccess, sendError, proxyStream } = require('../utils/response');
+const { sendSuccess, sendError, proxyStream, wantsDownload } = require('../utils/response');
 
 const router = express.Router();
 
-const wantsDirect = req => ['true', '1', 'yes'].includes(String(req.query.direct || '').toLowerCase());
+// ?download=true también devuelve el GIF (con Content-Disposition: attachment).
+const wantsDirect = req => ['true', '1', 'yes'].includes(String(req.query.direct || '').toLowerCase()) || wantsDownload(req);
 
 router.get(['/list', '/all'], (req, res) => sendSuccess(res, {
   count: P.REACTION_LIST.length,

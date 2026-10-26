@@ -372,18 +372,29 @@ async function main() {
         && encontrados[0].author === 'Canal de prueba' && encontrados[0].duration === '1:02',
         encontrados[0] && encontrados[0].url);
 
-      // 1) Con formato progresivo: devuelve la URL y ya trae audio.
+      // 1) Con formato progresivo: devuelve la URL viva y ya trae audio.
+      //    La URL apunta al propio servidor de la prueba para que el chequeo de
+      //    "enlace vivo" (urlViva) responda de verdad.
+      const urlVivaLocal = `http://127.0.0.1:${port}/img/banner.jpg`;
       globalThis.__smokeYtInfo = {
         playability_status: { status: 'OK' },
         basic_info: { title: 'Video de prueba', author: 'Canal', duration: 62 },
         streaming_data: {
-          formats: [fmt({ h: 360, url: 'https://cdn.ejemplo/360.mp4' })],
-          adaptive_formats: [fmt({ h: 1080, a: false, url: 'https://cdn.ejemplo/1080.mp4' }), fmt({ v: false, mime: 'audio/mp4', br: 128000, url: 'https://cdn.ejemplo/a.m4a' })]
+          formats: [fmt({ h: 360, url: urlVivaLocal })],
+          adaptive_formats: [fmt({ h: 1080, a: false, url: 'https://cdn.ejemplo/1080.mp4' }), fmt({ v: false, mime: 'audio/mp4', br: 128000, url: aFile })]
         }
       };
       const progresivo = await YT.videoReproducible('abc12345678', 0);
       ok('YouTube: en automático devuelve el progresivo con audio',
-        progresivo.hasAudio === true && progresivo.url === 'https://cdn.ejemplo/360.mp4' && !progresivo.muxed);
+        progresivo.hasAudio === true && progresivo.url === urlVivaLocal && !progresivo.muxed);
+      ok('YouTube: descarta los enlaces de googlevideo que ya no responden',
+        (await YT.urlViva('https://cdn.ejemplo/no-existe.mp4')) === false);
+
+      // 1-bis) Audio: se convierte a MP3 de verdad (lo que usa /play y /mp3).
+      const mp3 = await P.youtubeAudioFile('abc12345678');
+      const bytesMp3 = fs.readFileSync(mp3).subarray(0, 3);
+      const esMp3 = bytesMp3.toString('latin1') === 'ID3' || (bytesMp3[0] === 0xff && (bytesMp3[1] & 0xe0) === 0xe0);
+      ok('YouTube: el audio se convierte a un MP3 válido', esMp3, `${mp3} · ${fs.statSync(mp3).size} B`);
 
       // 2) Sin progresivo (sólo DASH): pega las dos pistas con ffmpeg.
       globalThis.__smokeYtInfo = {
@@ -424,6 +435,32 @@ async function main() {
         rango.status === 206 && /^bytes 0-99\//.test(String(rango.range)) && rango.len === 100,
         `${rango.status} ${rango.range}`);
 
+      // 4) /downloader/play: reproduce y descarga el MP3.
+      const playDirecto = await get(port, '/downloader/play?query=prueba&direct=true');
+      ok('/downloader/play?direct=true devuelve un MP3 reproducible',
+        playDirecto.status === 200 && /^audio\/mpeg/.test(playDirecto.type) && playDirecto.body.length > 500,
+        `${playDirecto.status} ${playDirecto.type} ${playDirecto.body.length} B`);
+      ok('/downloader/play deja descargar el audio (?download=true)',
+        String(playDirecto.headers['content-disposition'] || '').startsWith('inline'));
+      const playDescarga = await new Promise(resolve => {
+        http.get(`http://127.0.0.1:${port}/downloader/play?query=prueba&direct=true&download=true`, res => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode, disp: res.headers['content-disposition'] || '', len: Buffer.concat(chunks).length }));
+        }).on('error', () => resolve({ status: 0, disp: '', len: 0 }));
+      });
+      ok('/downloader/play?download=true se descarga como archivo',
+        playDescarga.status === 200 && playDescarga.disp.startsWith('attachment') && /\.mp3/.test(playDescarga.disp) && playDescarga.len > 500,
+        playDescarga.disp);
+
+      const playJson = await get(port, '/downloader/play?query=prueba');
+      let playJsonBody = {};
+      try { playJsonBody = JSON.parse(playJson.body.toString()); } catch (_) { /* no-json */ }
+      ok('/downloader/play en JSON trae playUrl y downloadUrl',
+        /\/downloader\/play/.test(String(playJsonBody?.result?.playUrl))
+        && /download=true/.test(String(playJsonBody?.result?.downloadUrl))
+        && playJsonBody?.result?.audio?.mime === 'audio/mpeg');
+
       const asJson = await get(port, '/downloader/mp4?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dzzz99999999');
       let asJsonBody = {};
       try { asJsonBody = JSON.parse(asJson.body.toString()); } catch (_) { /* no-json */ }
@@ -431,6 +468,7 @@ async function main() {
         asJsonBody?.result?.hasAudio === true && Boolean(asJsonBody?.result?.video?.url));
 
       if (pegado.file) fs.unlinkSync(pegado.file);
+      try { fs.unlinkSync(mp3); } catch (_) { /* nada */ }
       fs.rmSync(dir, { recursive: true, force: true });
       if (previo) require.cache[resolver] = previo; else delete require.cache[resolver];
       delete globalThis.__smokeYtInfo;
@@ -467,6 +505,55 @@ async function main() {
       const quality = (ficha?.params || []).find(p => p.name === 'quality');
       ok(`/downloader/${ep}: quality incluye auto`, (quality?.options || []).includes('auto') && quality.example === 'auto');
     }
+
+    // ---- Respaldo de /play: previews de Deezer / iTunes ----
+    const prevDeezer = P.mapDeezer({
+      title: 'Strategy', duration: 166,
+      preview: 'https://cdnt-preview.dzcdn.net/x.mp3',
+      artist: { name: 'TWICE' }, album: { title: 'KPop', cover_xl: 'https://cdn/x.jpg' }
+    });
+    const prevItunes = P.mapItunes({
+      trackName: 'What is Love?', artistName: 'TWICE', collectionName: 'What is Love? - EP',
+      previewUrl: 'https://audio-ssl.itunes.apple.com/x.m4a',
+      artworkUrl100: 'https://is1.mzstatic.com/100x100bb.jpg', trackTimeMillis: 208227
+    });
+    ok('Preview de Deezer: título, artista, portada y mp3',
+      prevDeezer.url.endsWith('.mp3') && prevDeezer.artist === 'TWICE' && prevDeezer.mime === 'audio/mpeg' && prevDeezer.preview === true);
+    ok('Preview de iTunes: convierte la portada a 600x600',
+      prevItunes.mime === 'audio/mp4' && prevItunes.cover.includes('600x600') && prevItunes.duration === 208);
+
+    // ---- Descargas: todo archivo se puede bajar con ?download=true ----
+    const conRango = (url, extra = {}) => new Promise(resolve => {
+      http.get(`${url}${url.includes('?') ? '&' : '?'}download=true`, { headers: extra }, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve({
+          status: res.statusCode,
+          type: res.headers['content-type'] || '',
+          disp: res.headers['content-disposition'] || '',
+          len: Buffer.concat(chunks).length
+        }));
+      }).on('error', () => resolve({ status: 0 }));
+    });
+
+    const pngDescarga = await conRango(`http://127.0.0.1:${port}/canvas/brat?text=hola`);
+    ok('Canvas PNG se descarga como archivo',
+      pngDescarga.status === 200 && pngDescarga.disp.startsWith('attachment') && /\.png/.test(pngDescarga.disp) && pngDescarga.len > 500,
+      pngDescarga.disp);
+
+    const videoDescarga = await conRango(`http://127.0.0.1:${port}/canvas/bratvideo?text=uno%20dos`);
+    ok('Canvas video se descarga como archivo',
+      videoDescarga.status === 200 && videoDescarga.disp.startsWith('attachment') && /\.(mp4|webm)/.test(videoDescarga.disp),
+      videoDescarga.disp);
+
+    const subidaDescarga = upUrl ? await conRango(upUrl) : { status: 0, disp: '' };
+    ok('La imagen subida se descarga como archivo',
+      subidaDescarga.status === 200 && subidaDescarga.disp.startsWith('attachment'), subidaDescarga.disp);
+
+    // La web muestra el botón de descarga en cada tipo de resultado.
+    const catJsDescargas = (await get(port, '/js/category.js')).body.toString();
+    ok('La web ofrece Descargar en imagen, video, audio y JSON',
+      (catJsDescargas.match(/btnDescargar\(/g) || []).length >= 4 && catJsDescargas.includes('download=true'));
 
     // ---- Ping ----
     const ping = JSON.parse((await get(port, '/ping')).body.toString());

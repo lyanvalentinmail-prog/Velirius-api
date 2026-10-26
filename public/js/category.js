@@ -200,6 +200,26 @@
     return null;
   }
 
+  // ---------- Descargas ----------
+  // `?download=true` en cualquier endpoint devuelve el archivo como adjunto
+  // (Content-Disposition: attachment), venga de donde venga el medio.
+  function withParams(path, extra) {
+    return `${path}${path.includes('?') ? '&' : '?'}${extra}`;
+  }
+  const binaria = type => /^(image|video|audio)\//.test(String(type || ''));
+  function downloadHref(path, json, type) {
+    const r = (json && json.result) || {};
+    const dicho = r.downloadUrl
+      || (r.video && r.video.downloadUrl)
+      || (r.audio && r.audio.downloadUrl)
+      || (r.media && r.media[0] && r.media[0].downloadUrl);
+    if (dicho) return dicho;
+    if (binaria(type)) return withParams(path, 'download=true');
+    return withParams(path, 'direct=true&download=true');
+  }
+  const btnDescargar = (href, nombre) =>
+    `<a class="chip-btn dl" href="${esc(href)}" download="${esc(nombre || 'velirius')}" rel="noopener">⤓ Descargar</a>`;
+
   /** Reproductor con sonido: sin `muted` para que se escuche al darle play. */
   function playerHtml(p) {
     if (!p) return '';
@@ -227,9 +247,10 @@
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const kb = Math.round(blob.size / 1024);
+        const ext = (type.split('/')[1] || 'png').split(';')[0].replace('jpeg', 'jpg');
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">Imagen HD · ${ms} ms · ${kb} KB</span>
-            <a class="chip-btn" href="${url}" download="${tester.dataset.endpoint}.png">Descargar</a></div>
+          <div class="res-bar">${okChip}<span class="res-meta">Imagen · ${ms} ms · ${kb} KB</span>
+            ${btnDescargar(downloadHref(path, null, type), `${tester.dataset.endpoint}.${ext}`)}</div>
           <div class="preview"><img src="${url}" alt="resultado de ${esc(tester.dataset.endpoint)}"></div>`;
       } else if (type.startsWith('video/')) {
         // Se usa la URL del endpoint (no un blob) para que el navegador pida
@@ -237,18 +258,23 @@
         const kb = Math.round(Number(res.headers.get('content-length') || 0) / 1024);
         result.innerHTML = `
           <div class="res-bar">${okChip}<span class="res-meta">Video · ${ms} ms${kb ? ' · ' + kb + ' KB' : ''}</span>
-            <a class="chip-btn" href="${path}" target="_blank" rel="noopener">Abrir</a></div>
+            <a class="chip-btn" href="${path}" target="_blank" rel="noopener">Abrir</a>
+            ${btnDescargar(downloadHref(path, null, type), `${tester.dataset.endpoint}.mp4`)}</div>
           <div class="preview"><video src="${path}" controls autoplay playsinline preload="metadata"></video></div>`;
       } else if (type.startsWith('audio/')) {
+        const ext = /mpeg|mp3/.test(type) ? 'mp3' : (type.split('/')[1] || 'm4a').split(';')[0];
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">Audio · ${ms} ms</span></div>
-          <div class="preview" style="padding:12px"><audio src="${path}" controls autoplay style="width:100%"></audio></div>`;
+          <div class="res-bar">${okChip}<span class="res-meta">Audio · ${ms} ms</span>
+            ${btnDescargar(downloadHref(path, null, type), `${tester.dataset.endpoint}.${ext}`)}</div>
+          <div class="preview" style="padding:10px"><audio src="${path}" controls autoplay style="width:100%"></audio></div>`;
       } else if (type.includes('application/json')) {
         const json = await res.json();
         const playable = findPlayable(json);
         const preview = findPreviewImage(json);
+        const href = downloadHref(path, json, type);
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span></div>
+          <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span>
+            ${btnDescargar(href, `${tester.dataset.endpoint}.${playable ? (playable.type === 'audio' ? 'mp3' : 'mp4') : 'jpg'}`)}</div>
           ${playable ? playerHtml(playable) : preview ? `<div class="preview"><img src="${esc(preview)}" alt=""></div>` : ''}
           <pre>${esc(JSON.stringify(json, null, 2))}</pre>`;
       } else {
