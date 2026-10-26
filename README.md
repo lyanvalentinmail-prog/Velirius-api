@@ -2,7 +2,7 @@
 
 Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
 negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
-buscador) con **101 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+buscador) con **100 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
@@ -335,20 +335,19 @@ curl "https://<host>/tools/morse?text=SOS"                 # → "... --- ..."
 curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
 ```
 
-## 📥 Downloader — 10
+## 📥 Downloader — 9
 
 | Endpoint | Parámetros |
 |---|---|
 | `GET /downloader/tiktok` | `url`, `direct` (`mp4` / `mp3`) — sin marca de agua |
 | `GET /downloader/youtube` | `url` o `query`, `quality` (`auto` por defecto), `direct` (`mp4` / `mp3`) |
 | `GET /downloader/facebook` | `url`, `direct` (`mp4`), `quality` (`hd` / `sd`) |
-| `GET /downloader/instagram` | `url`, `direct` |
+| `GET /downloader/instagram` | `url`, `direct` — reels, videos y fotos (carrusel completo) |
+| `GET /downloader/pinterest` | `url` (pin), `direct` — imagen, GIF o video en tamaño original |
 | `GET /downloader/mp3` | `url` o `query`, `direct`, `download` — MP3 real (ffmpeg) |
 | `GET /downloader/mp4` | `url` o `query`, `quality` (`auto` por defecto), `direct` |
 | `GET /downloader/play` | `query`, `direct`, `download`, `tries` — busca y devuelve la **canción completa** en MP3 |
 | `GET /downloader/lyric` | `query`, `format` (`json` / `txt` / `lrc` / `brat`) — `brat` = PNG con **toda la letra** en estilo brat |
-| `GET /downloader/file` | `url`, `filename`, `download` — proxy de descarga de **cualquier** archivo público |
-| `GET /downloader/wallpaper` | `query` o `url`, `index`, `orientation`, `minWidth`, `direct`, `download` — fondos de pantalla |
 
 **`/downloader/play` y `/downloader/mp3` devuelven un MP3 de verdad.** YouTube sólo publica
 audio en AAC/Opus dentro de un contenedor DASH (y con enlaces que caducan), así que el servidor
@@ -382,6 +381,33 @@ curl "https://<host>/canvas/brat?text=hola&download=true" -o brat.png
 curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc"
 ```
 
+### Cuando YouTube/Instagram/Facebook bloquean al servidor (cobalt)
+
+YouTube (y cada vez más Instagram y Facebook) bloquean por **IP** a los servidores de las APIs
+públicas: no es un error del código, es el mismo motivo por el que la instancia pública de
+cobalt dejó de servir YouTube en 2025. Por eso todos los caminos tienen respaldos:
+
+- **YouTube / MP3 / MP4 / Play**: `youtubei.js` (InnerTube con firmas y `n`-token) → InnerTube
+  crudo → Invidious → Piped → **cobalt**.
+- **Instagram**: 11 mirrors de embeds (InstaFix y sus forks mantenidos: `oginstagram`,
+  `kkinstagram`, `instagramez`, `vxinstagram`, `kirkstagram`…) → embed oficial → **cobalt**.
+- **Facebook**: móvil → embed → watch → mbasic → **cobalt** (y resuelve los enlaces `fb.watch`).
+- **Pinterest**: API interna (`BaseSearchResource` / `PinResource`) → HTML del pin → **cobalt**.
+
+Para que funcione siempre, apuntá la API a **tu propia instancia de cobalt** (gratis, 3 minutos,
+Docker o Railway: <https://github.com/imputnet/cobalt>). Se configura con variables de entorno,
+sin tocar código:
+
+| Variable | Ejemplo | Para qué |
+|---|---|---|
+| `COBALT_API_URL` | `https://cobalt-mi-api.up.railway.app` | instancia propia: se usa **primero** |
+| `COBALT_API_URLS` | `https://a.midominio,https://b.midominio` | varias, separadas por coma |
+| `COBALT_API_KEY` | `mi-clave` | si tu instancia pide `Api-Key` |
+| `COBALT_DISABLE` | `true` | apaga el respaldo (sólo las fuentes públicas) |
+
+Sin configurar nada se prueban instancias comunitarias; si todas fallan, el endpoint responde
+con el error de la fuente y `hint` (nunca un 500 sin explicación).
+
 ## 🔎 Searcher — 5
 
 | Endpoint | Parámetros |
@@ -390,7 +416,7 @@ curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc
 | `GET /searcher/youtube` | `query`, `limit` (youtubei.js → InnerTube → Invidious → Piped) |
 | `GET /searcher/google` | `query`, `limit`, `lang` (Google → DuckDuckGo lite → DuckDuckGo → Bing) |
 | `GET /searcher/wikipedia` | `query`, `limit`, `lang` (extracto + imagen + URL) |
-| `GET /searcher/wallpaper` | `query`, `limit`, `page`, `orientation`, `minWidth`, `minHeight`, `source` — **fondos de pantalla** en HD con link de descarga |
+| `GET /searcher/pinterest` | `query`, `limit`, `page` — pines (imagen o video) con `downloadUrl` |
 
 Cada buscador prueba sus motores en orden y devuelve `source`/`engine` con el que respondió,
 así que si uno bloquea las peticiones los demás siguen funcionando.
@@ -400,8 +426,8 @@ curl "https://<host>/searcher/tiktok?query=anime%20edit&limit=5"
 curl "https://<host>/searcher/youtube?query=Twice&limit=5"
 curl "https://<host>/searcher/google?query=Velirius%20API&lang=es"
 curl "https://<host>/searcher/wikipedia?query=One%20Piece&lang=es"
-curl "https://<host>/searcher/wallpaper?query=anime&orientation=landscape&limit=5"
-curl "https://<host>/downloader/wallpaper?query=anime&direct=true" -o fondo.jpg
+curl "https://<host>/searcher/pinterest?query=gatos%20aesthetic&limit=10"
+curl "https://<host>/downloader/pinterest?url=https://www.pinterest.com/pin/1234567890/&direct=true" -o pin.jpg
 curl "https://<host>/downloader/lyric?query=Twice%20Feel%20Special&format=brat" -o letra.png
 ```
 

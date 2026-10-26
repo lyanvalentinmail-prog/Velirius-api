@@ -222,13 +222,18 @@
     if (binaria(type)) return withParams(path, 'download=true');
     return withParams(path, 'direct=true&download=true');
   }
-  const btnDescargar = (href, nombre) =>
-    `<a class="chip-btn dl" href="${esc(href)}" download="${esc(nombre || 'velirius')}" rel="noopener" title="Descargar ${esc(nombre || 'archivo')}">Descargar</a>`;
+  // `externo` = el archivo vive en un CDN de terceros (TikTok, YouTube, Pinterest):
+  // el navegador sólo puede abrirlo en una pestaña nueva (no se puede forzar la
+  // descarga de otro dominio sin un proxy, y el proxy abierto ya no existe).
+  const btnDescargar = (href, nombre, externo = false) =>
+    externo
+      ? `<a class="chip-btn dl" href="${esc(href)}" target="_blank" rel="noopener" title="Abrir ${esc(nombre || 'archivo')} para guardarlo">Descargar</a>`
+      : `<a class="chip-btn dl" href="${esc(href)}" download="${esc(nombre || 'velirius')}" rel="noopener" title="Descargar ${esc(nombre || 'archivo')}">Descargar</a>`;
 
   /**
    * Botón de descarga para CUALQUIER endpoint: si el JSON trae un archivo
-   * (imagen, video, audio) se baja a través de /downloader/file; si no, se baja
-   * el JSON mismo como archivo. Así "Descargar" funciona en todos lados.
+   * (imagen, video, audio) se baja desde su propio link; si no, se baja el JSON
+   * mismo como archivo. Así "Descargar" funciona en todos lados.
    */
   const esUrl = v => typeof v === 'string' && /^(https?:|\/)/.test(v);
   const archivoDe = (json, type) => {
@@ -253,10 +258,9 @@
     }
     const nombre = (r.title || r.query || tester.dataset.endpoint || 'velirius').toString();
     const ext = /video|mp4/i.test(type) ? 'mp4' : /audio|mpeg|mp3/i.test(type) ? 'mp3' : (String(directo).match(/\.([a-z0-9]{2,5})(?:\?|$)/i) || [])[1] || 'jpg';
-    return {
-      href: `/downloader/file?url=${encodeURIComponent(directo)}&filename=${encodeURIComponent(nombre)}.${ext}&download=true`,
-      proxy: true
-    };
+    // Enlace externo (CDN de TikTok, YouTube, Pinterest…): se abre en una pestaña
+    // nueva; el navegador decide si lo muestra o lo guarda.
+    return { href: directo, proxy: false, externo: true, nombre: `${nombre}.${ext}` };
   };
   // Descarga un texto/JSON creado en el navegador (endpoints sin archivo).
   function btnDescargarTexto(nombre) {
@@ -328,7 +332,7 @@
         const archivo = archivoDe(json, playable ? `${playable.type}/` : 'image/');
         const nombreJson = `${tester.dataset.endpoint}.json`;
         const nombreArch = `${tester.dataset.endpoint}.${playable ? (playable.type === 'audio' ? 'mp3' : 'mp4') : 'jpg'}`;
-        const btn = archivo ? btnDescargar(archivo.href, nombreArch) : btnDescargarTexto(nombreJson);
+        const btn = archivo ? btnDescargar(archivo.href, nombreArch, archivo.externo) : btnDescargarTexto(nombreJson);
         result.innerHTML = `
           <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span>${btn}</div>
           ${playable ? playerHtml(playable) : preview ? `<div class="preview"><img src="${esc(preview)}" alt=""></div>` : ''}

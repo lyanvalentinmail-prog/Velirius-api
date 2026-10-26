@@ -9,7 +9,10 @@
 // yande.re · pic.re · otakugifs · TikWM · YouTube (youtubei.js + InnerTube +
 // Invidious/Piped) · Facebook · Instagram · LRCLIB/lyrics.ovh · Google · DuckDuckGo
 // (lite y html) · Bing · Wikipedia · Google Translate · MyMemory.
-const { fetchJson, postJson, fetchText, firstSuccess, firstFast, UA_DESKTOP, UA_MOBILE } = require('./http');
+const { fetchJson, postJson, fetchText, fetchWithTimeout, firstSuccess, firstFast, UA_DESKTOP, UA_MOBILE } = require('./http');
+// Respaldo universal (opcional): una instancia de cobalt propia resuelve
+// YouTube/Instagram/Facebook cuando las fuentes públicas bloquean la IP.
+const COBALT = require('./cobalt');
 // YouTube "de verdad": youtubei.js resuelve firmas y n-token (los respaldos
 // Invidious/Piped quedaron casi todos con la API apagada).
 const YT = require('./youtube');
@@ -584,6 +587,49 @@ function pickVideo(formats, quality = 720) {
   return vids[0] || null;
 }
 
+/**
+ * YouTube resuelto con **cobalt** (instancia propia o comunitaria). Se piden en
+ * paralelo el video (con audio) y el audio en MP3: así los endpoints de MP3 y
+ * MP4 tienen su formato aunque youtubei.js/Invidious estén bloqueados por IP.
+ */
+async function youtubeDesdeCobalt(id, quality = 0) {
+  const watch = `https://www.youtube.com/watch?v=${id}`;
+  const q = normalizarCalidad(quality) || 1080;
+  const [video, audio] = await Promise.allSettled([
+    COBALT.pedir(watch, { downloadMode: 'auto', videoQuality: q }),
+    COBALT.pedir(watch, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' })
+  ]);
+  const formats = [];
+  if (video.status === 'fulfilled' && video.value?.url) {
+    formats.push({
+      quality: `${q}p`, height: q, mime: 'video/mp4', url: video.value.url,
+      hasVideo: true, hasAudio: true, bitrate: null, filename: video.value.filename || null
+    });
+  }
+  if (audio.status === 'fulfilled' && audio.value?.url) {
+    formats.push({
+      quality: '128kbps', height: null, mime: 'audio/mpeg', url: audio.value.url,
+      hasVideo: false, hasAudio: true, bitrate: 128000, filename: audio.value.filename || null
+    });
+  }
+  if (!formats.length) {
+    const errores = [video, audio].map(r => (r.status === 'rejected' ? r.reason?.message : null)).filter(Boolean);
+    const e = new Error('cobalt no devolvió formatos para ese video');
+    e.details = errores;
+    throw e;
+  }
+  const meta = (video.status === 'fulfilled' && video.value?.filename) || (audio.status === 'fulfilled' && audio.value?.filename) || '';
+  return {
+    id,
+    title: String(meta).replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_/g, ' ') || 'Video de YouTube',
+    author: null,
+    duration: null,
+    thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    formats,
+    source: 'cobalt'
+  };
+}
+
 async function youtubeStreams(id) {
   const producers = [];
   if (YT.disponible()) producers.push(['youtubei', async () => {
@@ -631,6 +677,7 @@ async function youtubeStreams(id) {
       return { id, title: j.title, author: j.uploader, duration: j.duration, thumbnail: j.thumbnailUrl || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, formats };
     }]);
   }
+  if (COBALT.disponible()) producers.push(['cobalt', () => youtubeDesdeCobalt(id)]);
   const { value, source } = await firstSuccess(producers);
   return { ...value, source };
 }
@@ -713,10 +760,18 @@ async function youtubeAudio(id) {
 async function resolveYoutubeTarget({ url, query }) {
   if (url) {
     const id = youtubeId(url);
-    if (!id) throw new Error('URL de YouTube inválida. Ejemplo: https://www.youtube.com/watch?v=XXXXXXXXXXX');
+    if (!id) {
+      const err = new Error('URL de YouTube inválida. Ejemplo: https://www.youtube.com/watch?v=XXXXXXXXXXX');
+      err.status = 400;
+      throw err;
+    }
     return youtubeStreams(id);
   }
-  if (!query) throw new Error('Falta el parámetro url o query');
+  if (!query) {
+    const err = new Error('Falta el parámetro url o query');
+    err.status = 400;
+    throw err;
+  }
   const { results } = await youtubeSearch(query, 1);
   if (!results.length) throw new Error('Sin resultados para esa búsqueda');
   const info = await youtubeStreams(results[0].id);
@@ -738,35 +793,92 @@ function unescapeJs(s) {
 }
 function metaContent(html, prop) {
   const m = html.match(new RegExp(`property="${prop}"[^>]*content="([^"]*)"`, 'i'))
-    || html.match(new RegExp(`content="([^"]*)"[^>]*property="${prop}"`, 'i'));
+    || html.match(new RegExp(`content="([^"]*)"[^>]*property="${prop}"`, 'i'))
+    || html.match(new RegExp(`name="${prop}"[^>]*content="([^"]*)"`, 'i'));
   return m ? m[1].replace(/&amp;/g, '&') : null;
 }
-function parseFacebookHtml(html) {
-  const pick = [
-    /"playable_url_quality_hd":"([^"]+)"/,
-    /"browser_native_hd_url":"([^"]+)"/,
-    /hd_src(?:_no_ratelimit)?:"([^"]+)"/,
-    /"playable_url":"([^"]+)"/,
-    /"browser_native_sd_url":"([^"]+)"/,
-    /sd_src(?:_no_ratelimit)?:"([^"]+)"/,
-    /property="og:video(?::url)?"[^>]*content="([^"]+)"/
-  ];
-  const found = pick.map(re => {
+
+/** Patrones de video de Facebook, en orden de calidad (HD primero). */
+const FB_PATRONES_HD = [
+  /"playable_url_quality_hd":"([^"]+)"/,
+  /"browser_native_hd_url":"([^"]+)"/,
+  /hd_src(?:_no_ratelimit)?:"([^"]+)"/,
+  /"hd_src":"([^"]+)"/,
+  /"video_hd_url":"([^"]+)"/
+];
+const FB_PATRONES_SD = [
+  /"playable_url":"([^"]+)"/,
+  /"browser_native_sd_url":"([^"]+)"/,
+  /sd_src(?:_no_ratelimit)?:"([^"]+)"/,
+  /"sd_src":"([^"]+)"/,
+  /"video_sd_url":"([^"]+)"/
+];
+const FB_PATRONES_META = [
+  /property="og:video(?::url|:secure_url)?"[^>]*content="([^"]+)"/,
+  /"contentUrl":"([^"]+\.mp4[^"]*)"/
+];
+
+const primerMatch = (html, patrones) => {
+  for (const re of patrones) {
     const m = html.match(re);
-    return m ? unescapeJs(m[1]) : null;
-  }).filter(Boolean).map(u => u.replace(/\\u0025/g, '%').replace(/\\\//g, '/'));
-  const unique = [...new Set(found)];
-  const hd = unique.find(u => /hd|quality_hd/i.test(u)) || unique[0] || null;
-  const sd = unique.find(u => u !== hd) || null;
+    if (m && m[1]) {
+      const u = unescapeUrl(unescapeJs(m[1]));
+      if (u && /^https?:\/\//i.test(u)) return u;
+    }
+  }
+  return null;
+};
+
+function parseFacebookHtml(html) {
+  const hd = primerMatch(html, FB_PATRONES_HD) || primerMatch(html, FB_PATRONES_META);
+  const sd = primerMatch(html, FB_PATRONES_SD);
   const title = metaContent(html, 'og:title') || (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || 'Facebook video';
   const thumbnail = metaContent(html, 'og:image');
-  return { hd, sd, title: String(title).replace(/\s+/g, ' ').trim(), thumbnail };
+  const todos = [...new Set([hd, sd].filter(Boolean))];
+  return {
+    hd: hd || null,
+    sd: sd && sd !== hd ? sd : (todos.length > 1 ? todos[1] : null),
+    title: String(title).replace(/\s+/g, ' ').trim(),
+    thumbnail: thumbnail ? unescapeUrl(thumbnail) : null
+  };
 }
+
+/** fb.watch y fb.me redirigen: hay que quedarse con la URL final. */
+async function resolverFbWatch(url) {
+  if (!/(?:fb\.watch|fb\.me|facebook\.com\/share)/i.test(url)) return url;
+  try {
+    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_MOBILE } }, 12000);
+    await res.body?.cancel?.();
+    return res.url || url;
+  } catch (_) {
+    return url;
+  }
+}
+
 async function facebookDownload(url) {
-  const target = String(url || '').trim();
-  if (!/facebook\.com|fb\.watch/i.test(target)) throw new Error('URL de Facebook inválida (usa facebook.com/… o fb.watch/…)');
+  const original = String(url || '').trim();
+  if (!/facebook\.com|fb\.watch|fb\.me/i.test(original)) {
+    const err = new Error('URL de Facebook inválida (usa facebook.com/… o fb.watch/…)');
+    err.status = 400;
+    throw err;
+  }
+  const target = await resolverFbWatch(original);
   const id = fbVideoId(target);
-  const producers = [
+  const propio = Boolean(String(process.env.COBALT_API_URL || process.env.COBALT_API_URLS || '').trim());
+  const productores = [];
+  const porCobalt = ['cobalt', async () => {
+    const r = await COBALT.pedir(original, { downloadMode: 'auto' });
+    return {
+      title: r.filename ? String(r.filename).replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ') : 'Facebook video',
+      thumbnail: null,
+      hd: r.url,
+      sd: null,
+      video: r.url,
+      source: 'cobalt'
+    };
+  }];
+  if (propio && COBALT.disponible()) productores.push(porCobalt);
+  productores.push(
     ['facebook-mobile', async () => {
       const html = await fetchText(target, { headers: { 'User-Agent': UA_MOBILE, 'Accept-Language': 'en-US,en;q=0.9' }, timeoutMs: 20000 });
       const parsed = parseFacebookHtml(html);
@@ -775,71 +887,188 @@ async function facebookDownload(url) {
     }],
     ['facebook-embed', async () => {
       const html = await fetchText(`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(target)}&show_text=false`, {
-        headers: { 'User-Agent': UA_MOBILE, 'Accept-Language': 'en-US,en;q=0.9' },
-        timeoutMs: 20000
+        headers: { 'User-Agent': UA_MOBILE, 'Accept-Language': 'en-US,en;q=0.9' }, timeoutMs: 20000
       });
       const parsed = parseFacebookHtml(html);
       if (!parsed.hd && !parsed.sd) throw new Error('sin video en el embed');
       return parsed;
     }]
-  ];
+  );
   if (id) {
-    producers.push(['facebook-watch', async () => {
-      const html = await fetchText(`https://www.facebook.com/watch/?v=${id}`, { headers: { 'User-Agent': UA_DESKTOP }, timeoutMs: 20000 });
-      const parsed = parseFacebookHtml(html);
-      if (!parsed.hd && !parsed.sd) throw new Error('sin video');
-      return parsed;
-    }]);
+    productores.push(
+      ['facebook-watch', async () => {
+        const html = await fetchText(`https://www.facebook.com/watch/?v=${id}`, { headers: { 'User-Agent': UA_DESKTOP }, timeoutMs: 20000 });
+        const parsed = parseFacebookHtml(html);
+        if (!parsed.hd && !parsed.sd) throw new Error('sin video');
+        return parsed;
+      }],
+      ['facebook-mbasic', async () => {
+        const html = await fetchText(`https://mbasic.facebook.com/video_redirect/?src=https%3A%2F%2Fwww.facebook.com%2Fwatch%2F%3Fv%3D${id}`, {
+          headers: { 'User-Agent': UA_MOBILE }, timeoutMs: 20000
+        });
+        const parsed = parseFacebookHtml(html);
+        if (!parsed.hd && !parsed.sd) throw new Error('sin video en mbasic');
+        return parsed;
+      }]
+    );
   }
-  const { value, source } = await firstSuccess(producers);
+  if (!propio && COBALT.disponible()) productores.push(porCobalt);
+
+  const { value, source } = await firstSuccess(productores);
   return {
     id: id || null,
     title: value.title || 'Facebook video',
-    thumbnail: value.thumbnail,
-    hd: value.hd,
-    sd: value.sd,
-    video: value.hd || value.sd,
+    thumbnail: value.thumbnail || null,
+    hd: value.hd || null,
+    sd: value.sd || null,
+    video: value.hd || value.sd || null,
     url: target,
-    source
+    source: value.source || source
   };
 }
 
 // ---------------- Instagram ----------------
+// Instagram esconde el media detrás del login. Se resuelve con los "fixers" de
+// embeds (InstaFix y sus forks mantenidos), que sirven el post con los
+// og:video / og:image completos. Se prueban varios hosts porque cada uno se cae
+// o lo ratean en momentos distintos; gana el primero que devuelva media.
+const IG_MIRRORS = [
+  'oginstagram.com',
+  'kkinstagram.com',
+  'instagramez.com',
+  'vxinstagram.com',
+  'kirkstagram.com',
+  'uuinstagram.com',
+  'gginstagram.com',
+  'instagramfix.com',
+  'zzinstagram.com',
+  'd.ddinstagram.com',
+  'ddinstagram.com'
+];
+
 function igShortcode(url) {
-  const m = String(url || '').match(/instagram\.com\/(?:p|reel|reels|tv)\/([-\w]+)/);
+  const m = String(url || '').match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([-A-Za-z0-9_]+)/);
   return m ? m[1] : null;
 }
+function igKind(url) {
+  return /\/(?:reel|reels)\//.test(String(url)) ? 'reel' : /\/tv\//.test(String(url)) ? 'tv' : 'p';
+}
+const unescapeUrl = u => String(u || '')
+  .replace(/\\u0026/gi, '&')
+  .replace(/\\u002F/gi, '/')
+  .replace(/\\\//g, '/')
+  .replace(/&amp;/g, '&')
+  .trim();
+
+/**
+ * Media de un post de Instagram a partir del HTML de un fixer o del embed
+ * oficial. Devuelve video, imagen y todos los slides de un carrusel.
+ */
+function parseInstagramHtml(html, code = null) {
+  const texto = String(html || '');
+  const media = [];
+  const add = (type, url, thumb = null) => {
+    const u = unescapeUrl(url);
+    if (!/^https?:\/\//i.test(u) || /instagram\.com\/(?:p|reel)\//.test(u)) return;
+    if (media.some(m => m.url === u)) return;
+    media.push({ type, url: u, thumbnail: thumb ? unescapeUrl(thumb) : null });
+  };
+  const video = metaContent(texto, 'og:video:secure_url')
+    || metaContent(texto, 'og:video')
+    || metaContent(texto, 'og:video:url');
+  const image = metaContent(texto, 'og:image:secure_url') || metaContent(texto, 'og:image');
+  if (video) add('video', video, image);
+  // carrusel / varios slides: display_url y el JSON-LD del embed
+  const displays = [...texto.matchAll(/"display_url":"([^"]+)"/g)].map(m => m[1]);
+  const contentUrls = [...texto.matchAll(/"contentUrl":"([^"]+)"/g)].map(m => m[1]);
+  const embeds = [...texto.matchAll(/<img[^>]+class="[^"]*EmbeddedMediaImage[^"]*"[^>]*src="([^"]+)"/gi)]
+    .concat([...texto.matchAll(/<img[^>]+src="([^"]+)"[^>]*class="[^"]*EmbeddedMediaImage/gi)])
+    .map(m => m[1]);
+  for (const u of [...displays, ...contentUrls, ...embeds]) add(/\.mp4|video/i.test(u) ? 'video' : 'image', u, image);
+  if (!media.length && image) add('image', image);
+  const title = metaContent(texto, 'og:title') || metaContent(texto, 'twitter:title') || '';
+  const author = (texto.match(/"owner":\{"username":"([^"]+)"/) || [])[1]
+    || (texto.match(/@([A-Za-z0-9._]{2,30})/) || [])[1] || null;
+  return { shortcode: code, title: String(title).replace(/\s+/g, ' ').trim(), author, media };
+}
+
 async function instagramDownload(url) {
   const code = igShortcode(url);
-  if (!code) throw new Error('URL de Instagram inválida (usa /p/… o /reel/…)');
-  const kind = /\/reel/.test(url) ? 'reel' : 'p';
-  const { value } = await firstSuccess([
-    ['ddinstagram', async () => {
-      const html = await fetchText(`https://www.ddinstagram.com/${kind}/${code}`, { headers: { 'User-Agent': UA_MOBILE } });
-      const video = metaContent(html, 'og:video');
-      const image = metaContent(html, 'og:image');
-      const title = metaContent(html, 'og:title') || '';
-      if (!video && !image) throw new Error('sin media');
-      const media = [];
-      if (video) media.push({ type: 'video', url: video, thumbnail: image });
-      else media.push({ type: 'image', url: image, thumbnail: image });
-      return { shortcode: code, title, media };
-    }],
-    ['instagram-embed', async () => {
-      const html = await fetchText(`https://www.instagram.com/p/${code}/embed/captioned/`, { headers: { 'User-Agent': UA_DESKTOP } });
-      const vm = html.match(/"video_url":"([^"]+)"/);
-      const im = html.match(/"display_url":"([^"]+)"/);
-      const dec = s => (s ? JSON.parse(`"${s}"`) : null);
-      const video = vm ? dec(vm[1]) : null;
-      const image = im ? dec(im[1]) : null;
-      if (!video && !image) throw new Error('sin media');
-      const media = [];
-      if (video) media.push({ type: 'video', url: video, thumbnail: image });
-      else media.push({ type: 'image', url: image, thumbnail: image });
-      return { shortcode: code, title: '', media };
-    }]
-  ]);
-  return value;
+  if (!code) {
+    const err = new Error('URL de Instagram inválida (usa /p/…, /reel/… o /tv/…)');
+    err.status = 400;
+    throw err;
+  }
+  const kind = igKind(url);
+  const path = `/${kind}/${code}/`;
+  const propio = Boolean(String(process.env.COBALT_API_URL || process.env.COBALT_API_URLS || '').trim());
+
+  const desdeMirror = host => async () => {
+    const html = await fetchText(`https://${host}${path}`, {
+      headers: { 'User-Agent': UA_MOBILE, Accept: 'text/html,application/xhtml+xml' },
+      timeoutMs: 10000
+    });
+    const parsed = parseInstagramHtml(html, code);
+    if (!parsed.media.length) throw new Error('sin media');
+    return parsed;
+  };
+  const porCobalt = async () => {
+    const r = await COBALT.pedir(url, { downloadMode: 'auto' });
+    const esVideo = /\.(?:mp4|webm|mov)(?:\?|$)/i.test(r.url) || /video/i.test(r.filename || '');
+    return {
+      shortcode: code, title: r.filename || '', author: null,
+      media: [{ type: esVideo ? 'video' : 'image', url: r.url, thumbnail: null }], source: 'cobalt'
+    };
+  };
+  const desdeEmbed = async () => {
+    const html = await fetchText(`https://www.instagram.com/${kind}/${code}/embed/captioned/`, {
+      headers: { 'User-Agent': UA_MOBILE }, timeoutMs: 12000
+    });
+    const parsed = parseInstagramHtml(html, code);
+    if (!parsed.media.length) throw new Error('sin media en el embed');
+    return parsed;
+  };
+
+  const mirrors = IG_MIRRORS.map(host => [host, desdeMirror(host)]);
+
+  // Con instancia propia de cobalt configurada se prueba primero (es la que
+  // mejor resuelve reels con música y carruseles).
+  if (propio && COBALT.disponible()) {
+    try {
+      const media = await porCobalt();
+      return { ...media, url: `https://www.instagram.com${path}`, source: 'cobalt' };
+    } catch (_) { /* sigue con los mirrors */ }
+  }
+
+  // Estrategia de tiempo: 3 mirrors en serie (casi siempre responden) y el
+  // resto en paralelo con presupuesto de 8 s, para no comerse el límite de
+  // Vercel si los primeros están caídos.
+  const errores = [];
+  const rapido = async lista => {
+    try {
+      const { value, source } = await firstSuccess(lista);
+      return { ...value, url: `https://www.instagram.com${path}`, source: value.source || source };
+    } catch (e) {
+      if (e.details) errores.push(...e.details);
+      return null;
+    }
+  };
+  const primeros = await rapido(mirrors.slice(0, 3));
+  if (primeros) return primeros;
+  if (mirrors.length > 3) {
+    try {
+      const { value, source } = await firstFast(mirrors.slice(3), { timeoutMs: 8000 });
+      return { ...value, url: `https://www.instagram.com${path}`, source: value.source || source };
+    } catch (e) {
+      if (e.details) errores.push(...e.details);
+    }
+  }
+  const ultimo = await rapido([['instagram-embed', desdeEmbed], ['cobalt', porCobalt]]);
+  if (ultimo) return ultimo;
+
+  const err = new Error('Ningún mirror de Instagram respondió. Prueba de nuevo o configura COBALT_API_URL.');
+  err.details = errores.slice(0, 4);
+  throw err;
 }
 
 // ---------------- Preview de música (Deezer / iTunes) ----------------
@@ -951,195 +1180,160 @@ async function lyricFor(query) {
 }
 
 // ==========================================================================
-// 5) SEARCHER — TikTok / YouTube / Google / Wikipedia / Wallpapers
+// 5) SEARCHER — TikTok / YouTube / Google / Wikipedia / Pinterest
 // ==========================================================================
-// ---------------- Wallpapers (fondos de pantalla) ----------------
-// Se buscan fondos en varios sitios y se devuelven ya filtrados por orientación
-// y tamaño mínimo. Fuentes sin token (en orden): Wallhaven → Unsplash → Bing
-// imágenes → Google imágenes. La primera que devuelva algo gana.
 
-const looksImage = u => /^https?:\/\//i.test(String(u || '')) && /\.(?:jpe?g|png|webp|avif)(?:\?|$)/i.test(String(u));
+// ---------------- Pinterest ----------------
+// Pinterest devuelve los pines por su "resource" interno (el mismo que usa la
+// web: BaseSearchResource / PinResource). Si responde 403 (rate limit) se cae al
+// HTML de la búsqueda, que trae las imágenes de i.pinimg.com.
+const PIN_HEADERS = {
+  'User-Agent': UA_DESKTOP,
+  Accept: 'application/json, text/javascript, */*, q=0.01',
+  'Accept-Language': 'es-UY,es;q=0.9,en;q=0.8',
+  'X-Requested-With': 'XMLHttpRequest',
+  'X-APP-VERSION': 'cb1f4b0',
+  'X-Pinterest-AppState': 'active',
+  'X-Pinterest-PWS-Handler': 'www/index.js'
+};
 
-function normalizeWallpaper(raw) {
-  const url = String(raw.url || '').trim();
-  if (!looksImage(url)) return null;
-  const width = Number(raw.width) || null;
-  const height = Number(raw.height) || null;
+function pinterestPinId(url) {
+  const s = String(url || '');
+  const m = s.match(/pinterest\.[a-z.]+\/pin\/(\d+)/i) || s.match(/\/pin\/(\d+)/) || s.match(/^(\d{6,})$/);
+  return m ? m[1] : null;
+}
+
+/** Un pin de Pinterest → resultado normalizado (imagen o video). */
+function mapPinterestPin(pin, source = 'pinterest') {
+  const imgs = pin?.images || {};
+  const best = imgs.orig?.url || imgs['736x']?.url || imgs['564x']?.url || imgs['474x']?.url || pin?.image || null;
+  const thumbs = imgs['236x']?.url || imgs['474x']?.url || best;
+  const videos = pin?.videos?.video_list ? Object.entries(pin.videos.video_list) : [];
+  const video = videos
+    .map(([key, v]) => ({ key, url: v?.url, w: v?.width || 0 }))
+    .filter(v => v.url)
+    .sort((a, b) => b.w - a.w)[0]?.url || null;
+  if (!best && !video) return null;
   return {
-    id: raw.id ? String(raw.id) : null,
-    title: raw.title ? String(raw.title).slice(0, 120) : null,
-    url,
-    thumb: looksImage(raw.thumb) ? String(raw.thumb) : url,
-    width,
-    height,
-    orientation: width && height ? (width >= height ? 'landscape' : 'portrait') : null,
-    colors: Array.isArray(raw.colors) ? raw.colors.slice(0, 4) : [],
-    page: raw.page || null,
-    source: raw.source || 'web'
+    id: pin?.id ? String(pin.id) : null,
+    type: video ? 'video' : /\.gif(?:\\?|$)/i.test(String(best)) ? 'gif' : 'image',
+    title: pin?.grid_title || pin?.title || pin?.closeup_unified_title || null,
+    description: pin?.description || pin?.closeup_unified_description || null,
+    url: pin?.id ? `https://www.pinterest.com/pin/${pin.id}/` : null,
+    image: best,
+    thumbnail: thumbs || best,
+    video,
+    width: Number(imgs.orig?.width) || null,
+    height: Number(imgs.orig?.height) || null,
+    author: pin?.pinner?.username || pin?.closeup_attribution?.full_name || null,
+    source
   };
 }
 
-function wallpaperFiltro({ orientation = 'landscape', minWidth = 0, minHeight = 0 } = {}) {
-  const want = String(orientation || '').toLowerCase();
-  const min = Number(minWidth) || 0;
-  const minH = Number(minHeight) || 0;
-  return w => {
-    if (!w) return false;
-    if (want === 'landscape' || want === 'horizontal') {
-      if (w.width && w.height && w.width < w.height) return false;
-    } else if (want === 'portrait' || want === 'vertical') {
-      if (w.width && w.height && w.width > w.height) return false;
-    }
-    if (min && w.width && w.width < min) return false;
-    if (minH && w.height && w.height < minH) return false;
-    return true;
-  };
+/** Búsqueda de pines por la API interna (JSON). */
+async function pinterestResource(resource, options, sourceUrl) {
+  const data = encodeURIComponent(JSON.stringify({ options: { ...options, gated: false }, context: {} }));
+  const url = `https://www.pinterest.com/resource/${resource}/get/?source_url=${encodeURIComponent(sourceUrl)}&data=${data}`;
+  const j = await fetchJson(url, { headers: PIN_HEADERS, timeoutMs: 15000 });
+  return j?.resource_response?.data ?? null;
 }
 
-/** Wallhaven: API pública con búsqueda por texto y colores. */
-async function wallhavenSearch(query, { limit, page }) {
-  const params = new URLSearchParams({
-    q: query,
-    purity: '100',            // sólo SFW
-    sorting: 'relevance',
-    atleast: '1280x720',      // que sirva de fondo
-    page: String(page),
-    categories: '111'
-  });
-  const j = await fetchJson(`https://wallhaven.cc/api/v1/search?${params.toString()}`, { timeoutMs: 15000 });
-  const list = (j?.data || []).map(w => normalizeWallpaper({
-    id: w.id,
-    title: null,
-    url: w.path,
-    thumb: w.thumbs?.large || w.thumbs?.original,
-    width: w.dimension_x,
-    height: w.dimension_y,
-    colors: w.colors,
-    page: w.url,
-    source: 'wallhaven'
-  })).filter(Boolean);
-  if (!list.length) throw new Error('Wallhaven sin resultados');
-  return list.slice(0, limit);
-}
-
-/** Unsplash (endpoint interno del sitio, sin clave). */
-async function unsplashSearch(query, { limit, page }) {
-  const j = await fetchJson(
-    `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=${limit}&page=${page}`,
-    { headers: { Accept: 'application/json' }, timeoutMs: 15000 }
-  );
-  const list = (j?.results || []).map(p => normalizeWallpaper({
-    id: p.id,
-    title: p.alt_description || p.description,
-    url: p.urls?.full || p.urls?.raw,
-    thumb: p.urls?.small || p.urls?.thumb,
-    width: p.width,
-    height: p.height,
-    colors: p.color ? [p.color] : [],
-    page: p.links?.html,
-    source: 'unsplash'
-  })).filter(Boolean);
-  if (!list.length) throw new Error('Unsplash sin resultados');
-  return list.slice(0, limit);
-}
-
-/** Bing imágenes: los datos de cada resultado vienen en el atributo `m` (JSON). */
-function parseBingImages(html, limit) {
-  const out = [];
-  const re = /\bm=(?:"([^"]+)"|'([^']+)')/g;
-  let m;
-  while ((m = re.exec(html)) && out.length < limit) {
-    let j;
-    try {
-      const raw = m[1] || m[2] || '';
-      j = JSON.parse(raw.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
-    } catch (_) { continue; }
-    if (!j || !j.murl) continue;
-    out.push(normalizeWallpaper({
-      url: j.murl,
-      thumb: j.turl,
-      title: j.t,
-      page: j.purl,
-      width: j.mw ? Number(j.mw) : null,
-      height: j.mh ? Number(j.mh) : null,
-      source: 'bing'
-    }));
-  }
-  return out.filter(Boolean);
-}
-
-/** Google imágenes: los tamaños vienen como ["url", alto, ancho]. */
-function parseGoogleImages(html, limit) {
-  const out = [];
-  const re = /\["(https?:\/\/[^"\\]+?)",(\d{2,5}),(\d{2,5})\]/g;
-  let m;
-  while ((m = re.exec(html)) && out.length < limit) {
-    // Google manda ["url", alto, ancho] (¡el alto primero!).
-    const w = normalizeWallpaper({
-      url: m[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&'),
-      width: Number(m[3]),
-      height: Number(m[2]),
-      source: 'google-images'
-    });
-    if (w && !out.some(o => o.url === w.url)) out.push(w);
-  }
-  return out;
-}
-
-/**
- * Busca fondos de pantalla.
- * @param {string} query texto ("anime", "gato", …)
- * @param {{limit?:number, page?:number, orientation?:string, minWidth?:number, source?:string}} opts
- */
-async function wallpaperSearch(query, opts = {}) {
-  const limit = clampLimit(opts.limit, 12, 40);
-  const page = Math.max(1, Math.min(50, parseInt(opts.page, 10) || 1));
-  const filtro = wallpaperFiltro(opts);
-  const wanted = String(opts.source || '').toLowerCase();
-  const headers = {
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'es-UY,es;q=0.9,en;q=0.8'
-  };
-  const producers = [
-    ['wallhaven', async () => {
-      const list = (await wallhavenSearch(query, { limit: limit * 2, page })).filter(filtro);
-      if (!list.length) throw new Error('Wallhaven sin resultados para ese filtro');
-      return list.slice(0, limit);
-    }],
-    ['unsplash', async () => {
-      const list = (await unsplashSearch(query, { limit: limit * 2, page })).filter(filtro);
-      if (!list.length) throw new Error('Unsplash sin resultados para ese filtro');
-      return list.slice(0, limit);
-    }],
-    ['bing', async () => {
-      const html = await fetchText(
-        `https://www.bing.com/images/search?q=${encodeURIComponent(`${query} wallpaper`)}&qft=+filterui:imagesize-large&first=${(page - 1) * 35 + 1}`,
-        { headers, timeoutMs: 15000 }
-      );
-      const list = parseBingImages(html, limit * 3).filter(filtro).slice(0, limit);
-      if (!list.length) throw new Error('Bing imágenes sin resultados');
+async function pinterestSearch(query, limit = 20, page = 1) {
+  const n = clampLimit(limit, 20, 50);
+  const pagina = Math.max(1, Math.min(20, parseInt(page, 10) || 1));
+  const sourceUrl = `/search/pins/?q=${encodeURIComponent(query)}`;
+  const productores = [
+    ['pinterest-api', async () => {
+      let bookmark = null;
+      let pines = [];
+      // se piden páginas hasta llegar al `page` pedido (Pinterest pagina con bookmarks)
+      for (let i = 0; i < pagina; i++) {
+        const base = { query, scope: 'pins', page_size: Math.min(50, n) };
+        const data = await pinterestResource('BaseSearchResource', bookmark ? { ...base, bookmarks: [bookmark] } : base, sourceUrl);
+        const resultados = data?.results || [];
+        pines = resultados;
+        bookmark = (data?.bookmarks || [])[0] || null;
+        if (!bookmark) break;
+      }
+      const list = pines.map(p => mapPinterestPin(p, 'pinterest')).filter(Boolean).slice(0, n);
+      if (!list.length) throw new Error('sin resultados');
       return list;
     }],
-    ['google-images', async () => {
-      const html = await fetchText(
-        `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${query} wallpaper`)}&hl=es&pws=0${page > 1 ? `&start=${(page - 1) * 20}` : ''}`,
-        { headers: { ...headers, Cookie: 'CONSENT=YES+cb; SOCS=CAI' }, timeoutMs: 15000 }
-      );
-      const list = parseGoogleImages(html, limit * 3).filter(filtro).slice(0, limit);
-      if (!list.length) throw new Error('Google imágenes sin resultados');
-      return list;
+    ['pinterest-html', async () => {
+      const html = await fetchText(`https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}`, {
+        headers: { 'User-Agent': UA_DESKTOP, 'Accept-Language': 'es-UY,es;q=0.9' }, timeoutMs: 15000
+      });
+      const urls = [...html.matchAll(/https:\/\/i\.pinimg\.com\/(?:originals|736x|564x)\/[^"'\s\\]+?\.(?:jpe?g|png|gif|webp)/g)]
+        .map(m => m[0].replace(/\\\//g, '/'));
+      const unicos = [...new Set(urls)].slice(0, n);
+      if (!unicos.length) throw new Error('sin imágenes en el HTML');
+      return unicos.map((u, i) => ({
+        id: null, type: 'image', title: null, description: null, url: null,
+        image: u, thumbnail: u.replace(/\/(?:originals|736x|564x)\//, '/236x/'),
+        video: null, width: null, height: null, author: null, source: 'pinterest-html', position: i + 1
+      }));
     }]
   ];
-  const ordenados = wanted ? producers.filter(([name]) => name === wanted) : producers;
-  const { value, source } = await firstSuccess(ordenados);
-  return {
-    query,
-    page,
-    orientation: opts.orientation || 'landscape',
-    source,
-    count: value.length,
-    results: value
-  };
+  const { value, source } = await firstSuccess(productores);
+  return { query, page: pagina, source, count: value.length, results: value };
+}
+
+/** Descarga de un pin: por ID (API interna) o por la URL del pin (og:video/og:image). */
+async function pinterestDownload(url) {
+  const id = pinterestPinId(url);
+  if (!id && !/pinterest\.[a-z.]+/i.test(String(url || ''))) {
+    const err = new Error('URL de Pinterest inválida (usa https://www.pinterest.com/pin/<id>/ o pin.it/…)');
+    err.status = 400;
+    throw err;
+  }
+  const propio = Boolean(String(process.env.COBALT_API_URL || process.env.COBALT_API_URLS || '').trim());
+  const productores = [];
+  const porCobalt = ['cobalt', async () => {
+    const r = await COBALT.pedir(url, { downloadMode: 'auto' });
+    return {
+      id: id || null, type: /\.(?:mp4|webm|mov)(?:\?|$)/i.test(r.url) ? 'video' : 'image',
+      title: r.filename ? String(r.filename).replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ') : null,
+      description: null, url: id ? `https://www.pinterest.com/pin/${id}/` : url,
+      image: /\.(?:mp4|webm|mov)(?:\?|$)/i.test(r.url) ? null : r.url,
+      thumbnail: null, video: /\.(?:mp4|webm|mov)(?:\?|$)/i.test(r.url) ? r.url : null,
+      width: null, height: null, author: null, source: 'cobalt'
+    };
+  }];
+  if (propio && COBALT.disponible()) productores.push(porCobalt);
+  if (id) {
+    productores.push(['pinterest-api', async () => {
+      const data = await pinterestResource('PinResource', { id, field_set_key: 'auth_web_main_pin' }, `/pin/${id}/`);
+      const pin = data?.data || data;
+      if (!pin || typeof pin !== 'object') throw new Error('sin datos del pin');
+      const item = mapPinterestPin(pin, 'pinterest');
+      if (!item) throw new Error('el pin no tiene media');
+      return item;
+    }]);
+  }
+  productores.push(['pinterest-html', async () => {
+    const target = id ? `https://www.pinterest.com/pin/${id}/` : String(url);
+    const html = await fetchText(target, { headers: { 'User-Agent': UA_DESKTOP, 'Accept-Language': 'es-UY,es;q=0.9' }, timeoutMs: 15000 });
+    const video = metaContent(html, 'og:video:secure_url') || metaContent(html, 'og:video')
+      || (html.match(/"contentUrl":"([^"]+\.mp4[^"]*)"/) || [])[1];
+    const image = metaContent(html, 'og:image:secure_url') || metaContent(html, 'og:image')
+      || (html.match(/"image":\{"[^"]*url":"([^"]+)"/) || [])[1];
+    const title = metaContent(html, 'og:title');
+    if (!video && !image) throw new Error('sin media en el pin');
+    return {
+      id: id || null, type: video ? 'video' : 'image',
+      title: title ? String(title).replace(/\s+/g, ' ').trim() : null,
+      description: metaContent(html, 'og:description'),
+      url: target,
+      image: image ? unescapeUrl(image) : null,
+      thumbnail: image ? unescapeUrl(image) : null,
+      video: video ? unescapeUrl(video) : null,
+      width: null, height: null, author: null, source: 'pinterest-html'
+    };
+  }]);
+  if (!propio && COBALT.disponible()) productores.push(porCobalt);
+
+  const { value, source } = await firstSuccess(productores);
+  return { ...value, source: value.source || source };
 }
 
 
@@ -1360,7 +1554,7 @@ module.exports = {
   lyricsSearch, lyricFor,
   previewAudio, mapDeezer, mapItunes,
   // searcher
-  googleSearch, wikipediaSearch, wallpaperSearch,
-  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing,
-  parseBingImages, parseGoogleImages
+  googleSearch, wikipediaSearch,
+  pinterestSearch, pinterestDownload, mapPinterestPin, pinterestPinId, parseInstagramHtml, parseFacebookHtml,
+  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing
 };

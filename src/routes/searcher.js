@@ -1,4 +1,4 @@
-// src/routes/searcher.js — SEARCHER: TikTok · YouTube · Google · Wikipedia · Wallpaper
+// src/routes/searcher.js — SEARCHER: TikTok · YouTube · Google · Wikipedia · Pinterest
 const express = require('express');
 const P = require('../utils/providers');
 const { sendSuccess, sendError } = require('../utils/response');
@@ -37,24 +37,18 @@ router.get(['/youtube', '/yt'], search(async (query, req) => {
 router.get(['/google', '/web'], search(async (query, req) =>
   P.googleSearch(query, req.query.limit, req.query.lang || 'es')));
 
-// ---------- Wallpaper (fondos de pantalla) ----------
-// Todas las imágenes son apaisadas por defecto y de al menos 1280 px de ancho;
-// `?orientation=portrait` o `?minWidth=` / `?minHeight=` cambian el filtro.
-router.get(['/wallpaper', '/wallpapers', '/fondo', '/fondos'], search(async (query, req) => {
-  const r = await P.wallpaperSearch(query, {
-    limit: req.query.limit,
-    page: req.query.page,
-    orientation: req.query.orientation || req.query.type || 'landscape',
-    minWidth: req.query.minWidth || req.query.minwidth || req.query.width,
-    minHeight: req.query.minHeight || req.query.minheight || req.query.height,
-    source: req.query.source
-  });
-  // Cada resultado trae su link directo para descargar la imagen completa.
+// ---------- Pinterest ----------
+// Devuelve pines (imagen o video) con el link directo del archivo, listo para
+// descargar con /downloader/pinterest.
+router.get(['/pinterest', '/pin', '/pines'], search(async (query, req) => {
+  const r = await P.pinterestSearch(query, req.query.limit, req.query.page);
   return {
     ...r,
-    results: r.results.map(w => ({
-      ...w,
-      downloadUrl: absoluteUrl(req, `/downloader/wallpaper?url=${encodeURIComponent(w.url)}&download=true`)
+    results: r.results.map(pin => ({
+      ...pin,
+      downloadUrl: pin.id
+        ? absoluteUrl(req, `/downloader/pinterest?url=${encodeURIComponent(pin.url)}&download=true`)
+        : (pin.video || pin.image)
     }))
   };
 }));
