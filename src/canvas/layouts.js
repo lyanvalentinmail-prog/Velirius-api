@@ -426,6 +426,68 @@ const LAYOUTS = {
     parts: { photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 } }
   },
 
+  /* ---------------- Filtros de foto (photo + filter) ---------------- */
+  // `photo.width` limita el ancho de salida y `filter.*` son los ajustes de
+  // cada efecto; todo se puede pisar desde la URL: ?filter.amount=0.8&filter.cx=0.35
+  grayscale: {
+    label: 'Blanco y negro',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 1, tone: '' }
+    }
+  },
+  blur: {
+    label: 'Desenfoque',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 8 }
+    }
+  },
+  pixel: {
+    label: 'Pixelado',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { size: 12, colors: 0 }
+    }
+  },
+  deepfry: {
+    label: 'Deep fried',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 1 }
+    }
+  },
+  sketch: {
+    label: 'Lápiz',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 1, detail: 8 },
+      paper: 'fffdf5'
+    }
+  },
+  swirl: {
+    label: 'Remolino',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 190, radius: 0.62, cx: 0.5, cy: 0.5 }
+    }
+  },
+  liquify: {
+    label: 'Liquify',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 65, radius: 0.7, cx: 0.5, cy: 0.5 },
+      mode: 'bulge'
+    }
+  },
+  glitch: {
+    label: 'Glitch',
+    parts: {
+      photo: { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, maxWidth: 1024 },
+      filter: { amount: 0.7, slices: 14, seed: 7, scanlines: 0.6 }
+    }
+  },
+
   quotly: {
     label: 'Sticker estilo Quotly',
     parts: {

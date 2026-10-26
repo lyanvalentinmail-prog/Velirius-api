@@ -42,11 +42,17 @@ module.exports = {
       P('url', 'https://www.instagram.com/reel/C7cVzn2yzXB/', 'URL del post/reel'),
       O('direct', 'false', 'true = media directa')
     ] },
+    { id: 'file', desc: 'Descarga cualquier archivo público desde una URL (imagen, video, audio, json)', params: [
+      P('url', 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1920', 'URL del archivo'),
+      O('filename', '', 'Nombre con el que se guarda (opcional)'),
+      O('download', 'true', 'true = lo baja como archivo')
+    ] },
     { id: 'mp3', desc: 'Audio MP3 real desde YouTube (URL o búsqueda)', media: 'audio', params: [
       O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'),
       O('query', 'Twice I Cant Stop Me', 'O busca por nombre'),
       O('direct', 'true', 'true = audio directo en streaming'),
-      O('download', 'false', 'true = descarga el MP3 como archivo')
+      O('download', 'false', 'true = descarga el MP3 como archivo'),
+      O('tries', '3', 'Cuántos resultados de YouTube se prueban para la canción COMPLETA (1-5)')
     ] },
     { id: 'mp4', desc: 'Video MP4 con audio desde YouTube (URL o búsqueda)', media: 'video', params: [
       O('url', 'https://www.youtube.com/watch?v=5M_n2UCe7DQ', 'URL de YouTube'),
@@ -54,14 +60,28 @@ module.exports = {
       S('quality', 'auto', 'Calidad: auto = la mejor con audio', ['auto', '360', '480', '720', '1080']),
       O('direct', 'true', 'true = video directo en streaming')
     ] },
-    { id: 'play', desc: 'Busca una canción y devuelve el MP3 listo para reproducir (si YouTube falla, preview de Deezer/iTunes)', media: 'audio', params: [
+    { id: 'play', desc: 'Busca una canción y devuelve la CANCIÓN COMPLETA en MP3 (prueba varios resultados de YouTube; si todos fallan, preview de 30 s de Deezer/iTunes)', media: 'audio', params: [
       P('query', 'Lisa Money', 'Canción o artista'),
       O('direct', 'true', 'true = audio directo en streaming'),
-      O('download', 'false', 'true = descarga el MP3 como archivo')
+      O('download', 'false', 'true = descarga el MP3 como archivo'),
+      O('tries', '3', 'Cuántos resultados de YouTube se prueban antes de rendirse (1-5)')
     ] },
-    { id: 'lyric', desc: 'Letra de una canción (JSON, .txt o .lrc sincronizada)', params: [
+    { id: 'lyric', desc: 'Letra de una canción (JSON, .txt, .lrc sincronizada o sticker brat con la letra completa)', params: [
       P('query', 'Kendrick Lamar Humble', 'Artista + canción'),
-      S('format', 'json', 'Formato de salida', ['json', 'txt', 'lrc'])
+      S('format', 'json', 'Formato de salida: JSON, txt, lrc o brat (PNG con la letra completa)', ['json', 'txt', 'lrc', 'brat']),
+      O('bg', '', 'Sólo brat: color de fondo hex (ej. ffffff)'),
+      O('color', '', 'Sólo brat: color del texto hex (ej. 000000)'),
+      O('size', '1', 'Sólo brat: escala del texto (0.5 - 2)'),
+      O('width', '512', 'Sólo brat: ancho del PNG en píxeles')
+    ] },
+    { id: 'wallpaper', desc: 'Descarga un fondo de pantalla en HD (por búsqueda o por URL)', media: 'image', params: [
+      O('query', 'anime', 'Qué fondo buscar (se baja el primero)'),
+      O('url', '', 'O pasá la URL de una imagen para bajarla tal cual'),
+      O('index', '0', 'Cuál de los resultados bajar (0 = el primero)'),
+      S('orientation', 'landscape', 'Forma del fondo', ['landscape', 'portrait', 'any']),
+      O('minWidth', '', 'Ancho mínimo en píxeles'),
+      O('direct', 'true', 'true = devuelve la imagen; false = JSON con links'),
+      O('download', 'false', 'true = la baja como archivo')
     ] }
   ]
 };

@@ -2,7 +2,7 @@
 
 Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
 negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
-buscador) con **80 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+buscador) con **97 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
@@ -96,7 +96,7 @@ curl "https://<host>/anime/maid?provider=safebooru&direct=true" -o maid.jpg
 curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 ```
 
-## 🎨 Canvas — 41 (plantillas de la carpeta `CategoriaCanvas` de Drive)
+## 🎨 Canvas — 49 (plantillas de la carpeta `CategoriaCanvas` de Drive)
 
 Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
 modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
@@ -253,6 +253,14 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/gaycard` | `gaycard.png` | `url`, `name`, `rank` |
 | `/canvas/gay` | `gay.png` | `url`, `opacity` |
 | `/canvas/invert` | `invert.png` | `url` |
+| `/canvas/grayscale` | foto | `url`, `amount` (0-1), `tone` (`sepia` / `cold` / `warm`) |
+| `/canvas/blur` | foto | `url`, `amount` (radio 0.3-100), `tint` |
+| `/canvas/pixel` | foto | `url`, `size` (bloque 2-200), `colors` (paleta) |
+| `/canvas/deepfry` | foto | `url`, `amount` (0-1), `noise` |
+| `/canvas/sketch` | foto | `url`, `amount`, `detail`, `paper` (color del papel) |
+| `/canvas/swirl` | foto | `url`, `amount` (grados), `radius`, `cx`, `cy` |
+| `/canvas/liquify` | foto | `url`, `amount`, `mode` (`bulge` / `pinch` / `melt`), `radius`, `cx`, `cy` |
+| `/canvas/glitch` | foto | `url`, `amount`, `slices`, `seed`, `scanlines` |
 | `/canvas/rata` | `Canvas Personajes/Rata.jpg` | `url`, `zoom`, `rotate`, `grayscale` |
 | `/canvas/banana` | `Canvas Personajes/Banana.jpg` | `url`, `zoom`, `rotate`, `grayscale` |
 | `/canvas/arandano` | `Canvas Personajes/Arandano.jpg` | `url` (chroma-key) |
@@ -303,7 +311,7 @@ curl "https://<host>/tools/morse?text=SOS"                 # → "... --- ..."
 curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
 ```
 
-## 📥 Downloader — 8
+## 📥 Downloader — 10
 
 | Endpoint | Parámetros |
 |---|---|
@@ -313,16 +321,20 @@ curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
 | `GET /downloader/instagram` | `url`, `direct` |
 | `GET /downloader/mp3` | `url` o `query`, `direct`, `download` — MP3 real (ffmpeg) |
 | `GET /downloader/mp4` | `url` o `query`, `quality` (`auto` por defecto), `direct` |
-| `GET /downloader/play` | `query`, `direct`, `download` — busca y devuelve el MP3 listo para sonar |
-| `GET /downloader/lyric` | `query`, `format` (`json` / `txt` / `lrc`) |
+| `GET /downloader/play` | `query`, `direct`, `download`, `tries` — busca y devuelve la **canción completa** en MP3 |
+| `GET /downloader/lyric` | `query`, `format` (`json` / `txt` / `lrc` / `brat`) — `brat` = PNG con **toda la letra** en estilo brat |
+| `GET /downloader/file` | `url`, `filename`, `download` — proxy de descarga de **cualquier** archivo público |
+| `GET /downloader/wallpaper` | `query` o `url`, `index`, `orientation`, `minWidth`, `direct`, `download` — fondos de pantalla |
 
 **`/downloader/play` y `/downloader/mp3` devuelven un MP3 de verdad.** YouTube sólo publica
 audio en AAC/Opus dentro de un contenedor DASH (y con enlaces que caducan), así que el servidor
 lo baja y lo convierte con ffmpeg (`libmp3lame`, 160 kbps). El MP3 queda cacheado una hora en
 `os.tmpdir()/velirius-audio`: suena en cualquier navegador, se puede buscar dentro y se descarga
 como `.mp3`. Si la conversión falla, se manda el stream original del proveedor, y si YouTube no
-responde `/downloader/play` devuelve un **preview real de 30 s** de Deezer (o iTunes) — el JSON lo
-marca con `preview: true` y `source`.
+responde, `/downloader/play` prueba con los siguientes resultados de YouTube (`?tries=1…5`, 3 por
+defecto) antes de rendirse, porque un video con el audio bloqueado no sirve. La idea es que `play`
+suene **entera**, no un pedazo: si aun así todo YouTube falla, devuelve un **preview real de 30 s**
+de Deezer (o iTunes) y el JSON lo marca con `preview: true` / `fullSong: false`.
 
 **El video siempre se reproduce con audio y video.** En modo automático (`quality=auto`,
 que es el valor por defecto) se busca el mejor formato **progresivo** (video + audio en el
@@ -346,7 +358,7 @@ curl "https://<host>/canvas/brat?text=hola&download=true" -o brat.png
 curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc"
 ```
 
-## 🔎 Searcher — 4
+## 🔎 Searcher — 5
 
 | Endpoint | Parámetros |
 |---|---|
@@ -354,6 +366,7 @@ curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc
 | `GET /searcher/youtube` | `query`, `limit` (youtubei.js → InnerTube → Invidious → Piped) |
 | `GET /searcher/google` | `query`, `limit`, `lang` (Google → DuckDuckGo lite → DuckDuckGo → Bing) |
 | `GET /searcher/wikipedia` | `query`, `limit`, `lang` (extracto + imagen + URL) |
+| `GET /searcher/wallpaper` | `query`, `limit`, `page`, `orientation`, `minWidth`, `minHeight`, `source` — **fondos de pantalla** en HD con link de descarga |
 
 Cada buscador prueba sus motores en orden y devuelve `source`/`engine` con el que respondió,
 así que si uno bloquea las peticiones los demás siguen funcionando.
@@ -363,6 +376,9 @@ curl "https://<host>/searcher/tiktok?query=anime%20edit&limit=5"
 curl "https://<host>/searcher/youtube?query=Twice&limit=5"
 curl "https://<host>/searcher/google?query=Velirius%20API&lang=es"
 curl "https://<host>/searcher/wikipedia?query=One%20Piece&lang=es"
+curl "https://<host>/searcher/wallpaper?query=anime&orientation=landscape&limit=5"
+curl "https://<host>/downloader/wallpaper?query=anime&direct=true" -o fondo.jpg
+curl "https://<host>/downloader/lyric?query=Twice%20Feel%20Special&format=brat" -o letra.png
 ```
 
 ## 💞 Reactions — 26 (proveedores de GIFs)

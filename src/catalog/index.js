@@ -6,10 +6,10 @@
 //
 //   src/catalog/helpers.js     → P(), O(), S(), AV, AV2, textStyle(), photoStyle()
 //   src/catalog/anime.js       → ANIME        (4)   GET /anime/:id
-//   src/catalog/canvas.js      → CANVAS       (41)  GET /canvas/:id
+//   src/catalog/canvas.js      → CANVAS       (49)  GET /canvas/:id
 //   src/catalog/tools.js       → TOOLS        (3)   GET /tools/:id
-//   src/catalog/downloader.js  → DOWNLOADER   (8)   GET /downloader/:id
-//   src/catalog/searcher.js    → SEARCHER     (4)   GET /searcher/:id
+//   src/catalog/downloader.js  → DOWNLOADER   (10)   GET /downloader/:id
+//   src/catalog/searcher.js    → SEARCHER     (5)   GET /searcher/:id
 //   src/catalog/reactions.js   → REACTIONS    (26)  GET /reactions/:id
 //
 // ➕ AGREGAR UN ENDPOINT: se hace en 2 pasos.
