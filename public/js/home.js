@@ -31,12 +31,13 @@
       const matches = [];
       (docs.categories || []).forEach(cat => {
         (cat.endpoints || []).forEach(ep => {
-          const hay = `${cat.id} ${ep.id} ${ep.description || ''}`.toLowerCase();
+          const params = (ep.params || []).map(p => `${p.name} ${p.description || ''}`).join(' ');
+          const hay = `${cat.id} ${cat.name || ''} ${ep.id} ${ep.description || ''} ${params}`.toLowerCase();
           if (hay.includes(term)) matches.push({ cat: cat.id, ep });
         });
       });
       results.innerHTML = matches.slice(0, 12).map(m =>
-        `<a href="/${m.cat}#${m.ep.id}">GET /${m.cat}/${m.ep.id} — ${(m.ep.description || '').replace(/</g, '&lt;')}</a>`
+        `<a href="/${m.cat}#row-${m.ep.id}">GET /${m.cat}/${m.ep.id} — ${(m.ep.description || '').replace(/</g, '&lt;')}</a>`
       ).join('') || '<a href="#">Sin resultados…</a>';
     } catch (_) { results.innerHTML = ''; }
   });

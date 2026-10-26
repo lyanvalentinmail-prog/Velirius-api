@@ -951,8 +951,198 @@ async function lyricFor(query) {
 }
 
 // ==========================================================================
-// 5) SEARCHER — TikTok / YouTube / Google / Wikipedia
+// 5) SEARCHER — TikTok / YouTube / Google / Wikipedia / Wallpapers
 // ==========================================================================
+// ---------------- Wallpapers (fondos de pantalla) ----------------
+// Se buscan fondos en varios sitios y se devuelven ya filtrados por orientación
+// y tamaño mínimo. Fuentes sin token (en orden): Wallhaven → Unsplash → Bing
+// imágenes → Google imágenes. La primera que devuelva algo gana.
+
+const looksImage = u => /^https?:\/\//i.test(String(u || '')) && /\.(?:jpe?g|png|webp|avif)(?:\?|$)/i.test(String(u));
+
+function normalizeWallpaper(raw) {
+  const url = String(raw.url || '').trim();
+  if (!looksImage(url)) return null;
+  const width = Number(raw.width) || null;
+  const height = Number(raw.height) || null;
+  return {
+    id: raw.id ? String(raw.id) : null,
+    title: raw.title ? String(raw.title).slice(0, 120) : null,
+    url,
+    thumb: looksImage(raw.thumb) ? String(raw.thumb) : url,
+    width,
+    height,
+    orientation: width && height ? (width >= height ? 'landscape' : 'portrait') : null,
+    colors: Array.isArray(raw.colors) ? raw.colors.slice(0, 4) : [],
+    page: raw.page || null,
+    source: raw.source || 'web'
+  };
+}
+
+function wallpaperFiltro({ orientation = 'landscape', minWidth = 0, minHeight = 0 } = {}) {
+  const want = String(orientation || '').toLowerCase();
+  const min = Number(minWidth) || 0;
+  const minH = Number(minHeight) || 0;
+  return w => {
+    if (!w) return false;
+    if (want === 'landscape' || want === 'horizontal') {
+      if (w.width && w.height && w.width < w.height) return false;
+    } else if (want === 'portrait' || want === 'vertical') {
+      if (w.width && w.height && w.width > w.height) return false;
+    }
+    if (min && w.width && w.width < min) return false;
+    if (minH && w.height && w.height < minH) return false;
+    return true;
+  };
+}
+
+/** Wallhaven: API pública con búsqueda por texto y colores. */
+async function wallhavenSearch(query, { limit, page }) {
+  const params = new URLSearchParams({
+    q: query,
+    purity: '100',            // sólo SFW
+    sorting: 'relevance',
+    atleast: '1280x720',      // que sirva de fondo
+    page: String(page),
+    categories: '111'
+  });
+  const j = await fetchJson(`https://wallhaven.cc/api/v1/search?${params.toString()}`, { timeoutMs: 15000 });
+  const list = (j?.data || []).map(w => normalizeWallpaper({
+    id: w.id,
+    title: null,
+    url: w.path,
+    thumb: w.thumbs?.large || w.thumbs?.original,
+    width: w.dimension_x,
+    height: w.dimension_y,
+    colors: w.colors,
+    page: w.url,
+    source: 'wallhaven'
+  })).filter(Boolean);
+  if (!list.length) throw new Error('Wallhaven sin resultados');
+  return list.slice(0, limit);
+}
+
+/** Unsplash (endpoint interno del sitio, sin clave). */
+async function unsplashSearch(query, { limit, page }) {
+  const j = await fetchJson(
+    `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=${limit}&page=${page}`,
+    { headers: { Accept: 'application/json' }, timeoutMs: 15000 }
+  );
+  const list = (j?.results || []).map(p => normalizeWallpaper({
+    id: p.id,
+    title: p.alt_description || p.description,
+    url: p.urls?.full || p.urls?.raw,
+    thumb: p.urls?.small || p.urls?.thumb,
+    width: p.width,
+    height: p.height,
+    colors: p.color ? [p.color] : [],
+    page: p.links?.html,
+    source: 'unsplash'
+  })).filter(Boolean);
+  if (!list.length) throw new Error('Unsplash sin resultados');
+  return list.slice(0, limit);
+}
+
+/** Bing imágenes: los datos de cada resultado vienen en el atributo `m` (JSON). */
+function parseBingImages(html, limit) {
+  const out = [];
+  const re = /\bm=(?:"([^"]+)"|'([^']+)')/g;
+  let m;
+  while ((m = re.exec(html)) && out.length < limit) {
+    let j;
+    try {
+      const raw = m[1] || m[2] || '';
+      j = JSON.parse(raw.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+    } catch (_) { continue; }
+    if (!j || !j.murl) continue;
+    out.push(normalizeWallpaper({
+      url: j.murl,
+      thumb: j.turl,
+      title: j.t,
+      page: j.purl,
+      width: j.mw ? Number(j.mw) : null,
+      height: j.mh ? Number(j.mh) : null,
+      source: 'bing'
+    }));
+  }
+  return out.filter(Boolean);
+}
+
+/** Google imágenes: los tamaños vienen como ["url", alto, ancho]. */
+function parseGoogleImages(html, limit) {
+  const out = [];
+  const re = /\["(https?:\/\/[^"\\]+?)",(\d{2,5}),(\d{2,5})\]/g;
+  let m;
+  while ((m = re.exec(html)) && out.length < limit) {
+    // Google manda ["url", alto, ancho] (¡el alto primero!).
+    const w = normalizeWallpaper({
+      url: m[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&'),
+      width: Number(m[3]),
+      height: Number(m[2]),
+      source: 'google-images'
+    });
+    if (w && !out.some(o => o.url === w.url)) out.push(w);
+  }
+  return out;
+}
+
+/**
+ * Busca fondos de pantalla.
+ * @param {string} query texto ("anime", "gato", …)
+ * @param {{limit?:number, page?:number, orientation?:string, minWidth?:number, source?:string}} opts
+ */
+async function wallpaperSearch(query, opts = {}) {
+  const limit = clampLimit(opts.limit, 12, 40);
+  const page = Math.max(1, Math.min(50, parseInt(opts.page, 10) || 1));
+  const filtro = wallpaperFiltro(opts);
+  const wanted = String(opts.source || '').toLowerCase();
+  const headers = {
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'es-UY,es;q=0.9,en;q=0.8'
+  };
+  const producers = [
+    ['wallhaven', async () => {
+      const list = (await wallhavenSearch(query, { limit: limit * 2, page })).filter(filtro);
+      if (!list.length) throw new Error('Wallhaven sin resultados para ese filtro');
+      return list.slice(0, limit);
+    }],
+    ['unsplash', async () => {
+      const list = (await unsplashSearch(query, { limit: limit * 2, page })).filter(filtro);
+      if (!list.length) throw new Error('Unsplash sin resultados para ese filtro');
+      return list.slice(0, limit);
+    }],
+    ['bing', async () => {
+      const html = await fetchText(
+        `https://www.bing.com/images/search?q=${encodeURIComponent(`${query} wallpaper`)}&qft=+filterui:imagesize-large&first=${(page - 1) * 35 + 1}`,
+        { headers, timeoutMs: 15000 }
+      );
+      const list = parseBingImages(html, limit * 3).filter(filtro).slice(0, limit);
+      if (!list.length) throw new Error('Bing imágenes sin resultados');
+      return list;
+    }],
+    ['google-images', async () => {
+      const html = await fetchText(
+        `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${query} wallpaper`)}&hl=es&pws=0${page > 1 ? `&start=${(page - 1) * 20}` : ''}`,
+        { headers: { ...headers, Cookie: 'CONSENT=YES+cb; SOCS=CAI' }, timeoutMs: 15000 }
+      );
+      const list = parseGoogleImages(html, limit * 3).filter(filtro).slice(0, limit);
+      if (!list.length) throw new Error('Google imágenes sin resultados');
+      return list;
+    }]
+  ];
+  const ordenados = wanted ? producers.filter(([name]) => name === wanted) : producers;
+  const { value, source } = await firstSuccess(ordenados);
+  return {
+    query,
+    page,
+    orientation: opts.orientation || 'landscape',
+    source,
+    count: value.length,
+    results: value
+  };
+}
+
+
 const stripTags = html => String(html || '')
   .replace(/<script[\s\S]*?<\/script>/gi, ' ')
   .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -1170,6 +1360,7 @@ module.exports = {
   lyricsSearch, lyricFor,
   previewAudio, mapDeezer, mapItunes,
   // searcher
-  googleSearch, wikipediaSearch,
-  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing
+  googleSearch, wikipediaSearch, wallpaperSearch,
+  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing,
+  parseBingImages, parseGoogleImages
 };

@@ -230,6 +230,54 @@ module.exports = {
     { id: 'invert', group: 'filtros', desc: 'Invierte los colores de tu foto', params: [
       P('url', AV, 'Tu foto')
     ] },
+    { id: 'grayscale', group: 'filtros', desc: 'Blanco y negro con intensidad regulable (y tintes sepia/frío/cálido).', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '1', 'Cuánto blanco y negro se ve: 1 = todo gris, 0.5 = mitad y mitad (0-1)'),
+      S('tone', '', 'Tinte opcional sobre el gris', ['', 'sepia', 'cold', 'warm'])
+    ] },
+    { id: 'blur', group: 'filtros', desc: 'Desenfoque gaussiano de tu foto', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '8', 'Radio del desenfoque en píxeles (0.3 - 100)'),
+      O('tint', '', 'Color opcional encima (hex, ej. ff2d55)')
+    ] },
+    { id: 'pixel', group: 'filtros', desc: 'Pixelado tipo mosaico (bloques duros)', params: [
+      P('url', AV, 'Tu foto'),
+      O('size', '12', 'Lado del bloque en píxeles (2 - 200)'),
+      O('colors', '0', 'Reducir la paleta a N colores (0 = sin límite)')
+    ] },
+    { id: 'deepfry', group: 'filtros', desc: 'Deep fried: saturación, contraste y artefactos JPEG al máximo', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '1', 'Intensidad del efecto (0 - 1)'),
+      S('noise', 'false', 'Agregar grano de colores encima', ['false', 'true'])
+    ] },
+    { id: 'sketch', group: 'filtros', desc: 'Tu foto dibujada a lápiz sobre papel', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '1', 'Cuánto lápiz se ve (0 = sólo papel, 1 = todo lápiz)'),
+      O('detail', '8', 'Grosor del trazo: bajo = más detalle (0.5 - 40)'),
+      O('paper', 'fffdf5', 'Color del papel (hex sin #)')
+    ] },
+    { id: 'swirl', group: 'filtros', desc: 'Remolino: gira la foto alrededor de un punto, con el giro apagándose hacia los bordes', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '190', 'Grados de giro en el centro (-1080 a 1080)'),
+      O('radius', '0.62', 'Tamaño del remolino (0.15 - 2)'),
+      O('cx', '0.5', 'Centro horizontal del remolino (0 - 1)'),
+      O('cy', '0.5', 'Centro vertical del remolino (0 - 1)')
+    ] },
+    { id: 'liquify', group: 'filtros', desc: 'Liquify: infla, aspira o derrite la foto alrededor de un punto', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '65', 'Fuerza del efecto (-100 a 100)'),
+      S('mode', 'bulge', 'Qué le hace al centro', ['bulge', 'pinch', 'melt']),
+      O('radius', '0.7', 'Tamaño de la zona afectada (0.15 - 2)'),
+      O('cx', '0.5', 'Centro horizontal (0 - 1)'),
+      O('cy', '0.5', 'Centro vertical (0 - 1)')
+    ] },
+    { id: 'glitch', group: 'filtros', desc: 'Glitch: separación RGB, franjas corridas y líneas de barrido', params: [
+      P('url', AV, 'Tu foto'),
+      O('amount', '0.7', 'Fuerza del fallo (0 - 1)'),
+      O('slices', '14', 'Cuántas franjas se corren (0 - 80)'),
+      O('seed', '7', 'Semilla: el mismo número da siempre el mismo glitch'),
+      O('scanlines', '0.6', 'Intensidad de las líneas de barrido (0 - 1)')
+    ] },
     { id: 'carcel', group: 'efectos', desc: 'Rejas de cárcel encima de tu foto', params: [
       P('url', AV, 'Tu foto (queda detrás de las rejas)'),
       ...photoStyle()

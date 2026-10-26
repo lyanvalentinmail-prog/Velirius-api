@@ -30,7 +30,10 @@
     searchInput.addEventListener('input', () => {
       const term = searchInput.value.trim().toLowerCase();
       document.querySelectorAll('.list .row[data-endpoint]').forEach(row => {
-        row.style.display = !term || row.textContent.toLowerCase().includes(term) ? '' : 'none';
+        const ep = byId[row.dataset.endpoint] || {};
+        // Se busca en el nombre, la descripción y los parámetros del endpoint.
+        const hay = `${row.textContent} ${ep.desc || ''} ${(ep.params || []).map(p => `${p.name} ${p.desc || ''}`).join(' ')}`.toLowerCase();
+        row.style.display = !term || hay.includes(term) ? '' : 'none';
       });
       // Ocultar las secciones (grupos) que se quedaron sin resultados.
       document.querySelectorAll('.group').forEach(group => {
@@ -222,6 +225,55 @@
   const btnDescargar = (href, nombre) =>
     `<a class="chip-btn dl" href="${esc(href)}" download="${esc(nombre || 'velirius')}" rel="noopener" title="Descargar ${esc(nombre || 'archivo')}">Descargar</a>`;
 
+  /**
+   * Botón de descarga para CUALQUIER endpoint: si el JSON trae un archivo
+   * (imagen, video, audio) se baja a través de /downloader/file; si no, se baja
+   * el JSON mismo como archivo. Así "Descargar" funciona en todos lados.
+   */
+  const esUrl = v => typeof v === 'string' && /^(https?:|\/)/.test(v);
+  const archivoDe = (json, type) => {
+    const r = (json && json.result) || {};
+    const candidatos = [
+      r.downloadUrl,
+      r.image, r.gif, r.thumbnail, r.cover,
+      r.playUrl,
+      r.url,
+      r.video && r.video.downloadUrl,
+      r.video && r.video.url,
+      r.audio && r.audio.downloadUrl,
+      r.audio && r.audio.url,
+      Array.isArray(r.media) && r.media[0] && (r.media[0].downloadUrl || r.media[0].url),
+      Array.isArray(r.results) && r.results[0] && (r.results[0].downloadUrl || r.results[0].url || r.results[0].image)
+    ];
+    const directo = candidatos.find(esUrl);
+    if (!directo) return null;
+    // Si es una URL de nuestra propia API, ya sabe descargar.
+    if (directo.startsWith('/') || /^(https?:)\/\/[^/]+\/(canvas|downloader|anime|searcher|reactions|tools)\//.test(directo)) {
+      return { href: directo, proxy: false };
+    }
+    const nombre = (r.title || r.query || tester.dataset.endpoint || 'velirius').toString();
+    const ext = /video|mp4/i.test(type) ? 'mp4' : /audio|mpeg|mp3/i.test(type) ? 'mp3' : (String(directo).match(/\.([a-z0-9]{2,5})(?:\?|$)/i) || [])[1] || 'jpg';
+    return {
+      href: `/downloader/file?url=${encodeURIComponent(directo)}&filename=${encodeURIComponent(nombre)}.${ext}&download=true`,
+      proxy: true
+    };
+  };
+  // Descarga un texto/JSON creado en el navegador (endpoints sin archivo).
+  function btnDescargarTexto(nombre) {
+    return `<button type="button" class="chip-btn dl" data-dl-text title="Descargar ${esc(nombre)}">Descargar</button>`;
+  }
+  function bajarTexto(texto, nombre) {
+    const blob = new Blob([texto], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
   /** Reproductor con sonido: sin `muted` para que se escuche al darle play. */
   function playerHtml(p) {
     if (!p) return '';
@@ -273,17 +325,35 @@
         const json = await res.json();
         const playable = findPlayable(json);
         const preview = findPreviewImage(json);
-        const href = downloadHref(path, json, type);
+        const archivo = archivoDe(json, playable ? `${playable.type}/` : 'image/');
+        const nombreJson = `${tester.dataset.endpoint}.json`;
+        const nombreArch = `${tester.dataset.endpoint}.${playable ? (playable.type === 'audio' ? 'mp3' : 'mp4') : 'jpg'}`;
+        const btn = archivo ? btnDescargar(archivo.href, nombreArch) : btnDescargarTexto(nombreJson);
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span>
-            ${btnDescargar(href, `${tester.dataset.endpoint}.${playable ? (playable.type === 'audio' ? 'mp3' : 'mp4') : 'jpg'}`)}</div>
+          <div class="res-bar">${okChip}<span class="res-meta">JSON · ${ms} ms</span>${btn}</div>
           ${playable ? playerHtml(playable) : preview ? `<div class="preview"><img src="${esc(preview)}" alt=""></div>` : ''}
           <pre>${esc(JSON.stringify(json, null, 2))}</pre>`;
+        const bajar = result.querySelector('[data-dl-text]');
+        if (bajar) bajar.addEventListener('click', () => bajarTexto(JSON.stringify(json, null, 2), nombreJson));
       } else {
         const text = await res.text();
+        const nombreTxt = `${tester.dataset.endpoint}.txt`;
         result.innerHTML = `
-          <div class="res-bar">${okChip}<span class="res-meta">Texto · ${ms} ms</span></div>
+          <div class="res-bar">${okChip}<span class="res-meta">Texto · ${ms} ms</span>
+            ${btnDescargarTexto(nombreTxt)}</div>
           <pre>${esc(text.slice(0, 8000))}</pre>`;
+        const bajar = result.querySelector('[data-dl-text]');
+        if (bajar) bajar.addEventListener('click', () => {
+          const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = nombreTxt;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 4000);
+        });
       }
     } catch (e) {
       result.innerHTML = `
@@ -473,4 +543,22 @@
     if (testBtn) testBtn.addEventListener('click', () => setOpen(tester, !tester.classList.contains('open')));
     if (location.hash === '#' + id) setOpen(tester, true);
   });
+
+  // ---------- Enlaces directos (#endpoint, #row-endpoint o ?ep=) ----------
+  // El buscador del home linkea a /<categoría>#row-<endpoint>: acá se abre ese
+  // probador solo, se scrollea y se limpia cualquier filtro del buscador.
+  function openFromHash() {
+    const hash = decodeURIComponent(String(location.hash || '').replace(/^#/, ''));
+    if (!hash) return;
+    const id = hash.replace(/^row-/, '');
+    const tester = document.getElementById(`tester-${id}`);
+    if (!tester) return;
+    const input = searchInput;
+    if (input && input.value) { input.value = ''; input.dispatchEvent(new Event('input')); }
+    setOpen(tester, true);
+    const row = tester.previousElementSibling;
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  window.addEventListener('hashchange', openFromHash);
+  openFromHash();
 })();

@@ -1,10 +1,11 @@
 // src/routes/download.js — DOWNLOADER: TikTok · YouTube · Facebook · Instagram ·
-// MP3 · MP4 · Play · Lyric.
+// MP3 · MP4 · Play · Lyric · Wallpaper.
 // ?direct= devuelve el archivo en streaming (con Range 206) en lugar de JSON.
 const express = require('express');
 const P = require('../utils/providers');
-const { sendSuccess, sendError, sendText, proxyStream, sendFile, wantsDownload } = require('../utils/response');
-const { absoluteUrl } = require('../utils/http');
+const { sendSuccess, sendError, sendText, sendPng, proxyStream, sendFile, wantsDownload } = require('../utils/response');
+const { absoluteUrl, fetchWithTimeout, UA_DESKTOP } = require('../utils/http');
+const { bratFromLyrics } = require('../utils/lyricArt');
 
 const router = express.Router();
 
@@ -195,6 +196,95 @@ router.get(['/instagram', '/ig'], handle(async (req, res) => {
   return sendSuccess(res, info);
 }));
 
+// ---------- File (proxy genérico de descarga) ----------
+/**
+ * Baja CUALQUIER archivo público (imagen, video, audio, json) desde una URL.
+ * Es lo que usa el botón DESCARGA de la web cuando un endpoint devuelve un
+ * link dentro del JSON, así "descargar" funciona en todos los endpoints.
+ *   /downloader/file?url=https://…/foto.jpg&download=true
+ */
+const BLOQUEADOS = /^(?:localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|\[?::1\]?$)/i;
+router.get(['/file', '/proxy'], handle(async (req, res) => {
+  const raw = String(req.query.url || '').trim();
+  if (!raw) return sendError(res, 400, 'Falta el parámetro url', 'Ejemplo: /downloader/file?url=https://…/foto.jpg');
+  let target;
+  try { target = new URL(raw); } catch (_) { return sendError(res, 400, 'URL inválida'); }
+  if (!/^https?:$/.test(target.protocol)) return sendError(res, 400, 'Sólo se permiten URLs http(s)');
+  if (BLOQUEADOS.test(target.hostname)) return sendError(res, 400, 'Esa URL no está permitida');
+  const nombre = cleanName(req.query.filename || path.basename(target.pathname) || 'velirius-archivo');
+  const ext = (nombre.includes('.') ? '' : mimeExt(target.pathname)) || '';
+  return proxyStream(req, res, target.toString(), {
+    filename: `${nombre}${ext}`,
+    headers: { Referer: `${target.origin}/` }
+  });
+}));
+
+/** Extensión razonable cuando el nombre no la trae. */
+function mimeExt(p) {
+  const m = String(p).match(/\.([a-z0-9]{2,5})$/i);
+  return m ? `.${m[1].toLowerCase()}` : '.bin';
+}
+
+// ---------- Wallpaper (fondo de pantalla) ----------
+/**
+ * Descarga un fondo de pantalla.
+ *   · ?url=…  → baja esa imagen tal cual.
+ *   · ?query=… → busca el mejor fondo de esa búsqueda y lo baja (JSON con
+ *     `?direct=true` devuelve la imagen, como el resto del downloader).
+ */
+router.get(['/wallpaper', '/wallpapers', '/fondo', '/fondos'], handle(async (req, res) => {
+  const query = String(req.query.query || req.query.q || req.query.text || '').trim();
+  const url = String(req.query.url || '').trim();
+  const directo = wantDirect(req, ['true', 'image', 'img', 'jpg', 'png', '1']);
+  if (!query && !url) {
+    return sendError(res, 400, 'Falta el parámetro query o url',
+      'Ejemplo: /downloader/wallpaper?query=anime&direct=true');
+  }
+  let elegido = url ? { url, title: null, width: null, height: null, source: 'url' } : null;
+  let busqueda = null;
+  if (!elegido) {
+    busqueda = await P.wallpaperSearch(query, {
+      limit: 12,
+      page: req.query.page,
+      orientation: req.query.orientation || req.query.type || 'landscape',
+      minWidth: req.query.minWidth || req.query.width,
+      minHeight: req.query.minHeight || req.query.height,
+      source: req.query.source
+    });
+    const index = Math.max(0, Math.min(busqueda.results.length - 1, parseInt(req.query.index ?? req.query.i, 10) || 0));
+    elegido = busqueda.results[index];
+    if (!elegido) throw new Error('La búsqueda no devolvió fondos de pantalla');
+  }
+  const nombre = `${cleanName(elegido.title || query || 'wallpaper')}.jpg`;
+  if (directo) {
+    return proxyStream(req, res, elegido.url, {
+      filename: nombre,
+      headers: { Referer: new URL(elegido.url).origin + '/' }
+    });
+  }
+  // JSON: la imagen completa + el link listo para descargar.
+  const self = req.originalUrl.split('?')[0];
+  return sendSuccess(res, {
+    query: query || null,
+    source: elegido.source || busqueda?.source || null,
+    count: busqueda?.count ?? 1,
+    wallpaper: {
+      title: elegido.title || null,
+      width: elegido.width || null,
+      height: elegido.height || null,
+      orientation: elegido.orientation || null,
+      image: elegido.url,
+      thumb: elegido.thumb || elegido.url,
+      page: elegido.page || null,
+      downloadUrl: absoluteUrl(req, `${self}?url=${encodeURIComponent(elegido.url)}&download=true`)
+    },
+    results: busqueda ? busqueda.results.map(w => ({
+      ...w,
+      downloadUrl: absoluteUrl(req, `${self}?url=${encodeURIComponent(w.url)}&download=true`)
+    })) : undefined
+  });
+}));
+
 // ---------- MP3 ----------
 router.get(['/mp3', '/ytmp3'], handle(async (req, res) => {
   const info = await P.resolveYoutubeTarget({ url: req.query.url, query: req.query.query || req.query.q });
@@ -255,7 +345,14 @@ async function previewDe(query) {
   return prev;
 }
 
-// ---------- Play (audio por búsqueda) ----------
+// ---------- Play (audio por búsqueda, canción COMPLETA) ----------
+/**
+ * Devuelve la canción completa (no un preview): busca en YouTube, elige el
+ * resultado que mejor coincide y convierte el audio entero a MP3 con ffmpeg.
+ * Si el primer resultado falla se prueba con los siguientes (hasta 3), porque
+ * los videos con copyright bloquean el audio y la búsqueda trae varios.
+ * Sólo si TODO YouTube falla se cae al preview de 30 s de Deezer/iTunes.
+ */
 router.get('/play', handle(async (req, res) => {
   const query = String(req.query.query || req.query.q || req.query.text || '').trim();
   if (!query) return sendError(res, 400, 'Falta el parámetro query', 'Ejemplo: /downloader/play?query=Lisa+Money');
@@ -263,11 +360,27 @@ router.get('/play', handle(async (req, res) => {
   const urls = urlsAudio(req, '/downloader/play', `query=${encodeURIComponent(query)}`);
   const errores = [];
 
-  // 1) YouTube → MP3 convertido con ffmpeg.
+  // Cuántos resultados de YouTube se prueban (1-5, 3 por defecto): así la
+  // canción completa sale aunque el primer video tenga el audio bloqueado.
+  const intentos = Math.max(1, Math.min(5, parseInt(req.query.tries ?? req.query.intentos, 10) || 3));
+
+  // 1) YouTube → MP3 completo.
   let info = null;
   try {
-    info = await P.resolveYoutubeTarget({ query });
-    if (directo) return await enviarAudio(req, res, info);
+    const search = await P.youtubeSearch(query, intentos);
+    const candidatos = (search?.results || []).map(r => r.id).filter(Boolean).slice(0, intentos);
+    const ids = candidatos.length ? candidatos : [];
+    for (const id of ids) {
+      try {
+        info = await P.youtubeStreams(id);
+        if (info) break;
+      } catch (e) { errores.push(`youtube ${id}: ${e.message}`); info = null; }
+    }
+    if (!info && !ids.length) {
+      // Sin buscador: se deja que el resolver de siempre elija.
+      info = await P.resolveYoutubeTarget({ query });
+    }
+    if (info && directo) return await enviarAudio(req, res, info);
   } catch (e) {
     errores.push(`youtube: ${e.message}`);
     if (res.headersSent) throw e;
@@ -279,6 +392,7 @@ router.get('/play', handle(async (req, res) => {
       query, id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
       youtubeUrl: `https://www.youtube.com/watch?v=${info.id}`,
       preview: false,
+      fullSong: true,
       audio: {
         quality: audio?.quality || null,
         mime: 'audio/mpeg',
@@ -292,7 +406,7 @@ router.get('/play', handle(async (req, res) => {
     });
   }
 
-  // 2) Respaldo: 30 s reales desde Deezer o iTunes.
+  // 2) Respaldo: 30 s reales desde Deezer o iTunes (esto SÍ es un preview).
   const prev = await previewDe(query);
   const nombre = cleanName(`${prev.artist} - ${prev.title}`);
   if (directo) {
@@ -307,6 +421,7 @@ router.get('/play', handle(async (req, res) => {
     duration: prev.duration,
     thumbnail: prev.cover,
     preview: true,
+    fullSong: false,
     source: prev.source,
     audio: {
       quality: 'preview',
@@ -329,6 +444,17 @@ router.get(['/lyric', '/lyrics'], handle(async (req, res) => {
   const song = await P.lyricFor(query);
   const format = String(req.query.format || 'json').toLowerCase();
   const base = cleanName(`${song.title} - ${song.artist}`);
+  if (format === 'brat' || format === 'sticker' || format === 'png') {
+    // La canción COMPLETA como sticker brat: el lienzo crece hacia abajo.
+    const art = await bratFromLyrics(song, {
+      width: req.query.width,
+      bg: req.query.bg ? `#${String(req.query.bg).replace(/^#/, '')}` : undefined,
+      color: req.query.color ? `#${String(req.query.color).replace(/^#/, '')}` : undefined,
+      size: req.query.size,
+      maxHeight: req.query.maxHeight || req.query['canvas.height']
+    });
+    return sendPng(res, art.buffer, `${base}-brat.png`);
+  }
   if (format === 'lrc') {
     return sendText(res, song.syncedLyrics || song.plainLyrics || '', `${base}.lrc`);
   }

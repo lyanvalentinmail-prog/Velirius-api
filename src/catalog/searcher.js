@@ -36,6 +36,15 @@ module.exports = {
       O('limit', '10', 'Cantidad de resultados (1-20)'),
       O('lang', 'es', 'Idioma de la búsqueda (es, en, pt…)')
     ] },
+    { id: 'wallpaper', desc: 'Busca fondos de pantalla en HD (Wallhaven → Unsplash → Bing → Google) con link de descarga', media: 'image', params: [
+      P('query', 'anime', 'Qué fondo querés (tema, color, personaje…)'),
+      O('limit', '12', 'Cantidad de resultados (1-40)'),
+      O('page', '1', 'Página de resultados'),
+      S('orientation', 'landscape', 'Forma del fondo', ['landscape', 'portrait', 'any']),
+      O('minWidth', '', 'Ancho mínimo en píxeles (ej. 1920)'),
+      O('minHeight', '', 'Alto mínimo en píxeles (ej. 1080)'),
+      S('source', '', 'Forzar una sola fuente', ['', 'wallhaven', 'unsplash', 'bing', 'google-images'])
+    ] },
     { id: 'wikipedia', desc: 'Busca artículos en Wikipedia con extracto e imagen (cualquier idioma)', media: 'image', params: [
       P('query', 'One Piece', 'Tema a buscar'),
       O('limit', '8', 'Cantidad de artículos (1-20)'),

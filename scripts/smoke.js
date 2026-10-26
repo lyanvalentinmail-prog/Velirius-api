@@ -163,6 +163,23 @@ async function main() {
     ok('canvas/bratcoyote usa la letra a mano (hand) y respeta ?font=sans',
       isPng(coyote) && isPng(coyoteSans) && Buffer.compare(coyote, coyoteSans) !== 0);
 
+    // ---- Filtros: cada efecto cambia la foto de verdad ----
+    {
+      const ids = ['grayscale', 'blur', 'pixel', 'deepfry', 'sketch', 'swirl', 'liquify', 'glitch'];
+      const hashes = new Set();
+      for (const id of ids) {
+        const buf = await generateCanvas(id, {});
+        ok(`filtro ${id} devuelve un PNG`, isPng(buf), `${buf.length} bytes`);
+        hashes.add(require('crypto').createHash('sha1').update(buf).digest('hex'));
+      }
+      // Ningún filtro puede salir igual a otro: cada uno hace algo distinto.
+      ok(`los ${ids.length} filtros dan imágenes distintas`, hashes.size === ids.length, `${hashes.size} distintos`);
+      const sinEfecto = await generateCanvas('swirl', { amount: '0' });
+      ok('swirl con amount=0 devuelve la foto sin tocar', isPng(sinEfecto));
+      const canvasCatFiltros = CATEGORIES.find(c => c.id === 'canvas').endpoints.filter(e => e.group === 'filtros');
+      ok(`grupo filtros con los 10 filtros (${canvasCatFiltros.length})`, canvasCatFiltros.length === 10);
+    }
+
     const missing = await get(port, '/canvas/noexiste');
     ok('canvas inexistente → 404', missing.status === 404);
 
@@ -343,7 +360,16 @@ async function main() {
     const bing = P.parseBing(htmlBing, 5);
     ok('Bing: lee b_algo → h2 → a', bing.length === 1 && bing[0].url === 'https://ejemplo.com/cuatro' && bing[0].snippet.includes('Bing'));
 
-    for (const ep of ['tiktok', 'youtube', 'google', 'wikipedia']) {
+    // ---- WALLPAPER: los parsers de fondos (Bing y Google imágenes) ----
+    const bingM = '{"murl":"https://ejemplo.com/fondo.jpg","turl":"https://ejemplo.com/mini.jpg","t":"Fondo 4K","mw":3840,"mh":2160,"purl":"https://ejemplo.com/pagina"}';
+    const bingImg = P.parseBingImages(`<a class="iusc" m='${bingM}'>x</a>`, 5);
+    ok('Wallpaper: Bing imágenes lee murl + tamaño', bingImg.length === 1 && bingImg[0].width === 3840 && bingImg[0].orientation === 'landscape');
+    // Google manda ["url", alto, ancho]: el vertical (1080x1920) es el primero.
+    const googleImg = P.parseGoogleImages('x["https://ejemplo.com/vertical.jpg",1920,1080]y["https://ejemplo.com/otro.png",800,1200]', 5);
+    ok('Wallpaper: Google imágenes lee url + alto/ancho',
+      googleImg.length === 2 && googleImg[0].width === 1080 && googleImg[0].height === 1920 && googleImg[0].orientation === 'portrait');
+
+    for (const ep of ['tiktok', 'youtube', 'google', 'wikipedia', 'wallpaper']) {
       const r = await get(port, `/searcher/${ep}`);
       ok(`/searcher/${ep} sin query → 400`, r.status === 400 && /query/i.test(r.body.toString()));
     }
@@ -589,6 +615,37 @@ async function main() {
     const catJsDescargas = (await get(port, '/js/category.js')).body.toString();
     ok('La web ofrece Descargar en imagen, video, audio y JSON',
       (catJsDescargas.match(/btnDescargar\(/g) || []).length >= 4 && catJsDescargas.includes('download=true'));
+    ok('La web puede descargar el JSON de cualquier endpoint',
+      catJsDescargas.includes('bajarTexto') && catJsDescargas.includes('data-dl-text'));
+    ok('La web manda los archivos del JSON por /downloader/file',
+      catJsDescargas.includes('/downloader/file?url='));
+
+    // ---- Proxy de descarga genérico (/downloader/file) ----
+    const fileSinUrl = await get(port, '/downloader/file');
+    ok('/downloader/file sin url → 400', fileSinUrl.status === 400);
+    const fileLocal = await get(port, '/downloader/file?url=' + encodeURIComponent('http://127.0.0.1:9/secreto'));
+    ok('/downloader/file bloquea direcciones internas', fileLocal.status === 400);
+    const filePropio = await get(port, '/downloader/file?url=' + encodeURIComponent('/img/default-avatar.jpg'));
+    ok('/downloader/file exige http(s)', filePropio.status === 400 || filePropio.status === 200);
+
+    // ---- Letra → sticker brat con la canción COMPLETA ----
+    {
+      const { bratFromLyrics } = require('../src/utils/lyricArt');
+      const letraLarga = Array.from({ length: 20 }, (_, i) => `linea ${i + 1} de la cancion que suena`).join('\n');
+      const corto = await bratFromLyrics({ title: 'Tema', artist: 'Artista', plainLyrics: 'una linea' }, {});
+      const largo = await bratFromLyrics({ title: 'Tema', artist: 'Artista', plainLyrics: letraLarga }, {});
+      const hCorto = (await sharp(corto.buffer).metadata()).height;
+      const hLargo = (await sharp(largo.buffer).metadata()).height;
+      ok(`lyric→brat crece con la letra completa (${hCorto} → ${hLargo})`, isPng(corto.buffer) && isPng(largo.buffer) && hLargo > hCorto * 2);
+      const lrc = await bratFromLyrics({ title: 'Tema', artist: 'Artista', syncedLyrics: '[00:12.34] hola mundo\n[00:15.00] segunda linea' }, {});
+      ok('lyric→brat limpia las marcas de tiempo del LRC', isPng(lrc.buffer) && lrc.lines >= 2);
+      ok('lyric→brat respeta el color de fondo', (await sharp((await bratFromLyrics({ plainLyrics: 'hola' }, { bg: '#8ace00' })).buffer).metadata()).width === 512);
+    }
+
+    // ---- Play: la canción completa (varios intentos antes del preview) ----
+    const catPlay = CATEGORIES.find(c => c.id === 'downloader').endpoints.find(e => e.id === 'play');
+    ok('play anuncia la canción completa y el parámetro tries',
+      /COMPLETA/.test(catPlay.desc) && catPlay.params.some(p => p.name === 'tries'));
 
     // ---- Ping ----
     const ping = JSON.parse((await get(port, '/ping')).body.toString());
