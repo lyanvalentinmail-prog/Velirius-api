@@ -188,8 +188,9 @@
     if ('inert' in tester) tester.inert = true;
 
     const fieldOf = p => {
-      const up = isImageParam(p.name)
-        ? `<label class="upload">Subir foto<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label>`
+      const gallery = isImageParam(p.name);
+      const up = gallery
+        ? `<div class="gallery-row"><label class="upload">Galería<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
         : '';
       let control;
       if (Array.isArray(p.options) && p.options.length) {
@@ -201,7 +202,7 @@
         control = `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
       }
       return `<div class="param">
-        <div class="param-top"><b>${esc(p.name)}</b><span class="chip-opt${p.required ? ' req' : ''}">${p.required ? 'Requerido' : 'Opcional'}</span></div>
+        <div class="param-top"><b>${esc(p.name)}</b><span class="chip-opt${p.required ? ' req' : ''}">${p.required ? 'Requerido' : (gallery ? 'Opcional • URL o galería' : 'Opcional')}</span></div>
         ${p.desc ? `<div class="param-desc">${esc(p.desc)}</div>` : ''}
         <div class="field-row">${control}${up}</div>
       </div>`;
@@ -269,6 +270,15 @@
           : `Opciones avanzadas (${tester.querySelectorAll('.adv-fields [data-param]').length})`;
       });
     }
+
+    tester.querySelectorAll('[data-clear]').forEach(clearBtn => {
+      clearBtn.addEventListener('click', () => {
+        const target = tester.querySelector(`[data-param="${CSS.escape(clearBtn.dataset.clear)}"]`);
+        if (target) { target.value = ''; }
+        clearBtn.textContent = '✕ Quitar';
+        refreshUrl(tester);
+      });
+    });
 
     tester.querySelector('[data-act="exec"]').addEventListener('click', () => executeTest(tester));
     tester.querySelector('[data-act="open"]').addEventListener('click', () => window.open(buildPath(tester), '_blank', 'noopener'));

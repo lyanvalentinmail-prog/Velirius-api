@@ -6,6 +6,7 @@ module.exports = {
   storeFooter: 'VELIRIUS STORE',
   version: '1.0.0',
   githubUrl: 'https://github.com/lyanvalentinmail-prog',
+  repoUrl: 'https://github.com/lyanvalentinmail-prog/Velirius-api',
   mainWebsite: '/',
   supportUrl: 'https://github.com/lyanvalentinmail-prog/Velirius-api',
   port: process.env.PORT || 3000,

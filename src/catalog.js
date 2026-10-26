@@ -62,11 +62,11 @@ const CATEGORIES = [
   {
     id: 'canvas', name: 'CANVAS',
     endpoints: [
-      { id: 'quotly', desc: 'Sticker de cita estilo Telegram con tu avatar', params: [
-        P('image', AV, 'URL del avatar (o data: del probador)'),
-        P('username', 'Velirius Api', 'Nombre visible'),
-        P('text', 'Welcome to Velirius Api', 'Mensaje de la cita'),
-        O('bg', '000000', 'Fondo en hex sin #'),
+      { id: 'quotly', desc: 'Genera un sticker PNG transparente estilo Quotly con avatar circular y burbuja de chat.', params: [
+        P('text', 'Welcome to Velirius Api', 'Mensaje del sticker'),
+        O('username', 'Velirius Api', 'Nombre del usuario'),
+        O('image', AV, 'Avatar opcional (URL o imagen de tu galería)'),
+        O('bg', '000000', 'Color hexadecimal de la burbuja'),
         ...textStyle()
       ] },
       { id: 'brat', desc: 'Texto brat real (minúsculas, desenfocado y con grano sutil)', params: [
@@ -76,12 +76,15 @@ const CATEGORIES = [
         O('size', '1', 'Escala del texto (0.5 - 2)'),
         O('rotate', '0', 'Rotar el texto en grados')
       ] },
-      { id: 'bratvideo', desc: 'Brat animado palabra por palabra (MP4)', media: 'video', params: [
-        P('text', 'Welcome to Velirius API', 'Texto que va apareciendo')
+      { id: 'bratvideo', desc: 'Genera un video MP4 animado estilo Brat donde las palabras aparecen progresivamente.', media: 'video', params: [
+        P('text', 'Welcome to Velirius API', 'Frase animada palabra por palabra (admite emojis)'),
+        O('bg', '8ACE00', 'Color de fondo hex (ej. 8ACE00 o ffffff)'),
+        O('color', '000000', 'Color del texto hex')
       ] },
-      { id: 'bratestirado', desc: 'Brat estirado con efecto ojo de pez', params: [
+      { id: 'bratestirado', desc: 'Genera el cartel Brat estirado con lente esférico 3D (fisheye).', params: [
         P('text', 'i <3 money', 'Texto a estirar'),
-        O('color', '000000', 'Color del texto hex sin #'),
+        O('bg', 'ffffff', 'Color de fondo hex (ej. ffffff o 8ACE00)'),
+        O('color', '000000', 'Color del texto hex'),
         O('size', '1', 'Escala del texto (0.5 - 2)')
       ] },
       { id: 'bratanime', desc: 'Maid de anime sosteniendo tu texto', params: [
@@ -108,11 +111,11 @@ const CATEGORIES = [
         P('text', 'Welcome to Velirius', 'Texto animado'),
         O('size', '1', 'Escala del texto (0.5 - 2)')
       ] },
-      { id: 'iqc', desc: 'Chat falso de WhatsApp: la burbuja crece con el texto (como en la app real)', params: [
-        P('text', 'Yo siempre te voy a amar', 'Mensaje principal (si es largo, la burbuja se estira)'),
-        O('quote', 'vooooss seguro', 'Mensaje citado'),
-        O('username', 'Tú', 'Autor de la cita'),
-        O('time', '7:32 p. m.', 'Hora del mensaje'),
+      { id: 'iqc', desc: 'Genera una captura estilo WhatsApp iOS en modo oscuro con barra de reacciones y menú contextual.', params: [
+        P('text', 'Yo siempre te voy a amar', 'Mensaje principal de la burbuja'),
+        O('replyText', 'vooooss seguro', 'Texto del mensaje citado (dejar vacío para ocultar)'),
+        O('replyName', 'Tú', 'Autor del mensaje citado'),
+        O('time', '7:32 p. m.', 'Hora mostrada en la burbuja'),
         ...textStyle()
       ] },
       { id: 'cuentatiktok', desc: 'Menú falso de TikTok "Account not found"', params: [
@@ -190,28 +193,26 @@ const CATEGORIES = [
         O('damage', '90', 'Daño del ataque'),
         O('description', 'Una carta creada con Velirius API.', 'Descripción')
       ] },
-      { id: 'ship', desc: 'Medidor de compatibilidad con corazones', params: [
-        P('image1', AV, 'Foto 1'),
-        P('name1', 'Velirius', 'Nombre 1'),
-        P('image2', AV2, 'Foto 2'),
-        P('name2', 'dls', 'Nombre 2'),
-        O('percentage', '85', '0-100 (vacío = al azar)'),
-        O('text', 'Best Friends', 'Frase central'),
-        O('color', '', 'Color del porcentaje hex sin #')
+      { id: 'ship', desc: 'Genera una tarjeta de medidor de compatibilidad con avatares recortados en corazón.', params: [
+        P('name1', 'Velirius', 'Primer nombre'),
+        P('name2', 'dls', 'Segundo nombre'),
+        O('percentage', '85', 'Porcentaje opcional (0-100)'),
+        O('text', 'Best Friends', 'Etiqueta personalizada (ej. Best Friends)'),
+        O('image1', AV, 'Primer avatar (URL o imagen de tu galería)'),
+        O('image2', AV2, 'Segundo avatar (URL o imagen de tu galería)')
       ] },
-      { id: 'friendship', desc: 'Medidor de amistad con círculos', params: [
-        P('image1', AV, 'Foto 1'),
-        P('name1', 'Velirius', 'Nombre 1'),
-        P('image2', AV2, 'Foto 2'),
-        P('name2', 'dls', 'Nombre 2'),
-        O('percentage', '85', '0-100 (vacío = al azar)'),
-        O('text', 'Best Friends', 'Frase central'),
-        O('color', '', 'Color del porcentaje hex sin #')
+      { id: 'friendship', desc: 'Genera una tarjeta de medidor de amistad con avatares circulares y porcentaje.', params: [
+        P('name1', 'Velirius', 'Primer nombre'),
+        P('name2', 'dls', 'Segundo nombre'),
+        O('percentage', '85', 'Porcentaje opcional (0-100)'),
+        O('text', 'Best Friends', 'Etiqueta personalizada (ej. Best Friends)'),
+        O('image1', AV, 'Primer avatar (URL o imagen de tu galería)'),
+        O('image2', AV2, 'Segundo avatar (URL o imagen de tu galería)')
       ] },
       { id: 'gaycard', desc: 'Tarjeta GAY PERCENTAGE', params: [
         P('url', AV, 'Foto'),
         O('name', 'Velirius', 'Nombre'),
-        O('rank', '12', 'Porcentaje 0-100 (vacío = al azar)')
+        O('percentage', '12', 'Porcentaje opcional (0-100)')
       ] },
       { id: 'gay', desc: 'Filtro arcoíris sobre tu foto', params: [
         P('url', AV, 'Tu foto'),

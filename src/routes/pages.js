@@ -88,45 +88,42 @@ router.get('/download', (req, res) => res.redirect('/downloader'));
 router.get('/search', (req, res) => res.redirect('/searcher'));
 
 // ---------- /home (dashboard de carpetas) ----------
+// Copia literal del panel de Apireon: intro + enlace de GitHub, cuatro píldoras de
+// navegación, barra de estado (ESTADO / RUTAS / ENDPOINTS) y rejilla de tarjetas
+// monoespaciadas con el contador de endpoints y el enlace VER.
 router.get('/home', (req, res) => {
   const t = totals();
-  const rows = CATEGORIES.map(c => `
-    <div class="row">
-      <span class="folder">${I.folder}</span>
-      <div class="info">
-        <h3>${esc(c.name)}</h3>
-        <div class="meta">${c.endpoints.length} endpoints</div>
-      </div>
-      <a class="btn" href="/${c.id}">Ver</a>
-    </div>`).join('');
+  const cards = CATEGORIES.map(c => `
+      <a class="cat-card" href="/${c.id}">
+        <span class="cat-name">${esc(c.id)}<em>\\</em></span>
+        <span class="cat-count">${c.endpoints.length} endpoints</span>
+        <span class="cat-ver">Ver</span>
+      </a>`).join('');
 
   const body = `
     <h1 class="title">Velirius API</h1>
-    <div class="sync">Sincronización completa</div>
-    <p class="intro">Aquí están las carpetas con todas las <strong>APIS</strong> disponibles en este sitio web.<br><strong>(No Requiere Token)</strong></p>
-    <div class="follow"><a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">Sigue mi cuenta de GitHub</a></div>
-    <div class="icons">
-      <div class="left">
-        <a href="/information" title="Information">${I.activity}</a>
-        <a href="${esc(config.supportUrl)}" target="_blank" rel="noopener" title="Support">${I.patreon}</a>
-        <a href="${esc(config.githubUrl)}" target="_blank" rel="noopener" title="GitHub Account">${I.github}</a>
-        <a href="/docs" title="Main Website">${I.external}</a>
-      </div>
-      <button type="button" data-search-btn title="Search" aria-label="Search">${I.search}</button>
-    </div>
-    <div class="searchbox"><input type="text" placeholder="Buscar endpoints… (ej: brat, tiktok, pokemon)"><div class="search-results"></div></div>
+    <p class="intro">Aquí están las carpetas con todas las <strong>APIS</strong> disponibles en este sitio web.<br><strong>(No Requiere Token)</strong> <a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">Sigue mi cuenta de GitHub</a></p>
+
+    <nav class="pills">
+      <a href="/information" title="Información del Sistema">Información del Sistema</a>
+      <a href="/docs" title="Catálogo JSON (/docs)">Catálogo JSON (/docs)</a>
+      <a href="${esc(config.githubUrl)}" target="_blank" rel="noopener" title="Cuenta de GitHub">Cuenta de GitHub</a>
+      <a href="${esc(config.repoUrl || config.githubUrl)}" target="_blank" rel="noopener" title="Repositorio Velirius">Repositorio Velirius</a>
+    </nav>
+
     <div class="status">
       <span>Estado:&nbsp; En línea</span>
       <span class="right">
-        <span class="stat">${I.folder} Rutas:&nbsp; ${t.routers}</span>
-        <span class="stat">${I.stack} Endpoints:&nbsp; ${t.endpoints}</span>
+        <span class="stat">Rutas:&nbsp; ${t.routers}</span>
+        <span class="stat">Endpoints:&nbsp; ${t.endpoints}</span>
       </span>
     </div>
-    <div class="list">${rows}</div>
+
+    <div class="cards">${cards}</div>
     <div class="footer">© 2026 | ${esc(config.brand)}</div>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.send(layout({ title: 'Velirius API', body, script: '<script src="/js/home.js"></script>' }));
+  return res.send(layout({ title: 'Velirius API - API REST', body, script: '<script src="/js/home.js"></script>' }));
 });
 
 // ---------- /information ----------
@@ -134,17 +131,13 @@ router.get('/information', (req, res) => {
   const t = totals();
   const base = absoluteUrl(req, '');
   const body = `
-    <h1 class="title">Information</h1>
-    <div class="sync">Base de datos sincronizada</div>
+    <h1 class="title">Información del Sistema</h1>
     <p class="intro">Puedes hacer <strong>peticiones</strong> simplemente pulsando en <strong>test</strong><br>(el panel se abre hacia abajo con los parámetros editables)</p>
-    <div class="icons">
-      <div class="left">
-        <a href="/home" title="Home">${I.home}</a>
-        <a href="/docs" title="Docs JSON">${I.external}</a>
-        <a href="${esc(config.supportUrl)}" target="_blank" rel="noopener" title="Support">${I.patreon}</a>
-      </div>
-      <span></span>
-    </div>
+    <nav class="pills">
+      <a href="/home" title="Inicio">Inicio</a>
+      <a href="${esc(config.repoUrl)}" target="_blank" rel="noopener" title="Repositorio GitHub">Repositorio GitHub</a>
+      <a href="/docs" title="Catálogo JSON (/docs)">Catálogo JSON (/docs)</a>
+    </nav>
     <div class="status"><span>Red:&nbsp; En línea</span><span>Lista:&nbsp; ${t.endpoints}</span></div>
     <div class="info-block">
       <div><b>API:</b> Velirius API (estilo Delirius, sin token)</div>
@@ -159,7 +152,7 @@ router.get('/information', (req, res) => {
     </div>
     <div class="footer">© 2026 | ${esc(config.brand)}</div>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.send(layout({ title: 'Velirius 疯狂 - Information', body }));
+  return res.send(layout({ title: 'Velirius API - Información del Sistema', body }));
 });
 
 // ---------- /docs (JSON) ----------
@@ -207,7 +200,7 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
     return `
     <div class="row" data-endpoint="${esc(e.id)}" id="row-${esc(e.id)}">
       <div class="info">
-        <h3><span class="bullet">■</span> ${esc(e.id.toUpperCase())}</h3>
+        <h3>${esc(e.id.toUpperCase())}</h3>
         <div class="meta"><span class="get">GET</span> - ${esc(paramsLine)}</div>
       </div>
       <button type="button" class="btn" data-test-btn="${esc(e.id)}" aria-expanded="false" aria-controls="tester-${esc(e.id)}">Test</button>
@@ -232,18 +225,12 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
   };
 
   const body = `
-    <h1 class="title">${esc(cat.name)}</h1>
-    <div class="sync">Base de datos sincronizada</div>
     <p class="intro">Puedes hacer <strong>peticiones</strong> simplemente pulsando en <strong>test</strong></p>
-    <div class="icons">
-      <div class="left">
-        <a href="/home" title="Home">${I.home}</a>
-        <a href="/docs" title="Main Website">${I.external}</a>
-        <a href="${esc(config.supportUrl)}" target="_blank" rel="noopener" title="Patreon">${I.patreon}</a>
-      </div>
-      <button type="button" data-search-btn title="Search" aria-label="Search">${I.search}</button>
-    </div>
-    <div class="searchbox"><input type="text" placeholder="Buscar en ${esc(cat.name)}…"></div>
+    <nav class="pills">
+      <a href="/home" title="Inicio">Inicio</a>
+      <a href="${esc(config.repoUrl || config.githubUrl)}" target="_blank" rel="noopener" title="Repositorio GitHub">Repositorio GitHub</a>
+      <a href="/information" title="Monitor del Sistema">Monitor del Sistema</a>
+    </nav>
     <div class="status"><span>Red:&nbsp; En línea</span><span>Lista:&nbsp; ${cat.endpoints.length}</span></div>
     <div class="list">${rows}</div>
     <div class="footer">© 2026 | ${esc(config.brand)}</div>`;

@@ -856,10 +856,10 @@ const GENERATORS = {
   async iqc(q) {
     const ov = styleOf(q);
     const message = txt(q, 'Yo siempre te voy a amar');
-    const quoteRaw = String(q.quote ?? q.quoted ?? 'vooooss seguro').trim();
+    const quoteRaw = String(q.replyText ?? q.quote ?? q.quoted ?? 'vooooss seguro').trim();
     // la cita de WhatsApp va en una sola línea con "…" al final
     const quote = quoteRaw.length > 46 ? quoteRaw.slice(0, 44).trimEnd() + '…' : quoteRaw;
-    const username = String(q.username ?? q.name ?? 'Tú').slice(0, 28);
+    const username = String(q.replyName ?? q.username ?? q.name ?? 'Tú').slice(0, 28);
     const time = String(q.time ?? q.hour ?? '7:32 p. m.').slice(0, 18);
     const { buf, width: W, height: H } = await templateMeta('iqc.jpg');
 
