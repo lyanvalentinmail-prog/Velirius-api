@@ -35,18 +35,63 @@ function wrapText(text, maxChars = 18, maxLines = 4) {
 }
 
 async function loadImageBuffer(url, fallbackFile = 'avatar1.jpg') {
-  const raw = String(url || '').trim();
+  const raw = normalizeImageUrl(url);
+  // Sin imagen elegida → foto predeterminada (comportamiento normal del canvas).
   if (!raw) return fs.readFileSync(path.join(DEFAULTS_DIR, fallbackFile));
   if (raw.startsWith('data:')) {
     const b64 = raw.split(',')[1] || '';
-    return Buffer.from(b64, 'base64');
+    const buf = Buffer.from(b64, 'base64');
+    if (!buf.length) throw imagenError('La imagen enviada está vacía', 'Revisa el archivo de tu galería');
+    return buf;
   }
-  if (!/^https?:\/\//i.test(raw)) return fs.readFileSync(path.join(DEFAULTS_DIR, fallbackFile));
+  if (!/^https?:\/\//i.test(raw)) {
+    // Se pidió una imagen pero no es una URL válida: antes caía en silencio a la
+    // foto predeterminada y parecía que el parámetro no hacía nada.
+    throw imagenError(
+      `La imagen no es una URL válida: "${raw.slice(0, 60)}"`,
+      'Usa un link que empiece con http:// o https://, o sube la foto desde Galería'
+    );
+  }
   if (imageCache.has(raw)) return imageCache.get(raw);
-  const buf = await fetchBuffer(raw, { timeoutMs: 15000, maxBytes: 15 * 1024 * 1024 });
+  let buf;
+  try {
+    buf = await fetchBuffer(raw, { timeoutMs: 15000, maxBytes: 15 * 1024 * 1024 });
+  } catch (e) {
+    throw imagenError(
+      `No se pudo descargar la imagen (${e.message})`,
+      'Revisa que el link sea público y directo a la imagen (.jpg, .png…)'
+    );
+  }
   imageCache.set(raw, buf);
   while (imageCache.size > MAX_CACHE) imageCache.delete(imageCache.keys().next().value);
   return buf;
+}
+
+/** Limpia el valor y completa el esquema cuando pegan `ejemplo.com/foto.jpg`. */
+function normalizeImageUrl(value) {
+  let raw = String(value ?? '').trim();
+  if (!raw) return '';
+  // Comillas o paréntesis que se cuelan al copiar y pegar.
+  raw = raw.replace(/^[<("'\s]+|[>"')\s]+$/g, '');
+  if (/^data:/i.test(raw)) return raw;
+  if (raw.startsWith('//')) return `https:${raw}`;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Sin esquema pero con pinta de dominio o host:puerto → http para hosts locales,
+  // https para todo lo demás. Así `ejemplo.com/foto.jpg` también funciona.
+  if (/^[\w.-]+(:\d+)?(\/|$|\?)/.test(raw) && /[./:]/.test(raw)) {
+    const host = raw.split('/')[0].split(':')[0].toLowerCase();
+    const local = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local');
+    return `${local ? 'http' : 'https'}://${raw}`;
+  }
+  return raw;
+}
+
+/** Error "de usuario" (400) con pista, para no confundirlo con una falla del server. */
+function imagenError(message, hint) {
+  const err = new Error(message);
+  err.status = 400;
+  err.hint = hint;
+  return err;
 }
 
 function templateBuffer(name) {

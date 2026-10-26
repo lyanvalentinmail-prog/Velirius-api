@@ -150,6 +150,46 @@ async function main() {
     const missing = await get(port, '/canvas/noexiste');
     ok('canvas inexistente → 404', missing.status === 404);
 
+    // ---- Imágenes de la galería (data:) y subida con URL corta ----
+    const rojo = await sharp({ create: { width: 120, height: 120, channels: 3, background: '#ff0000' } }).png().toBuffer();
+    const dataUrl = 'data:image/png;base64,' + rojo.toString('base64');
+
+    const post = (port2, p2, body) => new Promise((resolve, reject) => {
+      const data = Buffer.from(JSON.stringify(body));
+      const req = http.request({
+        host: '127.0.0.1', port: port2, path: p2, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': data.length }
+      }, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'] || '', body: Buffer.concat(chunks) }));
+      });
+      req.on('error', reject);
+      req.end(data);
+    });
+
+    const up = await post(port, '/upload', { image: dataUrl });
+    let upJson = {};
+    try { upJson = JSON.parse(up.body.toString()); } catch (_) { /* no-json */ }
+    const upUrl = upJson?.result?.url || '';
+    ok('POST /upload devuelve una URL corta', up.status === 201 && /\/upload\/[a-f0-9]{12,}/.test(upUrl), upUrl);
+
+    const upGet = upUrl ? await get(port, new URL(upUrl).pathname) : { status: 0, type: '', body: Buffer.alloc(0) };
+    ok('GET /upload/:id devuelve la imagen', upGet.status === 200 && upGet.type.startsWith('image/') && upGet.body.length > 50);
+
+    const conGaleria = upUrl ? await get(port, `/canvas/sebusca?name=GALERIA&url=${encodeURIComponent(upUrl)}`) : { status: 0, body: Buffer.alloc(0) };
+    ok('canvas usa la imagen subida (?url=/upload/…)', conGaleria.status === 200 && isPng(conGaleria.body));
+
+    const conBody = await post(port, '/canvas/sebusca', { name: 'GALERIA', url: dataUrl });
+    ok('canvas usa la imagen de la galería (POST con data:)', conBody.status === 200 && isPng(conBody.body));
+
+    // La imagen enviada tiene que cambiar el resultado (antes caía a la foto por defecto).
+    const porDefecto = await get(port, '/canvas/sebusca?name=GALERIA');
+    ok('la imagen enviada cambia el resultado', isPng(porDefecto.body) && Buffer.compare(porDefecto.body, conBody.body) !== 0);
+
+    const urlMala = await get(port, '/canvas/sebusca?url=no-es-una-url');
+    ok('URL inválida → 400 (no foto por defecto)', urlMala.status === 400 && /no es una URL válida/i.test(urlMala.body.toString()));
+
     // ---- Ping ----
     const ping = JSON.parse((await get(port, '/ping')).body.toString());
     ok('GET /ping', ping.status === true && ping.result.endpoints === t.endpoints);

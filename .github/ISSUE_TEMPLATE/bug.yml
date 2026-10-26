@@ -2,6 +2,7 @@ name: 🐞 Bug
 description: Algo no funciona (endpoint caído, canvas mal dibujado, texto cortado…)
 title: "[bug] "
 labels: ["bug"]
+# Guía de edición / endpoints nuevos: GUIA-ENDPOINTS-GITHUB.md
 body:
   - type: input
     id: url

@@ -18,5 +18,5 @@ jobs:
       - run: npm ci
       - name: Catálogo (ids, parámetros, canvas ↔ catálogo)
         run: npm run check
-      - name: Smoke (web, tools, /docs y los 31 canvas)
+      - name: Smoke (web, tools, /docs y los 33 canvas)
         run: npm test

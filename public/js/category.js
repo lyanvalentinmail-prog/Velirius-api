@@ -64,14 +64,80 @@
     img.src = objUrl;
   }
 
+  // Parámetros "normales" del probador (sin las imágenes locales).
+  function paramValues(tester) {
+    const out = {};
+    tester.querySelectorAll('[data-param]').forEach(inp => {
+      const v = String(inp.value || '').trim();
+      if (v && !v.startsWith('data:')) out[inp.dataset.param] = v;
+    });
+    return out;
+  }
+
+  // Imágenes elegidas de la galería (siempre guardadas como data:).
+  function allLocalImages(tester) {
+    const out = {};
+    tester.querySelectorAll('[data-local]').forEach(inp => {
+      const v = String(inp.dataset.local || '');
+      if (v.startsWith('data:')) out[inp.dataset.param] = v;
+    });
+    return out;
+  }
+
+  // Imágenes que van en el cuerpo del POST: sólo las que no tienen URL corta
+  // (un `data:` de varios KB no entra en una URL GET).
+  function localImages(tester) {
+    const out = {};
+    tester.querySelectorAll('[data-local]').forEach(inp => {
+      const url = String(inp.value || '').trim();
+      if (url && !url.startsWith('data:')) return;
+      const v = String(inp.dataset.local || '');
+      if (v.startsWith('data:')) out[inp.dataset.param] = v;
+    });
+    return out;
+  }
+
+  // fetch del endpoint: POST si hay imagen local; si el GET falla (por ejemplo la
+  // subida caducó), reintenta con la imagen de la galería en el cuerpo.
+  async function callEndpoint(tester, path) {
+    const local = localImages(tester);
+    if (Object.keys(local).length) {
+      return fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-velirius-client': 'ui' },
+        body: JSON.stringify({ ...paramValues(tester), ...local })
+      });
+    }
+    const res = await fetch(path, { headers: { 'x-velirius-client': 'ui' } });
+    const saved = allLocalImages(tester);
+    if (!res.ok && Object.keys(saved).length) {
+      return fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-velirius-client': 'ui' },
+        body: JSON.stringify({ ...paramValues(tester), ...saved })
+      });
+    }
+    return res;
+  }
+
+  // Miniatura de la imagen elegida (así se ve que quedó cargada).
+  function showThumb(row, dataUrl, title = 'Imagen') {
+    if (!row) return;
+    let img = row.querySelector('.up-thumb');
+    if (!img) {
+      img = document.createElement('img');
+      img.className = 'up-thumb';
+      img.alt = 'imagen elegida';
+      row.appendChild(img);
+    }
+    img.src = dataUrl;
+    img.title = title;
+  }
+
   function buildPath(tester) {
     const cat = tester.dataset.category;
     const id = tester.dataset.endpoint;
-    const params = new URLSearchParams();
-    tester.querySelectorAll('[data-param]').forEach(inp => {
-      const v = String(inp.value || '').trim();
-      if (v && !v.startsWith('data:')) params.set(inp.dataset.param, v);
-    });
+    const params = new URLSearchParams(paramValues(tester));
     const qs = params.toString();
     return `/${cat}/${id}${qs ? '?' + qs : ''}`;
   }
@@ -116,7 +182,7 @@
     result.innerHTML = '<div class="loading">CARGANDO…</div>';
     const t0 = performance.now();
     try {
-      const res = await fetch(path, { headers: { 'x-velirius-client': 'ui' } });
+      const res = await callEndpoint(tester, path);
       const ms = Math.round(performance.now() - t0);
       const type = (res.headers.get('content-type') || '').toLowerCase();
       const okChip = `<span class="chip-status${res.ok ? '' : ' bad'}">${res.status} ${res.ok ? 'OK' : 'ERROR'}</span>`;
@@ -261,9 +327,32 @@
       fileInp.addEventListener('change', () => {
         const file = fileInp.files && fileInp.files[0];
         if (!file) return;
-        fileToDataUrl(file, dataUrl => {
-          const target = tester.querySelector(`input[data-param="${CSS.escape(fileInp.dataset.uploadFor)}"]`);
-          if (target) { target.value = dataUrl; refreshUrl(tester); }
+        const name = fileInp.dataset.uploadFor;
+        const target = tester.querySelector(`[data-param="${CSS.escape(name)}"]`);
+        const row = fileInp.closest('.gallery-row');
+        const label = fileInp.closest('label');
+        if (!target) return;
+        const before = label ? label.textContent : '';
+        if (label) { label.textContent = 'Subiendo…'; label.classList.add('busy'); }
+        fileToDataUrl(file, async dataUrl => {
+          // La imagen queda guardada igual: si la subida falla, el test la manda
+          // en el cuerpo del POST y el canvas la usa de todas formas.
+          target.dataset.local = dataUrl;
+          let remote = '';
+          try {
+            const res = await fetch('/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: dataUrl })
+            });
+            const json = await res.json().catch(() => null);
+            if (res.ok && json && json.result && json.result.url) remote = json.result.url;
+          } catch (_) { /* sin red: se usa el POST */ }
+          target.value = remote || '';
+          showThumb(row, dataUrl, remote ? 'Imagen subida' : 'Imagen de tu galería');
+          if (label) { label.textContent = before || 'Galería'; label.classList.remove('busy'); }
+          fileInp.value = '';
+          refreshUrl(tester);
         });
       });
     });
@@ -284,15 +373,27 @@
     tester.querySelectorAll('[data-clear]').forEach(clearBtn => {
       clearBtn.addEventListener('click', () => {
         const target = tester.querySelector(`[data-param="${CSS.escape(clearBtn.dataset.clear)}"]`);
-        if (target) { target.value = ''; }
+        if (target) { target.value = ''; delete target.dataset.local; }
+        const thumb = clearBtn.closest('.gallery-row')?.querySelector('.up-thumb');
+        if (thumb) thumb.remove();
         clearBtn.textContent = '✕ Quitar';
         refreshUrl(tester);
       });
     });
 
     tester.querySelector('[data-act="exec"]').addEventListener('click', () => executeTest(tester));
-    tester.querySelector('[data-act="open"]').addEventListener('click', () => window.open(buildPath(tester), '_blank', 'noopener'));
+    tester.querySelector('[data-act="open"]').addEventListener('click', () => {
+      if (Object.keys(localImages(tester)).length) {
+        window.alert('Esa imagen está en tu galería y no se pudo subir: probala con el botón Test (se envía junto al test).');
+        return;
+      }
+      window.open(buildPath(tester), '_blank', 'noopener');
+    });
     tester.querySelector('[data-act="copy"]').addEventListener('click', async ev => {
+      if (Object.keys(localImages(tester)).length) {
+        window.alert('Esa imagen está en tu galería y no se pudo subir: la URL no la incluye. Probala con el botón Test.');
+        return;
+      }
       try {
         await navigator.clipboard.writeText(absolutePath(tester));
         ev.target.textContent = '¡Copiada!';
