@@ -5,10 +5,10 @@ negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`
 buscador) con **80 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
-- Sin claves de API: todo sale de fuentes públicas (nekos.best, waifu.pics, waifu.im, nekos.life, purrbot,
-  otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
-- **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan únicamente
-  rutas `/sfw/` o `is_nsfw=false`.
+- Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
+  pic.re, waifu.pics, otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
+- **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan rutas `/sfw/`,
+  el espejo seguro de konachan (`.net`) o los boorus con filtro de rating (`rating:g` / `rating:general`).
 - El probador sigue el diseño de las capturas: al abrir, la fila se pone **negra** con el botón TEST
 invertido, arriba aparece **CÓMO USAR EL ENDPOINT** (GET + URL + snippet `fetch`, con COPIAR URL y
 ABRIR), después **PARÁMETROS** con chip `REQUERIDO`/`OPCIONAL` por campo y el botón **TEST** grande.
@@ -57,20 +57,28 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
 
 ## ⛩️ Anime — 4 (proveedores de imágenes)
 
-| Endpoint | Proveedores | Parámetros |
+| Endpoint | Proveedores (en orden) | Parámetros |
 |---|---|---|
-| `GET /anime/neko` | nekos.best · waifu.pics · waifu.im · nekos.life | `provider`, `amount`, `direct` |
-| `GET /anime/waifu` | nekos.best · waifu.pics · waifu.im | `provider`, `amount`, `direct` |
-| `GET /anime/maid` | nekos.best · waifu.im | `provider`, `amount`, `direct` |
+| `GET /anime/neko` | `nekos.best` · `danbooru` · `purrbot` · `safebooru` · `konachan` | `provider`, `amount`, `direct` |
+| `GET /anime/waifu` | `nekos.best` · `danbooru` · `safebooru` · `pic.re` · `konachan` | `provider`, `amount`, `direct` |
+| `GET /anime/maid` | `danbooru` · `safebooru` · `konachan` | `provider`, `amount`, `direct` |
 | `GET /anime/pokemon` | PokeAPI | `query`, `shiny`, `direct` |
 
 - `provider` fuerza una fuente; si se deja vacío se prueban en orden hasta que una responda.
 - `amount` (1-10) devuelve varias imágenes: `result.images[]` además de `result.image`.
+- Cada imagen trae `url` (versión liviana), `full` (original), `artist`, `source`, `width`, `height` y `tags`.
 - `direct=true` entrega la imagen/GIF en vez del JSON.
+
+**Todo SFW, filtrado en la propia consulta**: `danbooru` pide `rating:g`, `safebooru` es la copia
+segura de danbooru (`rating:general`) y `konachan` usa el espejo `.net` (`rating:safe`).
+
+> Fuentes retiradas: `waifu.pics` (servicio apagado), `waifu.im` (cierre definitivo el 17/10/2026) y
+> `nekos.life` (Cloudflare bloquea las peticiones del servidor). `nekos.best` no tiene categoría
+> `maid`, por eso `maid` arranca con los boorus.
 
 ```bash
 curl "https://<host>/anime/neko?amount=3"
-curl "https://<host>/anime/waifu?provider=waifu.im&direct=true" -o waifu.jpg
+curl "https://<host>/anime/maid?provider=safebooru&direct=true" -o maid.jpg
 curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 ```
 

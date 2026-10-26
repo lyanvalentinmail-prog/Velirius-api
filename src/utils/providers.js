@@ -5,9 +5,10 @@
 //    is_nsfw=false. No existe ningún endpoint para adultos.
 //  · Nada de IA: no hay generación de texto/imagen por modelos, solo APIs públicas.
 //
-// Fuentes: PokeAPI · nekos.best · waifu.pics · waifu.im · nekos.life · purrbot ·
-// otakugifs · TikWM · YouTube (InnerTube + Invidious/Piped) · Facebook · Instagram
-// · LRCLIB/lyrics.ovh · Google · DuckDuckGo · Wikipedia · Google Translate · MyMemory.
+// Fuentes: PokeAPI · nekos.best · purrbot · danbooru · safebooru · konachan · pic.re ·
+// waifu.pics (reacciones) · otakugifs · TikWM · YouTube (InnerTube + Invidious/Piped)
+// · Facebook · Instagram · LRCLIB/lyrics.ovh · Google · DuckDuckGo · Wikipedia
+// · Google Translate · MyMemory.
 const { fetchJson, postJson, fetchText, firstSuccess, UA_DESKTOP, UA_MOBILE } = require('./http');
 
 const clampLimit = (v, def = 10, max = 25) => {
@@ -41,60 +42,192 @@ async function nekosBest(tag, amount = 1) {
   return list;
 }
 
-async function waifuPics(tag, amount = 1) {
+// ---------- Boorus SFW (danbooru / safebooru / konachan.net) ----------
+// Los boorus son la fuente más confiable para "maid" (nekos.best no tiene esa
+// categoría) y traen artista/fuente. SIEMPRE con filtro de rating seguro:
+//   danbooru   → rating:g   (general = sin desnudos)
+//   safebooru  → rating:general (el sitio ya es la copia SFW de danbooru)
+//   konachan.net → rating:safe (el dominio .net es el espejo SFW)
+const BOORU_UA = { 'User-Agent': UA_DESKTOP, Referer: 'https://velirius.app/' };
+const randomPage = max => Math.floor(Math.random() * max);
+const httpsUrl = url => (!url ? null : String(url).startsWith('http') ? String(url) : `https://${url}`);
+/** Tamaño real de la variante que devolvemos como `image` (danbooru trae varias). */
+const variantSize = (post, type) => {
+  const v = (post?.media_asset?.variants || []).find(x => x && x.type === type);
+  return { width: v?.width || null, height: v?.height || null };
+};
+
+/** Normaliza un post de danbooru (solo guarda los de rating general). */
+function mapDanbooru(posts) {
+  return (Array.isArray(posts) ? posts : [posts])
+    .filter(p => p && p.rating === 'g')
+    .map(p => {
+      const sample = Boolean(p.large_file_url);
+      const size = sample ? variantSize(p, 'sample') : { width: null, height: null };
+      return {
+        image: httpsUrl(p.large_file_url || p.file_url),
+        full: httpsUrl(p.file_url || p.large_file_url),
+        provider: 'danbooru',
+        artist: p.tag_string_artist || null,
+        artistUrl: p.tag_string_artist
+          ? `https://danbooru.donmai.us/posts?tags=${encodeURIComponent(p.tag_string_artist)}`
+          : null,
+        sourceUrl: p.source || null,
+        width: size.width || p.image_width || null,
+        height: size.height || p.image_height || null
+      };
+    })
+    .filter(i => i.image);
+}
+
+/** Normaliza posts de safebooru (rating "general" únicamente). */
+function mapSafebooru(posts) {
+  return (Array.isArray(posts) ? posts : [posts])
+    .filter(p => p && (!p.rating || p.rating === 'general'))
+    .map(p => ({
+      image: httpsUrl(p.sample_url || p.file_url),
+      full: httpsUrl(p.file_url || p.sample_url),
+      provider: 'safebooru',
+      artist: null,
+      artistUrl: null,
+      sourceUrl: p.source || null,
+      // si hay muestra, el tamaño que importa es el de la muestra
+      width: (p.sample ? p.sample_width : null) || p.width || null,
+      height: (p.sample ? p.sample_height : null) || p.height || null,
+      tags: p.tags ? String(p.tags).split(' ').slice(0, 12) : []
+    }))
+    .filter(i => i.image);
+}
+
+/** Normaliza posts de konachan.net (rating "s" = safe). */
+function mapKonachan(posts) {
+  return (Array.isArray(posts) ? posts : [posts])
+    .filter(p => p && p.rating === 's' && (p.sample_url || p.file_url || p.jpeg_url))
+    .map(p => ({
+      image: httpsUrl(p.sample_url || p.jpeg_url || p.file_url),
+      full: httpsUrl(p.file_url || p.jpeg_url || p.sample_url),
+      provider: 'konachan',
+      artist: p.author || null,
+      artistUrl: null,
+      sourceUrl: p.source || null,
+      width: p.sample_width || p.width || null,
+      height: p.sample_height || p.height || null
+    }))
+    .filter(i => i.image);
+}
+
+/**
+ * Pide `amount` posts al azar de danbooru. Cada `random.json` devuelve uno solo,
+ * así que se piden en tandas de 3 para no chocar con el límite de peticiones
+ * anónimas (10/s) y se descartan los repetidos.
+ */
+async function danbooru(tags, amount = 1) {
   const n = clampAmount(amount, 1, 10);
+  const url = `https://danbooru.donmai.us/posts/random.json?tags=${encodeURIComponent(tags)}`;
+  const posts = [];
+  for (let i = 0; i < n; i += 3) {
+    const tanda = await Promise.all(Array.from({ length: Math.min(3, n - i) }, () =>
+      fetchJson(url, { headers: BOORU_UA, timeoutMs: 12000 }).catch(() => null)));
+    posts.push(...tanda.filter(Boolean));
+  }
+  const vistos = new Set();
+  const list = mapDanbooru(posts).filter(i => !vistos.has(i.image) && vistos.add(i.image));
+  if (!list.length) throw new Error('danbooru sin imágenes');
+  return list;
+}
+
+/**
+ * Pide una página aleatoria del booru y reintenta si esa página quedó vacía
+ * (los tags poco frecuentes pueden no tener resultados en un pid alto).
+ */
+async function booruPages(name, buildUrl, mapper, amount, maxPage) {
+  const n = clampAmount(amount, 1, 20);
+  for (let intento = 0; intento < 3; intento++) {
+    try {
+      const j = await fetchJson(buildUrl(n, randomPage(maxPage)), { headers: BOORU_UA, timeoutMs: 15000 });
+      const list = mapper(j);
+      if (list.length) return list.slice(0, n);
+    } catch (_) { /* página vacía o XML de error → siguiente intento */ }
+  }
+  throw new Error(`${name} sin imágenes`);
+}
+
+const safebooru = (tags, amount = 1) => booruPages(
+  'safebooru',
+  (n, pid) => 'https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1'
+    + `&limit=${n}&pid=${pid}&tags=${encodeURIComponent(tags)}`,
+  mapSafebooru, amount, 60
+);
+
+const konachan = (tags, amount = 1) => booruPages(
+  'konachan',
+  (n, pid) => `https://konachan.net/post.json?limit=${n}&pid=${pid}&tags=${encodeURIComponent(tags)}`,
+  mapKonachan, amount, 40
+);
+
+/** purrbot.site: imágenes por categoría (nekos). */
+async function purrbot(kind, amount = 1) {
+  const n = clampAmount(amount, 1, 5);
   const list = [];
   for (let i = 0; i < n; i++) {
-    const j = await fetchJson(`https://api.waifu.pics/sfw/${tag}`, { timeoutMs: 10000 });
-    if (j?.url) list.push({ image: j.url, provider: 'waifu.pics' });
+    const j = await fetchJson(`https://api.purrbot.site/v2/img/sfw/${kind}/img`, { timeoutMs: 10000 });
+    if (j?.link) list.push({ image: j.link, provider: 'purrbot' });
   }
-  if (!list.length) throw new Error('waifu.pics sin imágenes');
+  if (!list.length) throw new Error('purrbot sin imágenes');
   return list;
 }
 
-async function waifuIm(tag, amount = 1) {
-  const n = clampAmount(amount, 1, 30);
-  const params = new URLSearchParams({ included_tags: tag, is_nsfw: 'false' });
-  if (n > 1) { params.set('many', 'true'); params.set('limit', String(n)); }
-  const j = await fetchJson(`https://api.waifu.im/search?${params.toString()}`, { timeoutMs: 12000 });
-  const list = (j?.images || []).map(img => ({
-    image: img.url,
-    provider: 'waifu.im',
-    artist: img.artist?.name || null,
-    artistUrl: img.artist?.pixiv || null,
-    sourceUrl: img.source || null,
-    tags: (img.tags || []).map(t => t.name)
-  }));
-  if (!list.length) throw new Error('waifu.im sin imágenes');
-  return list;
-}
-
-async function nekosLife(tag, amount = 1) {
+/** pic.re: imagen aleatoria de anime (sin etiquetas, buen último recurso). */
+async function picre(amount = 1) {
+  const n = clampAmount(amount, 1, 10);
   const list = [];
-  for (let i = 0; i < clampAmount(amount, 1, 5); i++) {
-    const j = await fetchJson(`https://nekos.life/api/v2/img/${tag}`, { timeoutMs: 10000 });
-    if (j?.url) list.push({ image: j.url, provider: 'nekos.life' });
+  const vistos = new Set();
+  for (let i = 0; i < n; i++) {
+    const j = await fetchJson('https://pic.re/image.json', { timeoutMs: 12000 });
+    const image = httpsUrl(j?.file_url);
+    if (image && !vistos.has(image)) {
+      vistos.add(image);
+      list.push({
+        image,
+        provider: 'pic.re',
+        artist: j.author || null,
+        artistUrl: null,
+        sourceUrl: j.source || null,
+        width: j.width || null,
+        height: j.height || null,
+        tags: Array.isArray(j.tags) ? j.tags.slice(0, 12) : []
+      });
+    }
   }
-  if (!list.length) throw new Error('nekos.life sin imágenes');
+  if (!list.length) throw new Error('pic.re sin imágenes');
   return list;
 }
 
-// Cada tipo de anime tiene su cadena de proveedores (siempre SFW).
+// Cadena de proveedores por tipo (siempre SFW). El orden importa: `firstSuccess`
+// prueba de arriba hacia abajo. Los caídos se sacaron de la lista:
+//   · waifu.pics → el servicio está apagado desde 2025 (API sin respuesta)
+//   · waifu.im   → cierre definitivo anunciado para el 17/10/2026
+//   · nekos.life → Cloudflare bloquea las peticiones del servidor
+// `maid` no existe en nekos.best, por eso va primero el booru (danbooru/safebooru).
 const ANIME_SOURCES = {
   neko: {
     'nekos.best': (n) => nekosBest('neko', n),
-    'waifu.pics': (n) => waifuPics('neko', n),
-    'waifu.im': (n) => waifuIm('neko', n),
-    'nekos.life': (n) => nekosLife('neko', n)
+    'danbooru': (n) => danbooru('cat_ears 1girl solo rating:g', n),
+    'purrbot': (n) => purrbot('neko', n),
+    'safebooru': (n) => safebooru('cat_ears 1girl solo rating:general', n),
+    'konachan': (n) => konachan('cat_ears rating:safe', n)
   },
   waifu: {
     'nekos.best': (n) => nekosBest('waifu', n),
-    'waifu.pics': (n) => waifuPics('waifu', n),
-    'waifu.im': (n) => waifuIm('waifu', n)
+    'danbooru': (n) => danbooru('1girl solo rating:g', n),
+    'safebooru': (n) => safebooru('1girl solo rating:general', n),
+    'pic.re': (n) => picre(n),
+    'konachan': (n) => konachan('1girl rating:safe', n)
   },
   maid: {
-    'nekos.best': (n) => nekosBest('maid', n),
-    'waifu.im': (n) => waifuIm('maid', n)
+    'danbooru': (n) => danbooru('maid rating:g', n),
+    'safebooru': (n) => safebooru('maid rating:general', n),
+    'konachan': (n) => konachan('maid rating:safe', n)
   }
 };
 
@@ -784,7 +917,8 @@ async function wikipediaSearch(query, limit, lang = 'es') {
 module.exports = {
   clampLimit,
   // anime
-  ANIME_KINDS, animeImage, pokemon,
+  ANIME_KINDS, ANIME_SOURCES, animeImage, pokemon,
+  mapDanbooru, mapSafebooru, mapKonachan,
   // reactions
   REACTIONS, REACTION_LIST, REACTION_PROVIDERS, reaction,
   // tools
