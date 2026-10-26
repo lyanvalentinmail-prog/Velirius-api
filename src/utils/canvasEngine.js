@@ -1,25 +1,27 @@
-// src/utils/canvasEngine.js — Render de los Canvas con las plantillas de la carpeta
-// "CategoriaCanvas" de Drive (assets/templates) y parámetros modificables en caliente.
+// src/utils/canvasEngine.js — Render de los Canvas con las plantillas de Drive
+// (assets/templates) y parámetros modificables en caliente.
 //
-// Parámetros de estilo comunes (todos opcionales, funcionan en cualquier canvas):
+// Todo el texto se dibuja como VECTORES (src/utils/textEngine.js) con las fuentes
+// empaquetadas en assets/fonts: el resultado es idéntico en local, Render o Vercel
+// y no aparecen cuadrados ▯▯▯ cuando el host no tiene tipografías instaladas.
+//
+// Parámetros de estilo comunes (opcionales, funcionan en cualquier canvas):
 //   color      color del texto (hex con/sin # o nombre: white, black, red…)
-//   bg         fondo (canvas generados: brat, ttp, quotly…)
+//   bg         fondo (canvas generados: brat, ttp, quotly, ship…)
 //   size       escala del texto (0.5 = mitad, 2 = doble)
-//   font       sans | serif | mono
+//   font       sans (Inter) | serif (Playfair Display) | mono (JetBrains Mono)
 //   uppercase  true = MAYÚSCULAS
 //   x, y       desplazamiento en % (-50 … 50)
 //   rotate     rotación en grados (-180 … 180)
+//   spacing    letter-spacing extra en px
 //   zoom       zoom de la foto del usuario (0.5 … 3)
 //   grayscale  true = foto en blanco y negro
+//   shadow     true = sombra suave bajo el texto (mejor legibilidad sobre fotos)
 const {
-  sharp, escapeXml, wrapText, loadImageBuffer, templateMeta,
-  svgToPng, shapedImage, circleImage, heartImage, fitTextLines
+  sharp, loadImageBuffer, templateMeta, shapedImage, circleImage, heartImage
 } = require('./image');
+const { textLayer, measure, wrapLines } = require('./textEngine');
 const { fetchBuffer } = require('./http');
-
-const FONT = 'DejaVu Sans, Arial, sans-serif';
-const SERIF = 'DejaVu Serif, Georgia, serif';
-const MONO = 'DejaVu Sans Mono, monospace';
 
 // ---------- helpers de parámetros ----------
 const txt = (q, fallback) => {
@@ -38,7 +40,7 @@ const numberIn = (v, def, min, max) => {
   if (!Number.isFinite(n)) return def;
   return Math.max(min, Math.min(max, n));
 };
-const flag = v => ['true', '1', 'yes', 'si', 'sí'].includes(String(v ?? '').toLowerCase());
+const flag = v => ['true', '1', 'yes', 'si', 'sí', 'on'].includes(String(v ?? '').toLowerCase());
 const parsePercent = v => {
   if (v === undefined || v === null || String(v).trim() === '') return Math.floor(Math.random() * 101);
   const n = parseInt(v, 10);
@@ -57,12 +59,6 @@ function normColor(value, fallback = null) {
   if (/^[0-9a-f]{8}$/.test(hex)) return `#${hex.slice(0, 6)}`;
   return fallback;
 }
-function fontFamilyOf(name) {
-  const key = String(name || '').toLowerCase();
-  if (key === 'serif') return SERIF;
-  if (key === 'mono' || key === 'monoespaciada') return MONO;
-  return FONT;
-}
 
 /** Lee todos los overrides de estilo del query string. */
 function styleOf(q = {}) {
@@ -75,13 +71,31 @@ function styleOf(q = {}) {
     rotate: numberIn(q.rotate ?? q.rot, 0, -180, 180),
     font: String(q.font ?? '').toLowerCase(),
     uppercase: flag(q.uppercase ?? q.mayusculas),
+    spacing: numberIn(q.spacing ?? q.letterspacing ?? q.tracking, 0, -50, 200),
     zoom: numberIn(q.zoom, 1, 0.2, 4),
     grayscale: flag(q.grayscale ?? q.blanconegro),
-    opacity: numberIn(q.opacity, 0.45, 0, 1)
+    opacity: numberIn(q.opacity, 0.45, 0, 1),
+    shadow: flag(q.shadow ?? q.sombra)
   };
 }
 
 // ---------- piezas de imagen ----------
+
+/** Sombra interior suave para que la foto se integre en la plantilla. */
+function innerShade(w, h, shape = 'ellipse') {
+  const W = Math.max(2, Math.round(w));
+  const H = Math.max(2, Math.round(h));
+  const blur = Math.max(1.5, Math.min(W, H) * 0.05);
+  const stroke = Math.max(2, Math.min(W, H) * 0.09);
+  const el = shape === 'rect'
+    ? `<rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#000000" stroke-opacity="0.5" stroke-width="${stroke}" filter="url(#b)"/>`
+    : `<ellipse cx="${W / 2}" cy="${H / 2}" rx="${W / 2 - stroke / 3}" ry="${H / 2 - stroke / 3}" fill="none" stroke="#000000" stroke-opacity="0.5" stroke-width="${stroke}" filter="url(#b)"/>`;
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
+    `<defs><filter id="b" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="${blur.toFixed(2)}"/></filter></defs>` +
+    el + `</svg>`
+  );
+}
 
 /**
  * Reemplazo por chroma-key: pinta la foto del usuario SOLO donde la plantilla es verde
@@ -106,24 +120,32 @@ async function chromaInsert(file, userBuf, bbox = { x0: 0, y0: 0, x1: 1, y1: 1 }
   // Suaviza el borde y refuerza el alfa para tapar el filo verde del JPEG
   const mask = await sharp(maskRaw, { raw: { width: bw, height: bh, channels: 4 } })
     .blur(1).linear([1, 1, 1, 1.7], [0, 0, 0, 8]).png().toBuffer();
-  const userPiece = await shapedImage(userBuf, bw, bh, {
+  const radius = opts.radius ? Math.round(bw * Number(opts.radius)) : 0;
+  let userPiece = await shapedImage(userBuf, bw, bh, {
     zoom: opts.zoom ?? 1,
     rotate: opts.rotate ?? 0,
-    grayscale: !!opts.grayscale
+    grayscale: !!opts.grayscale,
+    radius
   });
+  userPiece = await sharp(userPiece)
+    .composite([{ input: innerShade(bw, bh, radius ? 'rect' : 'ellipse'), blend: 'atop' }])
+    .png().toBuffer();
   const masked = await sharp(userPiece).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
   return sharp(buf).composite([{ input: masked, left: x0, top: y0 }]).png().toBuffer();
 }
 
 async function ellipseImage(userBuf, w, h, opts = {}) {
   const W = Math.max(2, Math.round(w)), H = Math.max(2, Math.round(h));
-  const resized = await shapedImage(userBuf, W, H, {
+  let piece = await shapedImage(userBuf, W, H, {
     zoom: opts.zoom ?? 1,
     rotate: opts.rotate ?? 0,
     grayscale: !!opts.grayscale
   });
+  piece = await sharp(piece)
+    .composite([{ input: innerShade(W, H, 'ellipse'), blend: 'atop' }])
+    .png().toBuffer();
   const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><ellipse cx="${W / 2}" cy="${H / 2}" rx="${W / 2}" ry="${H / 2}" fill="#fff"/></svg>`);
-  return sharp(resized).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+  return sharp(piece).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
 }
 
 /** Coloca imagen (cover) en un área fraccional de la plantilla. */
@@ -142,8 +164,8 @@ async function placeImageArea(W, H, area, userBuf, opts = {}) {
 }
 
 /**
- * Coloca texto ajustado dentro de un área fraccional (con fondo de cobertura opcional).
- * Respeta color, tamaño, tipografía, mayúsculas, desplazamiento y rotación del query.
+ * Coloca texto (en vectores) dentro de un área fraccional, con cobertura opcional.
+ * Respeta color, tamaño, tipografía, mayúsculas, spacing, sombra y desplazamientos.
  */
 function placeTextArea(W, H, area, text, opts = {}) {
   const ov = opts.ov || {};
@@ -153,41 +175,58 @@ function placeTextArea(W, H, area, text, opts = {}) {
   const y0 = Math.round(area.y0 * H) + shiftY;
   const w = Math.max(8, Math.round((area.x1 - area.x0) * W));
   const h = Math.max(8, Math.round((area.y1 - area.y0) * H));
-  const pad = opts.pad ?? 14;
-  const scale = ov.scale || 1;
-  const baseMax = opts.maxFont ?? 72;
-  const baseMin = opts.minFont ?? 15;
-  const { lines, fontSize } = fitTextLines(text, w - pad * 2, h - pad * 2, {
-    maxFont: Math.max(6, Math.round(baseMax * scale)),
-    minFont: Math.max(5, Math.round(baseMin * Math.min(scale, 1.4))),
+  const pad = opts.pad ?? Math.round(Math.min(w, h) * 0.06);
+
+  const layer = textLayer({
+    text,
+    width: w,
+    height: h,
+    family: ov.font || opts.family || 'sans',
+    weight: opts.weight ?? 700,
+    maxFont: Math.round((opts.maxFont ?? 72) * (ov.scale || 1)),
+    minFont: Math.max(6, Math.round((opts.minFont ?? 14) * Math.min(ov.scale || 1, 1.4))),
     maxLines: opts.maxLines ?? 6,
-    charWidthRatio: opts.charWidthRatio ?? 0.60
+    lineHeight: opts.lineHeight ?? 1.16,
+    letterSpacing: (opts.letterSpacing ?? 0) + (ov.spacing || 0),
+    fill: ov.fill || opts.fill || '#111111',
+    align: opts.align || 'middle',
+    uppercase: opts.uppercase || ov.uppercase,
+    italic: !!opts.italic,
+    padding: pad,
+    rotate: ov.rotate || opts.rotate || 0,
+    stroke: opts.stroke || null,
+    strokeWidth: opts.strokeWidth || 0
   });
+
   const cover = opts.cover
-    ? `<rect x="0" y="0" width="${w}" height="${h}" rx="${opts.coverRadius ?? 0}" fill="${opts.cover}"/>`
-    : '';
-  const totalH = lines.length * fontSize * 1.18;
-  const startY = (h - totalH) / 2 + fontSize * 0.9;
-  const align = opts.align || 'middle';
-  const anchorX = align === 'start' ? pad : align === 'end' ? w - pad : w / 2;
-  const fill = ov.fill || opts.fill || '#111111';
-  const fontFamily = ov.font ? fontFamilyOf(ov.font) : (opts.fontFamily || FONT);
-  const upper = opts.uppercase || ov.uppercase;
-  const tspans = lines.map((ln, i) =>
-    `<text x="${anchorX}" y="${Math.round(startY + i * fontSize * 1.18)}" text-anchor="${align}" font-family="${fontFamily}" font-weight="${opts.fontWeight || '700'}" font-size="${fontSize}" fill="${fill}"${opts.italic ? ' font-style="italic"' : ''}>${escapeXml(upper ? String(ln).toUpperCase() : ln)}</text>`
-  ).join('');
-  const rotate = ov.rotate
-    ? ` transform="rotate(${ov.rotate} ${w / 2} ${h / 2})"`
-    : '';
-  const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${cover}<g${rotate}>${tspans}</g></svg>`);
-  return { input: svg, left: x0, top: y0 };
+    ? Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${opts.coverRadius ?? 0}" fill="${opts.cover}"/></svg>`)
+    : null;
+
+  const shade = opts.shadow
+    ? Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${Math.max(1.5, (layer.fontSize || 24) * 0.06)}"/></filter></defs><g filter="url(#s)" opacity="0.55" transform="translate(0 ${Math.max(1, (layer.fontSize || 24) * 0.045)})">${layer.svg.toString().replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')}</g></svg>`)
+    : null;
+
+  return {
+    inputs: [cover, layer.svg, shade].filter(Boolean),
+    left: x0,
+    top: y0
+  };
 }
+
+/** Expande una capa (que puede traer varias piezas) a entradas de composite. */
+function expandLayer(layer) {
+  if (!layer) return [];
+  if (Array.isArray(layer)) return layer.flatMap(expandLayer);
+  if (Array.isArray(layer.inputs)) return layer.inputs.map(input => ({ input, left: layer.left, top: layer.top }));
+  return [layer];
+}
+const flat = layers => layers.flatMap(expandLayer);
 
 async function renderTemplate(file, composites) {
   const { buf, width, height } = await templateMeta(file);
   const layers = [];
   for (const c of composites) layers.push(typeof c === 'function' ? await c(width, height) : c);
-  return sharp(buf).composite(layers.flat()).png().toBuffer();
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
 }
 
 /** Plantilla de cartel: texto por defecto; imagen si viene `image/url` sin `text` (o mode=image). */
@@ -201,18 +240,22 @@ async function signCanvas(file, area, q, opts = {}) {
   const layers = [];
   if (useImage) {
     const user = await loadImageBuffer(imageUrl);
-    layers.push(await placeImageArea(buf, W, H, area, user, { zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale }));
+    layers.push(await placeImageArea(W, H, area, user, {
+      zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale, radius: opts.imageRadius ?? 0
+    }));
   } else {
-    layers.push(placeTextArea(W, H, area, text || opts.defaultText || 'Welcome to Velirius API', { ...(opts.textOpts || {}), ov }));
+    layers.push(placeTextArea(W, H, area, text || opts.defaultText || 'Welcome to Velirius API', {
+      ...(opts.textOpts || {}), ov
+    }));
   }
-  return sharp(buf).composite(layers).png().toBuffer();
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
 }
 
 /** Plantilla de personajes: caras elípticas en los huecos (con zoom/rotación opcionales). */
 async function faceCanvas(file, holes, q) {
   let { buf, width: W, height: H } = await templateMeta(file);
   if (W < 500) { // la rata es chica: upscale para que la cara no salga pixelada
-    buf = await sharp(buf).resize(W * 3, H * 3).png().toBuffer();
+    buf = await sharp(buf).resize(W * 3, H * 3, { kernel: 'lanczos3' }).png().toBuffer();
     W *= 3; H *= 3;
   }
   const ov = styleOf(q);
@@ -230,11 +273,11 @@ async function faceCanvas(file, holes, q) {
     const cx = (hole.cx + ov.dx) * W, cy = (hole.cy + ov.dy) * H;
     layers.push({ input: piece, left: Math.round(cx - w / 2), top: Math.round(cy - h / 2) });
   }
-  return sharp(buf).composite(layers).png().toBuffer();
+  return sharp(buf).composite(flat(layers)).png().toBuffer();
 }
 
 // ---------- utilidades ----------
-let twemojiCache = new Map();
+const twemojiCache = new Map();
 async function twemoji(code) {
   if (twemojiCache.has(code)) return twemojiCache.get(code);
   try {
@@ -244,27 +287,42 @@ async function twemoji(code) {
   } catch (_) { return null; }
 }
 
+const svgPng = async (svg, density = 1) => sharp(svg, { density: 72 * density }).png().toBuffer();
+
 // ---------- generadores ----------
 const GENERATORS = {
-  // ---------------- Brat ----------------
+  // ======================= BRAT =======================
   async brat(q) {
     const ov = styleOf(q);
     const text = txt(q, 'Welcome to Velirius API').toLowerCase();
     const bg = ov.bg || normColor(q.bg, '#ffffff');
     const color = ov.fill || normColor(q.color, '#000000');
     const S = 512;
-    const { lines, fontSize } = fitTextLines(text, S - 72, S - 80, {
-      maxFont: Math.max(20, Math.round(74 * ov.scale)), minFont: 14, maxLines: 6, charWidthRatio: 0.63
+    const layer = textLayer({
+      text,
+      width: S,
+      height: S,
+      family: ov.font || 'sans',
+      weight: 400,
+      maxFont: Math.round(78 * ov.scale),
+      minFont: 12,
+      maxLines: 8,
+      lineHeight: 1.12,
+      letterSpacing: (ov.spacing || 0) - 0.5,
+      fill: color,
+      align: 'start',
+      padding: 30,
+      uppercase: ov.uppercase,
+      rotate: ov.rotate,
+      offsetX: Math.round(ov.dx * S),
+      offsetY: Math.round(ov.dy * S)
     });
-    const totalH = lines.length * fontSize * 1.12;
-    const startY = (S - totalH) / 2 + fontSize * 0.9;
-    const rotate = ov.rotate ? ` transform="rotate(${ov.rotate} ${S / 2} ${S / 2})"` : '';
-    const textLayer = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><g${rotate}>${lines.map((ln, i) =>
-        `<text x="${36 + Math.round(ov.dx * S)}" y="${Math.round(startY + i * fontSize * 1.12 + ov.dy * S)}" font-family="${ov.font ? fontFamilyOf(ov.font) : FONT}" font-weight="400" font-size="${fontSize}" fill="${color}">${escapeXml(ov.uppercase ? String(ln).toUpperCase() : ln)}</text>`).join('')}</g></svg>`
-    );
-    const blurred = await sharp(textLayer).blur(0.7).png().toBuffer();
-    return sharp({ create: { width: S, height: S, channels: 4, background: bg } }).composite([{ input: blurred }]).png().toBuffer();
+    const blurred = await sharp(layer.svg).blur(0.7).png().toBuffer();
+    const base = sharp({ create: { width: S, height: S, channels: 4, background: bg } });
+    const withText = await base.composite([{ input: blurred }]).png().toBuffer();
+    // grano sutil: el sticker brat real no es un plano perfecto
+    const grain = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="${S}" height="${S}" filter="url(#n)" opacity="0.035"/></svg>`);
+    return sharp(withText).composite([{ input: grain }]).png().toBuffer();
   },
 
   async bratestirado(q) {
@@ -272,157 +330,290 @@ const GENERATORS = {
     const text = txt(q, 'i <3 money');
     const S = 736;
     const color = ov.fill || normColor(q.color, '#000000');
-    const { lines, fontSize } = fitTextLines(text, S - 96, S - 120, {
-      maxFont: Math.max(30, Math.round(172 * ov.scale)), minFont: 24, maxLines: 3, charWidthRatio: 0.80
-    });
-    const mid = (lines.length - 1) / 2;
-    let y = S * 0.30 + ov.dy * S;
-    const rows = lines.map((ln, i) => {
-      const boost = 1 + 0.16 * (1 - Math.abs(i - mid)); // la línea central es más grande (ojo de pez)
-      const fs = Math.round(fontSize * boost);
-      const row = `<text x="0" y="0" text-anchor="middle" font-family="${ov.font ? fontFamilyOf(ov.font) : FONT}" font-weight="900" font-style="italic" font-size="${fs}" fill="${color}" transform="translate(${S / 2 + ov.dx * S} ${Math.round(y)}) rotate(${-3 + ov.rotate}) scale(1 1.32)">${escapeXml(ov.uppercase ? String(ln).toUpperCase() : ln)}</text>`;
-      y += fs * 1.28;
-      return row;
-    }).join('');
-    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><rect width="${S}" height="${S}" fill="${ov.bg || '#ffffff'}"/>${rows}</svg>`);
-    return svgToPng(svg);
+    const family = ov.font || 'sans';
+    const words = text.split(/\s+/).filter(Boolean);
+    const maxFont = Math.round(150 * ov.scale);
+    const oneLine = words.join(' ');
+    const lines = measure(oneLine, { family, weight: 800, size: maxFont }) <= S - 70
+      ? [oneLine]
+      : (() => {
+          const half = Math.ceil(words.length / 2);
+          return [words.slice(0, half).join(' '), words.slice(half).join(' ')].filter(Boolean);
+        })();
+    const widest = Math.max(...lines.map(l => measure(l, { family, weight: 800, size: maxFont })), 1);
+    const size = Math.round(Math.min(maxFont * ((S - 90) / widest + 0.15), (S - 90) / Math.max(1, lines.length) / 0.86));
+    const rows = [];
+    let y = Math.round(S * 0.16 + ov.dy * S);
+    for (const ln of lines) {
+      const layer = textLayer({
+        text: ln, width: S, height: Math.round(size * 1.45), family, weight: 800,
+        maxFont: size, minFont: 16, maxLines: 1, fill: color, align: 'middle',
+        uppercase: ov.uppercase, letterSpacing: ov.spacing || 0,
+        rotate: -2 + ov.rotate
+      });
+      rows.push({ input: layer.svg, left: 0, top: y });
+      y += Math.round(size * 1.12);
+    }
+    const base = await sharp({ create: { width: S, height: S, channels: 4, background: ov.bg || '#ffffff' } }).png().toBuffer();
+    const composed = await sharp(base).composite(rows).png().toBuffer();
+    // ojo de pez: se estira la franja central y se recompone (sin blur)
+    const bandH = Math.round(S * 0.52);
+    const top = Math.round((S - bandH) / 2);
+    const band = await sharp(composed)
+      .extract({ left: 0, top, width: S, height: bandH })
+      .resize(S, Math.round(bandH * 1.14), { fit: 'fill' })
+      .png().toBuffer();
+    const bandTop = Math.round((S - bandH * 1.14) / 2);
+    return sharp(composed).composite([{ input: band, left: 0, top: bandTop }]).png().toBuffer();
   },
 
-  // ---------------- Carteles con personajes ----------------
-  bratanime: q => signCanvas('bratanime.png', { x0: 0.162, y0: 0.498, x1: 0.82, y1: 0.812 }, q,
-    { textOpts: { cover: '#ffffff', coverRadius: 4, fontFamily: SERIF, fill: '#111111', maxFont: 92 } }),
+  // ======================= CARTELES CON PERSONAJES =======================
+  bratanime: q => signCanvas('bratanime.png', { x0: 0.163, y0: 0.497, x1: 0.818, y1: 0.810 }, q,
+    { textOpts: { cover: '#ffffff', coverRadius: 2, family: 'serif', weight: 700, fill: '#111111', maxFont: 96, maxLines: 4 } }),
 
-  bratcoyote: q => signCanvas('bratcoyote.png', { x0: 0.045, y0: 0.085, x1: 0.545, y1: 0.475 }, q,
-    { textOpts: { cover: '#f3e6cf', coverRadius: 6, fill: '#111111', maxFont: 96, uppercase: true, fontWeight: '900', charWidthRatio: 0.72 } }),
+  bratcoyote: q => signCanvas('bratcoyote.png', { x0: 0.052, y0: 0.092, x1: 0.538, y1: 0.468 }, q,
+    { textOpts: { cover: '#f3e6cf', coverRadius: 3, family: 'sans', weight: 900, fill: '#111111', maxFont: 104, uppercase: true, maxLines: 4 } }),
 
-  bratpinguino: q => signCanvas('bratpinguino.jpg', { x0: 0.325, y0: 0.525, x1: 0.885, y1: 0.875 }, q,
-    { defaultText: 'Welcome to Velirius API', textOpts: { fill: '#23281a', maxFont: 76 } }),
+  bratpinguino: q => signCanvas('bratpinguino.jpg', { x0: 0.335, y0: 0.545, x1: 0.875, y1: 0.855 }, q,
+    { defaultText: 'Welcome to Velirius API', textOpts: { family: 'sans', weight: 700, fill: '#2b3020', maxFont: 74, maxLines: 4, rotate: -1.2 } }),
 
-  bobesponja: q => signCanvas('bobesponja.jpg', { x0: 0.20, y0: 0.33, x1: 0.75, y1: 0.74 }, q,
-    { defaultText: 'Welcome to Velirius API', textOpts: { maxFont: 44 } }),
-  bobesponja2: q => signCanvas('bobesponja2.jpg', { x0: 0.12, y0: 0.08, x1: 0.41, y1: 0.34 }, q,
-    { defaultText: 'mi tarea', textOpts: { maxFont: 30 } }),
-  bobesponja3: q => signCanvas('bobesponja3.jpg', { x0: 0.53, y0: 0.14, x1: 0.87, y1: 0.55 }, q,
-    { defaultText: 'Welcome to Velirius API', textOpts: { maxFont: 54 } }),
-  canvatextoxd: q => signCanvas('canvatextoxd.jpg', { x0: 0.30, y0: 0.395, x1: 0.83, y1: 0.725 }, q,
-    { defaultText: 'tu texto aquí', textOpts: { maxFont: 44, fill: '#222222' } }),
-  imagencanba: q => signCanvas('imagencanba.jpg', { x0: 0.138, y0: 0.12, x1: 0.948, y1: 0.715 }, q,
-    { defaultText: 'dibujo god', preferImage: true, textOpts: { maxFont: 64 } }),
+  bobesponja: q => signCanvas('bobesponja.jpg', { x0: 0.205, y0: 0.335, x1: 0.745, y1: 0.735 }, q,
+    { defaultText: 'Welcome to Velirius API', textOpts: { family: 'sans', weight: 700, maxFont: 46, maxLines: 5 } }),
 
-  // ---------------- quotly ----------------
+  bobesponja2: q => signCanvas('bobesponja2.jpg', { x0: 0.125, y0: 0.085, x1: 0.405, y1: 0.335 }, q,
+    { defaultText: 'mi tarea', textOpts: { family: 'sans', weight: 700, maxFont: 32, maxLines: 4 } }),
+
+  bobesponja3: q => signCanvas('bobesponja3.jpg', { x0: 0.535, y0: 0.145, x1: 0.865, y1: 0.545 }, q,
+    { defaultText: 'Welcome to Velirius API', textOpts: { family: 'sans', weight: 700, maxFont: 56, maxLines: 5 } }),
+
+  canvatextoxd: q => signCanvas('canvatextoxd.jpg', { x0: 0.405, y0: 0.425, x1: 0.885, y1: 0.735 }, q,
+    { defaultText: 'tu texto aquí', textOpts: { family: 'sans', weight: 700, fill: '#3a3a3a', maxFont: 46, maxLines: 4, rotate: -1.5 } }),
+
+  imagencanba: async q => {
+    const { buf, width: W, height: H } = await templateMeta('imagencanba.jpg');
+    const ov = styleOf(q);
+    const imageUrl = imgParam(q, 'url', 'image', 'img');
+    const text = String(q.text ?? '').trim();
+    const mode = String(q.mode || '').toLowerCase();
+    const useImage = mode === 'image' || (mode !== 'text' && imageUrl && !text);
+    const layers = [];
+    if (useImage) {
+      const user = await loadImageBuffer(imageUrl);
+      layers.push(await placeImageArea(W, H, { x0: 0.152, y0: 0.128, x1: 0.935, y1: 0.700 }, user, { zoom: ov.zoom }));
+    } else {
+      layers.push(placeTextArea(W, H, { x0: 0.152, y0: 0.128, x1: 0.935, y1: 0.700 }, text || 'dibujo god', {
+        family: 'sans', weight: 700, fill: '#1f2937', maxFont: 72, maxLines: 4, ov
+      }));
+    }
+    return sharp(buf).composite(flat(layers)).png().toBuffer();
+  },
+
+  // ======================= QUOTLY (Telegram) =======================
   async quotly(q) {
     const ov = styleOf(q);
     const username = String(q.username || q.name || 'Velirius Api').slice(0, 40);
     const text = txt(q, 'Welcome to Velirius Api');
     const bg = ov.bg && ov.bg !== 'transparent' ? ov.bg : normColor(q.bg, '#000000');
-    const dark = ['#000000', '#111111', 'black'].includes(String(bg).toLowerCase());
-    const color = ov.fill || (dark ? '#ffffff' : '#111111');
-    const lines = wrapText(text, Math.max(12, Math.round(42 / ov.scale)), 8);
-    const scale = ov.scale;
-    const fontSize = Math.round(31 * scale);
-    const lineH = Math.round(fontSize * 1.3);
-    const W = 800, H = Math.max(140, Math.round(92 + lines.length * lineH));
-    const avatar = await circleImage(await loadImageBuffer(imgParam(q, 'image', 'url', 'avatar')), Math.round(76 * Math.min(scale, 1.6)));
-    const fontFamily = ov.font ? fontFamilyOf(ov.font) : FONT;
-    const cap = ov.uppercase ? String(username).toUpperCase() : username;
-    const rotate = ov.rotate ? ` transform="rotate(${ov.rotate} ${W / 2} ${H / 2})"` : '';
-    const textSvgBuf = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><g${rotate}>` +
-      `<text x="${122 + Math.round(ov.dx * W)}" y="${62 + Math.round(ov.dy * H)}" font-family="${fontFamily}" font-weight="700" font-size="${Math.round(fontSize * 0.95)}" fill="${ov.fill || '#f59e0b'}">${escapeXml(cap)}</text>` +
-      lines.map((ln, i) => `<text x="${122 + Math.round(ov.dx * W)}" y="${106 + Math.round(ov.dy * H) + i * lineH}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escapeXml(ov.uppercase ? String(ln).toUpperCase() : ln)}</text>`).join('') +
-      `</g></svg>`
-    );
-    return sharp({ create: { width: W, height: H, channels: 4, background: bg } })
-      .composite([{ input: avatar, left: 24, top: 28 }, { input: textSvgBuf, left: 0, top: 0 }])
+    const dark = ['#000000', '#111111', '#17212b', 'black'].includes(String(bg).toLowerCase());
+    const bodyColor = ov.fill || (dark ? '#ffffff' : '#111111');
+    const nameColor = ov.fill || '#f59e0b';
+    const family = ov.font || 'sans';
+
+    const fontSize = Math.round(32 * ov.scale);
+    const lineHeight = 1.34;
+    const avatarSize = Math.round(84 * Math.min(ov.scale, 1.4));
+    const padX = 24, padY = 22, gap = 20;
+    const nameSize = Math.round(fontSize * 0.98);
+    const nameH = Math.round(nameSize * 1.35);
+
+    // 1) medir el texto con margen suficiente y decidir el ancho del lienzo
+    const textPad = 6;
+    const narrow = Math.max(60, ...wrapLines(text, 560 - textPad * 2, { family, weight: 400, size: fontSize })
+      .map(l => measure(l, { family, weight: 400, size: fontSize })));
+    const W = Math.round(Math.min(1000, Math.max(400, padX * 2 + avatarSize + gap + Math.ceil(narrow) + 14 + textPad * 2)));
+    const textW = Math.max(80, W - padX * 2 - avatarSize - gap);
+
+    // 2) renderizar el texto con el ancho definitivo (altura exacta de las líneas)
+    const lines = wrapLines(text, textW - textPad * 2, { family, weight: 400, size: fontSize });
+    const bodyH = Math.max(Math.round(fontSize * lineHeight), Math.round(lines.length * fontSize * lineHeight) + 2);
+    const body = textLayer({
+      text, width: textW, height: bodyH, family, weight: 400,
+      maxFont: fontSize, minFont: 12, maxLines: lines.length, lineHeight,
+      fill: bodyColor, align: 'start', autoFit: false, fontSize, padding: textPad
+    });
+    const H = Math.round(padY * 2 + nameH + bodyH);
+
+    const nameLayer = textLayer({
+      text: ov.uppercase ? username.toUpperCase() : username,
+      width: textW, height: nameH, family, weight: 600,
+      maxFont: nameSize, minFont: 9, maxLines: 1, fill: nameColor, align: 'start', padding: textPad
+    });
+    const rounded = await circleImage(await loadImageBuffer(imgParam(q, 'image', 'url', 'avatar')), avatarSize);
+    const rim = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${avatarSize}" height="${avatarSize}"><circle cx="${avatarSize / 2}" cy="${avatarSize / 2}" r="${avatarSize / 2 - 1}" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/></svg>`);
+    const avatar = await sharp(rounded).composite([{ input: rim }]).png().toBuffer();
+
+    const left = padX + avatarSize + gap;
+    const composed = await sharp({ create: { width: W, height: H, channels: 4, background: bg } })
+      .composite([
+        { input: avatar, left: padX, top: Math.round((H - avatarSize) / 2) },
+        { input: nameLayer.svg, left, top: padY },
+        { input: body.svg, left, top: padY + nameH }
+      ])
+      .png().toBuffer();
+
+    if (!ov.rotate && !ov.dx && !ov.dy) return composed;
+    const rotated = await sharp(composed)
+      .rotate(ov.rotate, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png().toBuffer();
+    if (!ov.dx && !ov.dy) return rotated;
+    const meta = await sharp(rotated).metadata();
+    return sharp({ create: { width: meta.width + 80, height: meta.height + 80, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: rotated, left: Math.round(40 + ov.dx * 80), top: Math.round(40 + ov.dy * 80) }])
       .png().toBuffer();
   },
 
-  // ---------------- ttp ----------------
+  // ======================= TTP / ATPP =======================
   async ttp(q) {
     const ov = styleOf(q);
     const text = txt(q, 'Hola');
-    const colorIn = String(q.color || 'white');
-    const fill = normColor(colorIn, '#ffffff');
+    const fill = normColor(q.color, '#ffffff');
     const bgIn = String(q.bg || 'transparent').toLowerCase();
     const bg = bgIn === 'transparent' ? null : normColor(bgIn, '#000000');
     const S = 512;
-    const lines = wrapText(text, Math.max(4, Math.round(8 / ov.scale)), 4).map(l => l.split('').join(' '));
-    const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
-    const fontSize = Math.max(14, Math.min(160, Math.round(Math.min((S - 64) / (longest * 0.60), (S - 80) / (lines.length * 1.25)) * ov.scale)));
-    const totalH = lines.length * fontSize * 1.25;
-    const rotate = ov.rotate ? ` transform="rotate(${ov.rotate} ${S / 2} ${S / 2})"` : '';
-    const svg = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">${bg ? `<rect width="${S}" height="${S}" fill="${bg}"/>` : ''}<g${rotate}>` +
-      lines.map((ln, i) => `<text x="${S / 2 + ov.dx * S}" y="${Math.round((S - totalH) / 2 + fontSize * 0.92 + i * fontSize * 1.25 + ov.dy * S)}" text-anchor="middle" font-family="${ov.font ? fontFamilyOf(ov.font) : FONT}" font-weight="300" font-size="${fontSize}" fill="${fill}">${escapeXml(ln)}</text>`).join('') +
-      `</g></svg>`
-    );
-    return svgToPng(svg);
+    const fontSize = Math.round(72 * ov.scale);
+    const layer = textLayer({
+      text,
+      width: S,
+      height: S,
+      family: ov.font || 'sans',
+      weight: 700,
+      maxFont: fontSize,
+      minFont: 18,
+      maxLines: 3,
+      lineHeight: 1.34,
+      letterSpacing: fontSize * 0.24 + (ov.spacing || 0),
+      fill,
+      align: 'middle',
+      padding: 24,
+      uppercase: ov.uppercase,
+      rotate: ov.rotate,
+      offsetX: Math.round(ov.dx * S),
+      offsetY: Math.round(ov.dy * S),
+      stroke: '#000000',
+      strokeWidth: Math.max(4, fontSize * 0.09)
+    });
+    const canvas = sharp({ create: { width: S, height: S, channels: 4, background: bg || { r: 0, g: 0, b: 0, alpha: 0 } } });
+    return canvas.composite([{ input: layer.svg }]).png().toBuffer();
   },
 
-  // ---------------- iqc (chat falso de WhatsApp) ----------------
+  // ======================= IQC (chat falso) =======================
   async iqc(q) {
     const message = txt(q, 'Yo siempre te voy a amar');
     const quote = String(q.quote ?? q.quoted ?? 'vooooss seguro').slice(0, 60);
     const username = String(q.username ?? q.name ?? 'Tú').slice(0, 24);
     const time = String(q.time ?? q.hour ?? '7:32 p. m.').slice(0, 14);
+    // Zonas medidas sobre iqc.jpg (736x1308): burbuja de cita 45%-55% y mensaje 55%-59%.
     return renderTemplate('iqc.jpg', [(W, H) => {
-      const x0 = Math.round(0.035 * W), y0 = Math.round(0.420 * H);
-      const w = Math.round(0.645 * W), h = Math.round(0.158 * H);
-      const quoteH = Math.round(h * 0.52);
-      const msg = fitTextLines(message, w - 98, 36, { maxFont: 24, minFont: 12, maxLines: 1, charWidthRatio: 0.52 });
-      const svg = Buffer.from(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
-        `<rect width="${w}" height="${quoteH}" rx="11" fill="#202c33"/>` +
-        `<rect y="${quoteH - 4}" width="${w}" height="${h - quoteH + 4}" fill="#0b141a"/>` +
-        `<rect x="0" y="9" width="4" height="${quoteH - 18}" fill="#f15b6c"/>` +
-        `<text x="14" y="38" font-family="${FONT}" font-weight="700" font-size="20" fill="#f15b6c">${escapeXml(username)}</text>` +
-        `<text x="14" y="74" font-family="${FONT}" font-size="19" fill="#aebac1">${escapeXml(quote)}</text>` +
-        `<text x="9" y="${h - 18}" font-family="${FONT}" font-size="${msg.fontSize}" fill="#e9edef">${escapeXml(msg.lines[0] || '')}</text>` +
-        `<text x="${w - 7}" y="${h - 18}" text-anchor="end" font-family="${FONT}" font-size="13" fill="#8696a0">${escapeXml(time)}</text>` +
-        `</svg>`
-      );
-      return [{ input: svg, left: x0, top: y0 }];
+      const bubbleX = Math.round(0.046 * W);
+      const bubbleW = Math.round(0.728 * W);
+      const quoteTop = Math.round(0.462 * H);
+      const quoteH = Math.round(0.086 * H);
+      const msgTop = Math.round(0.550 * H);
+      const msgH = Math.round(0.040 * H);
+      const padding = Math.round(0.024 * W);
+      const hourW = Math.round(0.105 * W);
+
+      const name = textLayer({
+        text: username, width: bubbleW - padding * 2, height: Math.round(quoteH * 0.40),
+        family: 'sans', weight: 600, maxFont: Math.round(0.0215 * H), minFont: 9,
+        maxLines: 1, align: 'start', fill: '#e8848c'
+      });
+      const quoted = textLayer({
+        text: quote, width: bubbleW - padding * 2, height: Math.round(quoteH * 0.42),
+        family: 'sans', weight: 400, maxFont: Math.round(0.0235 * H), minFont: 9,
+        maxLines: 1, align: 'start', fill: '#e9edef'
+      });
+      const msg = textLayer({
+        text: message, width: bubbleW - padding - hourW - 12, height: Math.round(msgH * 0.92),
+        family: 'sans', weight: 400, maxFont: Math.round(0.0225 * H), minFont: 8,
+        maxLines: 1, align: 'start', fill: '#e9edef'
+      });
+      const hour = textLayer({
+        text: time, width: hourW, height: Math.round(msgH * 0.72),
+        family: 'sans', weight: 400, maxFont: Math.round(0.0148 * H), minFont: 7,
+        maxLines: 1, align: 'end', fill: '#a9b4bb'
+      });
+
+      return [
+        // limpian el texto de ejemplo de la plantilla
+        { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${bubbleW - padding * 2}" height="${Math.round(quoteH * 0.94)}"><rect width="100%" height="100%" rx="3" fill="#212121"/></svg>`), left: bubbleX + padding, top: quoteTop + Math.round(quoteH * 0.02) },
+        // limpia TODA la franja del mensaje de ejemplo (texto + hora) respetando el borde redondeado
+        { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${bubbleW - 26}" height="${Math.round(msgH * 1.04)}"><rect width="100%" height="100%" rx="5" fill="#2a2a2a"/></svg>`), left: bubbleX + 13, top: msgTop - Math.round(msgH * 0.16) },
+        // textos nuevos
+        { input: name.svg, left: bubbleX + padding, top: quoteTop + Math.round(quoteH * 0.08) },
+        { input: quoted.svg, left: bubbleX + padding, top: quoteTop + Math.round(quoteH * 0.44) },
+        { input: msg.svg, left: bubbleX + Math.round(padding * 0.55), top: msgTop + Math.round(msgH * 0.12) },
+        { input: hour.svg, left: bubbleX + bubbleW - hourW - Math.round(0.010 * W), top: msgTop + Math.round(msgH * 0.26) }
+      ];
     }]);
   },
 
-  // ---------------- cuentatiktok ----------------
+  // ======================= CUENTA TIKTOK =======================
   async cuentatiktok(q) {
     const username = String(q.username ?? q.name ?? 'Account not found').slice(0, 36);
     const status = String(q.status ?? q.text ?? 'Sent').slice(0, 24);
     const { buf, width: W, height: H } = await templateMeta('cuentatiktok.jpg');
-    const boxW = Math.round(0.74 * W), boxH = Math.round(0.078 * H);
-    const nameFit = fitTextLines(username, boxW - 8, 34, { maxFont: 25, minFont: 13, maxLines: 1, charWidthRatio: 0.55 });
-    const overlay = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${boxW}" height="${boxH}">` +
-      `<rect width="${boxW}" height="${boxH}" fill="#000000"/>` +
-      `<text x="2" y="34" font-family="${FONT}" font-weight="600" font-size="${nameFit.fontSize}" fill="#ffffff">${escapeXml(nameFit.lines[0] || username)}</text>` +
-      `<text x="2" y="68" font-family="${FONT}" font-size="18" fill="#9a9a9a">${escapeXml(status)}</text>` +
-      `</svg>`
-    );
-    const layers = [{ input: overlay, left: Math.round(0.182 * W), top: Math.round(0.344 * H) }];
+    // Fila negra: x 5.4%-96.7%, y 33.3%-41.4%. Avatar 36.5%-40.6% y texto tras él.
+    const rowLeft = Math.round(0.054 * W);
+    const rowW = Math.round(0.913 * W);
+    const rowTop = Math.round(0.333 * H);
+    const rowH = Math.round(0.081 * H);
+    const avatarD = Math.round(0.055 * W);
+    const textLeft = Math.round(0.232 * W);
+    const textW = rowLeft + rowW - textLeft - Math.round(0.015 * W);
+
+    const name = textLayer({
+      text: username, width: textW, height: Math.round(rowH * 0.42), family: 'sans', weight: 600,
+      maxFont: Math.round(rowH * 0.30), minFont: 9, maxLines: 1, align: 'start', fill: '#ffffff'
+    });
+    const sub = textLayer({
+      text: status, width: textW, height: Math.round(rowH * 0.30), family: 'sans', weight: 400,
+      maxFont: Math.round(rowH * 0.21), minFont: 7, maxLines: 1, align: 'start', fill: '#9a9a9a'
+    });
+    const coverName = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${textW}" height="${Math.round(rowH * 0.42)}"><rect width="100%" height="100%" fill="#000000"/></svg>`);
+    const coverSub = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${textW}" height="${Math.round(rowH * 0.30)}"><rect width="100%" height="100%" fill="#000000"/></svg>`);
+    const nameTop = rowTop + Math.round(rowH * 0.13);
+    const subTop = rowTop + Math.round(rowH * 0.59);
+    const layers = [
+      { input: coverName, left: textLeft, top: nameTop },
+      { input: coverSub, left: textLeft, top: subTop },
+      { input: name.svg, left: textLeft, top: nameTop },
+      { input: sub.svg, left: textLeft, top: subTop }
+    ];
     const avatarUrl = imgParam(q, 'image', 'url', 'avatar');
     if (avatarUrl) {
-      const d = Math.round(0.088 * W);
-      const av = await circleImage(await loadImageBuffer(avatarUrl), d);
-      layers.push({ input: av, left: Math.round(0.102 * W - d / 2), top: Math.round(0.380 * H - d / 2) });
+      const av = await circleImage(await loadImageBuffer(avatarUrl), avatarD);
+      layers.push({ input: av, left: Math.round(0.081 * W), top: Math.round(0.347 * H) });
     }
-    return sharp(buf).composite(layers).png().toBuffer();
+    return sharp(buf).composite(flat(layers)).png().toBuffer();
   },
 
-  // ---------------- storyreply ----------------
+  // ======================= STORY REPLY =======================
   async storyreply(q) {
     const ov = styleOf(q);
     const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
-    const base = await chromaInsert('storyreply.jpg', user, { x0: 0.055, y0: 0.11, x1: 0.375, y1: 0.70 }, { zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate });
+    const base = await chromaInsert('storyreply.jpg', user, { x0: 0.060, y0: 0.125, x1: 0.360, y1: 0.700 }, { zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate, radius: 0.16 });
     const reply = txt(q, '');
     if (!reply) return base;
     const meta = await sharp(base).metadata();
-    const layer = placeTextArea(meta.width, meta.height, { x0: 0.05, y0: 0.705, x1: 0.95, y1: 0.895 }, reply,
-      { fill: '#ffffff', align: 'start', maxFont: 30, minFont: 14, maxLines: 2, pad: 22, fontWeight: '400', ov });
-    return sharp(base).composite([layer]).png().toBuffer();
+    const layer = placeTextArea(meta.width, meta.height, { x0: 0.075, y0: 0.745, x1: 0.905, y1: 0.880 }, reply, {
+      family: ov.font || 'sans', weight: 500, fill: '#ffffff', align: 'start',
+      maxFont: 32, minFont: 14, maxLines: 2, rotate: ov.rotate, ov
+    });
+    return sharp(base).composite(expandLayer(layer)).png().toBuffer();
   },
 
-  // ---------------- absolutecinema ----------------
+  // ======================= ABSOLUTE CINEMA =======================
   async absolutecinema(q) {
     const ov = styleOf(q);
     const main = String(q.text || 'CINEMA').toUpperCase().slice(0, 24);
@@ -438,18 +629,28 @@ const GENERATORS = {
       base = t.buf; W = t.width; H = t.height;
     }
     const color = ov.fill || normColor(q.color, '#ffffff');
-    const barH = Math.round(H * 0.315);
-    const svg = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${barH}">` +
-      `<rect width="${W}" height="${barH}" fill="#000000"/>` +
-      `<text x="${W / 2 + ov.dx * W}" y="${Math.round(barH * 0.42)}" text-anchor="middle" font-family="${ov.font ? fontFamilyOf(ov.font) : FONT}" font-weight="700" font-size="${Math.round(H * 0.052 * ov.scale)}" letter-spacing="6" fill="${color}">${escapeXml(sub)}</text>` +
-      `<text x="${W / 2 + ov.dx * W}" y="${Math.round(barH * 0.83)}" text-anchor="middle" font-family="${ov.font ? fontFamilyOf(ov.font) : FONT}" font-weight="900" font-size="${Math.round(H * 0.125 * ov.scale)}" letter-spacing="2" fill="${color}">${escapeXml(main)}</text>` +
-      `</svg>`
-    );
-    return sharp(base).composite([{ input: svg, left: 0, top: H - barH }]).png().toBuffer();
+    const barH = Math.round(H * 0.32);
+    const bar = await sharp({ create: { width: W, height: barH, channels: 4, background: '#000000' } }).png().toBuffer();
+    const subLayer = textLayer({
+      text: sub, width: W - 60, height: Math.round(barH * 0.36), family: ov.font || 'sans',
+      weight: 600, maxFont: Math.round(H * 0.05 * ov.scale), minFont: 10, maxLines: 1,
+      letterSpacing: Math.max(4, H * 0.008), fill: color, align: 'middle', offsetX: Math.round(ov.dx * W)
+    });
+    const mainLayer = textLayer({
+      text: main, width: W - 40, height: Math.round(barH * 0.54), family: ov.font || 'sans',
+      weight: 900, maxFont: Math.round(H * 0.13 * ov.scale), minFont: 14, maxLines: 1,
+      letterSpacing: Math.max(1, H * 0.003), fill: color, align: 'middle', offsetX: Math.round(ov.dx * W)
+    });
+    return sharp(base)
+      .composite([
+        { input: bar, left: 0, top: H - barH },
+        { input: subLayer.svg, left: 30, top: H - barH + Math.round(barH * 0.10) },
+        { input: mainLayer.svg, left: 20, top: H - barH + Math.round(barH * 0.38) }
+      ])
+      .png().toBuffer();
   },
 
-  // ---------------- imagenes en pantalla verde ----------------
+  // ======================= PANTALLAS VERDES =======================
   async canvaimagen(q) {
     const ov = styleOf(q);
     const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
@@ -462,27 +663,51 @@ const GENERATORS = {
     return chromaInsert('fotopc.jpg', user, { x0: 0.52, y0: 0.29, x1: 1, y1: 0.68 }, { zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate });
   },
 
-  // ---------------- sebusca ----------------
+  // ======================= SE BUSCA =======================
   async sebusca(q) {
     const ov = styleOf(q);
     const { buf, width: W, height: H } = await templateMeta('sebusca.jpg');
     const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
-    const layers = [await placeImageArea(W, H, { x0: 0.272, y0: 0.298, x1: 0.783, y1: 0.648 }, user, { zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate })];
+    const layers = [
+      await placeImageArea(W, H, { x0: 0.278, y0: 0.302, x1: 0.777, y1: 0.645 }, user, {
+        zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate
+      })
+    ];
+    // marco de la foto (como el cartel original)
+    const frameW = Math.round(0.529 * W), frameH = Math.round(0.367 * H);
+    const frame = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${frameW + 12}" height="${frameH + 12}">` +
+      `<rect x="1" y="1" width="${frameW + 10}" height="${frameH + 10}" rx="3" fill="none" stroke="#f2e7c9" stroke-width="6"/>` +
+      `<rect x="4" y="4" width="${frameW + 4}" height="${frameH + 4}" rx="2" fill="none" stroke="#000000" stroke-opacity="0.35" stroke-width="1.5"/>` +
+      `</svg>`
+    );
+    layers.push({ input: frame, left: Math.round(0.272 * W), top: Math.round(0.296 * H) });
+
     const name = String(q.name ?? '').trim();
     if (name) {
-      const bandW = Math.round(0.511 * W), bandH = Math.round(0.055 * H);
-      const band = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${bandW}" height="${bandH}"><rect width="${bandW}" height="${bandH}" fill="#000000" fill-opacity="0.72"/><text x="${bandW / 2}" y="${Math.round(bandH * 0.72)}" text-anchor="middle" font-family="${SERIF}" font-weight="700" font-size="21" fill="${ov.fill || '#ffffff'}">${escapeXml(name.toUpperCase().slice(0, 26))}</text></svg>`);
-      layers.push({ input: band, left: Math.round(0.272 * W), top: Math.round(0.648 * H) - bandH });
+      const bandW = Math.round(0.499 * W), bandH = Math.round(0.05 * H);
+      const band = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${bandW}" height="${bandH}"><rect width="${bandW}" height="${bandH}" fill="#000000" fill-opacity="0.74"/></svg>`);
+      const bandTop = Math.round(0.645 * H) - bandH;
+      const nameLayer = textLayer({
+        text: name.toUpperCase().slice(0, 26), width: bandW - 12, height: bandH - 6,
+        family: 'serif', weight: 900, maxFont: Math.round(bandH * 0.62), minFont: 8,
+        maxLines: 1, fill: ov.fill || '#ffffff', align: 'middle'
+      });
+      layers.push({ input: band, left: Math.round(0.278 * W), top: bandTop });
+      layers.push({ input: nameLayer.svg, left: Math.round(0.278 * W) + 6, top: bandTop + 3 });
     }
+
     const reward = String(q.reward ?? q.recompensa ?? '').trim();
     if (reward) {
-      layers.push(placeTextArea(W, H, { x0: 0.08, y0: 0.728, x1: 0.915, y1: 0.842 }, reward,
-        { cover: '#d9c69c', fontFamily: SERIF, fontWeight: '900', fill: '#1a1207', maxFont: 58, maxLines: 1, pad: 6, ov }));
+      layers.push(placeTextArea(W, H, { x0: 0.09, y0: 0.735, x1: 0.905, y1: 0.838 }, reward, {
+        cover: '#d9c69c', family: 'serif', weight: 900, fill: '#1a1207',
+        maxFont: 56, maxLines: 1, pad: 4, ov: { ...ov, scale: ov.scale * 0.92 }
+      }));
     }
-    return sharp(buf).composite(layers).png().toBuffer();
+    return sharp(buf).composite(flat(layers)).png().toBuffer();
   },
 
-  // ---------------- pokemoncard ----------------
+  // ======================= POKEMON CARD =======================
   async pokemoncard(q) {
     const ov = styleOf(q);
     const { buf, width: W, height: H } = await templateMeta('pokemoncard.jpg');
@@ -493,24 +718,40 @@ const GENERATORS = {
     const attack = String(q.attack || 'Golpe API').slice(0, 26);
     const damage = String(q.damage || '90').replace(/[^0-9+]/g, '').slice(0, 5) || '90';
     const description = String(q.description || q.desc || 'Una carta creada con Velirius API.').slice(0, 220);
-    const layers = [await placeImageArea(W, H, { x0: 0.085, y0: 0.105, x1: 0.915, y1: 0.47 }, user, { zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate })];
-    const font = ov.font ? fontFamilyOf(ov.font) : FONT;
+
+    const layers = [
+      await placeImageArea(W, H, { x0: 0.088, y0: 0.108, x1: 0.912, y1: 0.468 }, user, {
+        zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate, radius: 6
+      })
+    ];
     const s = ov.scale;
-    const overlay = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
-      `<text x="${Math.round(W * 0.215)}" y="${Math.round(H * 0.068)}" font-family="${font}" font-weight="700" font-size="${Math.round(34 * s)}" fill="${ov.fill || '#222222'}">${escapeXml(name)}</text>` +
-      `<text x="${Math.round(W * 0.862)}" y="${Math.round(H * 0.068)}" text-anchor="end" font-family="${font}" font-weight="700" font-size="${Math.round(27 * s)}" fill="#c0392b">${escapeXml(hp)}</text>` +
-      `<text x="${Math.round(W * 0.105)}" y="${Math.round(H * 0.512)}" font-family="${font}" font-style="italic" font-size="${Math.round(21 * s)}" fill="#444444">${escapeXml(type)}</text>` +
-      `<text x="${Math.round(W * 0.105)}" y="${Math.round(H * 0.598)}" font-family="${font}" font-weight="700" font-size="${Math.round(36 * s)}" fill="${ov.fill || '#222222'}">${escapeXml(attack)}</text>` +
-      `<text x="${Math.round(W * 0.895)}" y="${Math.round(H * 0.598)}" text-anchor="end" font-family="${font}" font-weight="700" font-size="${Math.round(36 * s)}" fill="${ov.fill || '#222222'}">${escapeXml(damage)}</text>` +
-      wrapText(description, 31, 6).map((ln, i) => `<text x="${Math.round(W * 0.105)}" y="${Math.round(H * 0.662 + i * 36)}" font-family="${font}" font-size="${Math.round(25 * s)}" fill="#333333">${escapeXml(ln)}</text>`).join('') +
-      `</svg>`
-    );
-    layers.push({ input: overlay, left: 0, top: 0 });
-    return sharp(buf).composite(layers).png().toBuffer();
+    const family = ov.font || 'sans';
+    const put = (text, { x, y, size, weight = 700, fill = '#222222', align = 'start', width = 400, height = 60, italic = false }) => {
+      const layer = textLayer({
+        text, width, height, family, weight, maxFont: Math.round(size * s), minFont: 8,
+        maxLines: 2, fill: ov.fill && fill === '#222222' ? ov.fill : fill, align,
+        autoFit: false, fontSize: Math.round(size * s)
+      });
+      if (italic) return { input: layer.svg, left: x, top: y };
+      return { input: layer.svg, left: x, top: y };
+    };
+
+    layers.push(put(name, { x: Math.round(W * 0.205), y: Math.round(H * 0.043), size: 36, width: Math.round(W * 0.55), height: 54, align: 'start' }));
+    layers.push(put(hp, { x: Math.round(W * 0.80), y: Math.round(H * 0.046), size: 29, fill: '#c0392b', width: Math.round(W * 0.1), height: 46, align: 'end' }));
+    layers.push(put(type, { x: Math.round(W * 0.105), y: Math.round(H * 0.498), size: 22, weight: 400, fill: '#4a4a4a', width: Math.round(W * 0.6), height: 34 }));
+    layers.push(put(attack, { x: Math.round(W * 0.105), y: Math.round(H * 0.585), size: 38, width: Math.round(W * 0.62), height: 54 }));
+    layers.push(put(damage, { x: Math.round(W * 0.72), y: Math.round(H * 0.585), size: 38, width: Math.round(W * 0.18), height: 54, align: 'end' }));
+
+    const descLayer = textLayer({
+      text: description, width: Math.round(W * 0.79), height: Math.round(H * 0.13), family,
+      weight: 400, maxFont: Math.round(26 * s), minFont: 10, maxLines: 5, lineHeight: 1.3,
+      fill: '#333333', align: 'start'
+    });
+    layers.push({ input: descLayer.svg, left: Math.round(W * 0.105), top: Math.round(H * 0.652) });
+    return sharp(buf).composite(flat(layers)).png().toBuffer();
   },
 
-  // ---------------- ship / friendship ----------------
+  // ======================= SHIP / FRIENDSHIP =======================
   async _meter(q, kind) {
     const ov = styleOf(q);
     const isShip = kind === 'ship';
@@ -520,77 +761,120 @@ const GENERATORS = {
     const pct = parsePercent(q.percentage ?? q.percent ?? q.rank);
     const phrase = String(q.text || 'Best Friends').slice(0, 26);
     const accent = ov.fill || (isShip ? '#ff2d55' : '#00e05a');
-    const title = isShip ? '~Medidor de compatibilidad~' : '~Medidor de amistad~';
+    const title = isShip ? 'Medidor de compatibilidad' : 'Medidor de amistad';
     const bg = ov.bg || '#23272e';
     const img1 = await loadImageBuffer(imgParam(q, 'image1', 'url1', 'image', 'url'), 'avatar1.jpg');
     const img2 = await loadImageBuffer(imgParam(q, 'image2', 'url2'), 'avatar2.jpg');
     const S = Math.round(295 * Math.min(ov.zoom, 1.6));
     const piece1 = isShip ? await heartImage(img1, S, S * 0.92) : await circleImage(img1, S);
     const piece2 = isShip ? await heartImage(img2, S, S * 0.92) : await circleImage(img2, S);
-    const heart = `<path d="M600 128 C588 108 556 104 548 124 C541 141 556 158 600 182 C644 158 659 141 652 124 C644 104 612 108 600 128Z" fill="${isShip ? accent : '#ff2d55'}"/>`;
+    const heart = `<path d="M600 118 C586 96 552 92 544 114 C536 133 553 152 600 177 C647 152 664 133 656 114 C648 92 614 96 600 118Z" fill="${isShip ? accent : '#ff2d55'}"/>`;
+    const star = `<text x="${W / 2}" y="170" text-anchor="middle" font-family="sans-serif" font-size="58" fill="#ffc93c">★</text>`;
     const svg = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
       `<rect width="${W}" height="${H}" fill="${bg}"/>` +
-      `<text x="${W / 2}" y="52" text-anchor="middle" font-family="${SERIF}" font-style="italic" font-weight="700" font-size="27" fill="${isShip ? '#ff7a92' : '#2ee06d'}">${escapeXml(title)}</text>` +
-      (isShip ? heart : `<text x="${W / 2}" y="172" text-anchor="middle" font-family="${FONT}" font-size="58" fill="#ffc93c">★</text>`) +
-      `<text x="${W / 2}" y="258" text-anchor="middle" font-family="${MONO}" font-weight="700" font-size="${Math.round(37 * ov.scale)}" fill="${accent}">~${pct}%~</text>` +
-      `<text x="${W / 2}" y="304" text-anchor="middle" font-family="${MONO}" font-weight="700" font-size="${Math.round(34 * ov.scale)}" fill="${accent}">${escapeXml(phrase)}</text>` +
-      `<text x="300" y="478" text-anchor="middle" font-family="${FONT}" font-style="italic" font-weight="700" font-size="25" fill="#ffffff">${escapeXml(name1)}</text>` +
-      `<text x="900" y="478" text-anchor="middle" font-family="${FONT}" font-style="italic" font-weight="700" font-size="25" fill="#ffffff">${escapeXml(name2)}</text>` +
+      `<text x="${W / 2}" y="50" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="28" fill="${isShip ? '#ff7a92' : '#2ee06d'}">~ ${title} ~</text>` +
+      (isShip ? heart : star) +
       `</svg>`
     );
-    const base = await svgToPng(svg);
+    const base = await svgPng(svg);
+    const pctLayer = textLayer({
+      text: `~${pct}%~`, width: 600, height: Math.round(70 * ov.scale), family: 'mono', weight: 700,
+      maxFont: Math.round(42 * ov.scale), minFont: 12, maxLines: 1, fill: accent, align: 'middle'
+    });
+    const phraseLayer = textLayer({
+      text: phrase, width: 700, height: Math.round(56 * ov.scale), family: 'mono', weight: 700,
+      maxFont: Math.round(34 * ov.scale), minFont: 10, maxLines: 1, fill: accent, align: 'middle'
+    });
+    const name1Layer = textLayer({
+      text: name1, width: 300, height: 42, family: 'sans', weight: 700, maxFont: 27, minFont: 10,
+      maxLines: 1, fill: '#ffffff', align: 'middle'
+    });
+    const name2Layer = textLayer({
+      text: name2, width: 300, height: 42, family: 'sans', weight: 700, maxFont: 27, minFont: 10,
+      maxLines: 1, fill: '#ffffff', align: 'middle'
+    });
     const layers = [
       { input: piece1, left: Math.round(300 - S / 2), top: 118 + Math.round((295 - S) / 2) },
-      { input: piece2, left: Math.round(900 - S / 2), top: 118 + Math.round((295 - S) / 2) }
+      { input: piece2, left: Math.round(900 - S / 2), top: 118 + Math.round((295 - S) / 2) },
+      { input: pctLayer.svg, left: 300, top: 196 },
+      { input: phraseLayer.svg, left: 250, top: 262 },
+      { input: name1Layer.svg, left: 150, top: 452 },
+      { input: name2Layer.svg, left: 750, top: 452 }
     ];
     if (!isShip) {
       const thumb = await twemoji('1f44d');
-      if (thumb) layers.push({ input: await sharp(thumb).resize(58, 58).png().toBuffer(), left: W / 2 - 29, top: 108 });
+      if (thumb) layers.push({ input: await sharp(thumb).resize(60, 60).png().toBuffer(), left: W / 2 - 30, top: 104 });
     }
     return sharp(base).composite(layers).png().toBuffer();
   },
   ship: q => GENERATORS._meter(q, 'ship'),
   friendship: q => GENERATORS._meter(q, 'friendship'),
 
-  // ---------------- gaycard ----------------
+  // ======================= GAY CARD =======================
   async gaycard(q) {
     const ov = styleOf(q);
     const W = 600, H = 450;
+    const size = 178;
     const name = String(q.name || q.username || 'Velirius').slice(0, 22);
     const pct = parsePercent(q.rank ?? q.percentage ?? q.percent);
     const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
-    let avatar = await circleImage(user, 178);
+
+    // avatar: foto → arcoíris → recorte circular → aro blanco
+    let avatar = await shapedImage(user, size, size, { zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate });
+    const rainbowBands = ['#ff004d', '#ff8a00', '#ffee00', '#00e05a', '#0088ff', '#8a2be2'];
+    const bandH = size / rainbowBands.length;
     const rainbow = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="178" height="178">${['#ff004d', '#ff8a00', '#ffee00', '#00e05a', '#0088ff', '#8a2be2'].map((c, i) => `<rect y="${i * 30}" width="178" height="30" fill="${c}" fill-opacity="0.55"/>`).join('')}</svg>`
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${rainbowBands.map((c, i) => `<rect y="${i * bandH}" width="${size}" height="${bandH + 1}" fill="${c}" fill-opacity="0.5"/>`).join('')}</svg>`
     );
     avatar = await sharp(avatar).composite([{ input: rainbow }]).png().toBuffer();
-    const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="178" height="178"><circle cx="89" cy="89" r="89" fill="#fff"/></svg>`);
-    avatar = await sharp(avatar).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+    const circleMask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="#fff"/></svg>`);
+    avatar = await sharp(avatar).composite([{ input: circleMask, blend: 'dest-in' }]).png().toBuffer();
+    const rim = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 2}" fill="none" stroke="#ffffff" stroke-width="4"/></svg>`);
+    avatar = await sharp(avatar).composite([{ input: rim }]).png().toBuffer();
+
+    const title = textLayer({
+      text: 'GAY PERCENTAGE', width: 540, height: 44, family: 'mono', weight: 700,
+      maxFont: 32, minFont: 12, maxLines: 1, letterSpacing: 2,
+      fill: 'url(#rw)', align: 'middle'
+    });
+    const nameLayer = textLayer({
+      text: name, width: 480, height: 46, family: 'serif', weight: 700, maxFont: 31, minFont: 10,
+      maxLines: 1, fill: ov.fill || '#ffffff', align: 'middle'
+    });
+    const pctLayer = textLayer({
+      text: `~ ${pct}% ~`, width: 170, height: 44, family: 'sans', weight: 700,
+      maxFont: Math.round(30 * ov.scale), minFont: 10, maxLines: 1, fill: '#ff2d78', align: 'middle'
+    });
     const svg = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
-      `<defs><linearGradient id="rw" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ff004d"/><stop offset="25%" stop-color="#ff8a00"/><stop offset="50%" stop-color="#ffee00"/><stop offset="70%" stop-color="#00e05a"/><stop offset="88%" stop-color="#0088ff"/><stop offset="100%" stop-color="#8a2be2"/></linearGradient></defs>` +
+      `<defs><linearGradient id="rw" x1="0" y1="0" x2="1" y2="0">${rainbowBands.map((c, i) => `<stop offset="${(i / (rainbowBands.length - 1)) * 100}%" stop-color="${c}"/>`).join('')}</linearGradient></defs>` +
       `<rect width="${W}" height="${H}" fill="${ov.bg || '#141414'}"/>` +
       `<polygon points="0,0 190,0 0,150" fill="#000000"/><polygon points="${W},${H} ${W - 190},${H} ${W},${H - 150}" fill="#000000"/>` +
-      `<text x="${W / 2}" y="62" text-anchor="middle" font-family="${MONO}" font-weight="700" font-size="31" letter-spacing="2" fill="url(#rw)">GAY PERCENTAGE</text>` +
-      `<circle cx="${W / 2}" cy="188" r="94" fill="none" stroke="#ffffff" stroke-width="3"/>` +
-      `<text x="${W / 2}" y="332" text-anchor="middle" font-family="${SERIF}" font-style="italic" font-weight="700" font-size="28" fill="${ov.fill || '#ffffff'}">~${escapeXml(name)}~</text>` +
+      `<circle cx="${W / 2}" cy="196" r="94" fill="none" stroke="#ffffff" stroke-width="3"/>` +
       `<rect x="${W / 2 - 92}" y="356" width="184" height="52" rx="26" fill="#ffffff"/>` +
-      `<text x="${W / 2}" y="392" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${Math.round(30 * ov.scale)}" fill="#ff2d78">~ ${pct}% ~</text>` +
       `</svg>`
     );
-    const base = await svgToPng(svg);
-    return sharp(base).composite([{ input: avatar, left: W / 2 - 89, top: 99 }]).png().toBuffer();
+    const base = await svgPng(svg);
+    return sharp(base)
+      .composite([
+        { input: avatar, left: W / 2 - size / 2, top: 196 - size / 2 },
+        { input: title.svg, left: W / 2 - 270, top: 24 },
+        { input: nameLayer.svg, left: W / 2 - 240, top: 314 },
+        { input: pctLayer.svg, left: W / 2 - 85, top: 360 }
+      ])
+      .png().toBuffer();
   },
 
-  // ---------------- filtros ----------------
+  // ======================= FILTROS =======================
   async gay(q) {
     const ov = styleOf(q);
     const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
-    const base = sharp(user).rotate().grayscale(ov.grayscale);
+    const base = sharp(user).rotate();
+    if (ov.grayscale) base.grayscale();
     const meta = await base.metadata();
     const W = Math.min(meta.width || 512, 1024);
-    const resized = await base.resize(W).png().toBuffer();
+    const resized = await base.resize(W, null, { kernel: 'lanczos3' }).png().toBuffer();
     const m2 = await sharp(resized).metadata();
     const colors = ['#ff004d', '#ff8a00', '#ffee00', '#00e05a', '#0088ff', '#8a2be2'];
     const band = Math.ceil(m2.height / colors.length);
@@ -603,7 +887,7 @@ const GENERATORS = {
     return sharp(user).rotate().negate({ alpha: false }).png().toBuffer();
   },
 
-  // ---------------- personajes ----------------
+  // ======================= PERSONAJES =======================
   rata: q => faceCanvas('rata.jpg', [{ cx: 0.626, cy: 0.534, rx: 0.129, ry: 0.174 }], q),
   banana: q => faceCanvas('banana.jpg', [{ cx: 0.53, cy: 0.45, rx: 0.153, ry: 0.156 }], q),
   galletita: q => faceCanvas('galletita.jpg', [{ cx: 0.467, cy: 0.502, rx: 0.16, ry: 0.148 }], q),
@@ -630,4 +914,7 @@ async function generateCanvas(id, query) {
   return fn(query || {});
 }
 
-module.exports = { generateCanvas, GENERATORS, CANVAS_IDS, styleOf, txt, placeTextArea, chromaInsert, faceCanvas };
+module.exports = {
+  generateCanvas, GENERATORS, CANVAS_IDS, styleOf, txt,
+  placeTextArea, placeImageArea, chromaInsert, faceCanvas, innerShade, expandLayer
+};

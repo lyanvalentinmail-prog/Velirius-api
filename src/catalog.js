@@ -17,11 +17,12 @@ const S = (name, example, desc, options) => ({ name, example, desc, required: fa
 const textStyle = () => [
   O('color', '', 'Color del texto (hex, ej. ff2d55, o nombre: white, black…)'),
   O('size', '1', 'Escala del texto: 0.5 = mitad, 2 = doble'),
-  S('font', 'sans', 'Tipografía del texto', ['sans', 'serif', 'mono']),
+  S('font', 'sans', 'Tipografía incluida en el repo (sin cuadrados)', ['sans', 'serif', 'mono']),
   O('uppercase', 'false', 'true = texto en MAYÚSCULAS'),
   O('x', '0', 'Mover el texto en horizontal (-50 a 50)'),
   O('y', '0', 'Mover el texto en vertical (-50 a 50)'),
-  O('rotate', '0', 'Rotar el texto en grados (-180 a 180)')
+  O('rotate', '0', 'Rotar el texto en grados (-180 a 180)'),
+  O('spacing', '0', 'Espacio extra entre letras en px')
 ];
 const photoStyle = () => [
   O('zoom', '1', 'Zoom de la foto: 0.5 = más pequeña, 2 = más grande'),
@@ -68,7 +69,7 @@ const CATEGORIES = [
         O('bg', '000000', 'Fondo en hex sin #'),
         ...textStyle()
       ] },
-      { id: 'brat', desc: 'Texto brat (blanco, minúsculas, desenfocado)', params: [
+      { id: 'brat', desc: 'Texto brat real (minúsculas, desenfocado y con grano sutil)', params: [
         P('text', 'Welcome to Velirius API', 'Texto del sticker'),
         O('bg', 'ffffff', 'Fondo hex sin #'),
         O('color', '000000', 'Color del texto hex sin #'),
@@ -123,7 +124,8 @@ const CATEGORIES = [
         P('text', 'jajaja total', 'Respuesta'),
         O('color', 'ffffff', 'Color del texto hex sin #'),
         O('size', '1', 'Escala del texto (0.5 - 2)'),
-        O('zoom', '1', 'Zoom de la foto')
+        O('zoom', '1', 'Zoom de la foto'),
+        O('shadow', 'false', 'true = sombra suave bajo el texto')
       ] },
       { id: 'absolutecinema', desc: 'Meme ABSOLUTE CINEMA con tu texto', params: [
         O('text', 'CINEMA', 'Palabra grande'),
