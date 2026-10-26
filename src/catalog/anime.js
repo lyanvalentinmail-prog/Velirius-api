@@ -23,22 +23,22 @@ module.exports = {
   id: 'anime',
   name: 'ANIME',
   endpoints: [
-    { id: 'neko', desc: 'Imagen aleatoria de neko (chica gato). Proveedores: nekos.best, danbooru, purrbot, safebooru, konachan', media: 'image', params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'danbooru', 'purrbot', 'safebooru', 'konachan']),
+    { id: 'neko', desc: 'Imagen aleatoria de neko (chica gato). Proveedores: nekos.best, purrbot, danbooru, safebooru, konachan, yande.re', media: 'image', params: [
+      S('provider', '', 'Forzar proveedor (vacío = automático: se prueban todos en paralelo)', ['', 'nekos.best', 'purrbot', 'danbooru', 'safebooru', 'konachan', 'yande.re']),
       O('amount', '1', 'Cantidad de imágenes (1-10)'),
       O('index', '1', 'Con ?direct=true, cuál imagen bajar (1-10)'),
       O('direct', 'false', 'true = devuelve la imagen directamente'),
       O('download', 'false', 'true = la descarga como archivo')
     ] },
-    { id: 'waifu', desc: 'Imagen aleatoria de waifu. Proveedores: nekos.best, danbooru, safebooru, pic.re, konachan', media: 'image', params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'nekos.best', 'danbooru', 'safebooru', 'pic.re', 'konachan']),
+    { id: 'waifu', desc: 'Imagen aleatoria de waifu. Proveedores: nekos.best, danbooru, pic.re, safebooru, konachan, yande.re', media: 'image', params: [
+      S('provider', '', 'Forzar proveedor (vacío = automático: se prueban todos en paralelo)', ['', 'nekos.best', 'danbooru', 'pic.re', 'safebooru', 'konachan', 'yande.re']),
       O('amount', '1', 'Cantidad de imágenes (1-10)'),
       O('index', '1', 'Con ?direct=true, cuál imagen bajar (1-10)'),
       O('direct', 'false', 'true = devuelve la imagen directamente'),
       O('download', 'false', 'true = la descarga como archivo')
     ] },
-    { id: 'maid', desc: 'Imagen aleatoria de maid (sirvienta). Proveedores: danbooru, safebooru, konachan', media: 'image', params: [
-      S('provider', '', 'Forzar proveedor (vacío = automático)', ['', 'danbooru', 'safebooru', 'konachan']),
+    { id: 'maid', desc: 'Imagen aleatoria de maid (sirvienta). Proveedores: danbooru, safebooru, konachan, yande.re', media: 'image', params: [
+      S('provider', '', 'Forzar proveedor (vacío = automático: se prueban todos en paralelo)', ['', 'danbooru', 'safebooru', 'konachan', 'yande.re']),
       O('amount', '1', 'Cantidad de imágenes (1-10)'),
       O('index', '1', 'Con ?direct=true, cuál imagen bajar (1-10)'),
       O('direct', 'false', 'true = devuelve la imagen directamente'),
