@@ -52,14 +52,16 @@
     const img = new Image();
     const objUrl = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 800;
+      // 1600 px de lado mayor: la foto llega con buena resolución al canvas
+      // (se sube por POST, así que el tamaño no rompe ninguna URL).
+      const max = 1600;
       const scale = Math.min(1, max / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(objUrl);
-      cb(canvas.toDataURL('image/jpeg', 0.82));
+      cb(canvas.toDataURL('image/jpeg', 0.9));
     };
     img.src = objUrl;
   }

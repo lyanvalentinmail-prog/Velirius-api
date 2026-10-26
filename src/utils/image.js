@@ -129,7 +129,9 @@ async function shapedImage(userBuf, w, h, { circle = false, radius = 0, rotate =
   if (grayscale) img = img.grayscale();
   const W = Math.max(2, Math.round(w));
   const H = Math.max(2, Math.round(h));
-  const z = Math.max(0.2, Math.min(4, Number(zoom) || 1));
+  // zoom 1 = la foto llena el hueco (recorte centrado). Arriba de 1 acerca.
+  // Menos de 1 dejaría huecos transparentes dentro del marco, así que se limita.
+  const z = Math.max(1, Math.min(4, Number(zoom) || 1));
   if (rotate) img = sharp(await img.png().toBuffer()).rotate(rotate, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
   let resized = await img.resize(Math.max(2, Math.round(W * z)), Math.max(2, Math.round(H * z)), { fit: 'cover', position: 'centre' }).png().toBuffer();
   if (Math.abs(z - 1) > 0.001) {

@@ -34,7 +34,7 @@ const textStyle = () => [
 ];
 
 const photoStyle = () => [
-  O('zoom', '1', 'Zoom de la foto: 0.5 = más pequeña, 2 = más grande'),
+  O('zoom', '1', 'Zoom de la foto: 1 = llena el hueco justo, 2 = el doble de cerca'),
   O('grayscale', 'false', 'true = foto en blanco y negro'),
   O('rotate', '0', 'Rotar la foto en grados (-180 a 180)')
 ];

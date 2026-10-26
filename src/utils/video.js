@@ -50,7 +50,7 @@ const BRAT_HOLD_FRAMES = 2;
 function bratSpec(opts = {}) {
   const parts = L.get('brat').parts;
   const S = Math.round(Math.max(200, Math.min(2000, Number(opts.canvasSize) || parts.canvas.width)));
-  const pad = Math.round((opts.pad ?? 0.06) * S);
+  const pad = Math.round((opts.pad ?? parts.text.pad ?? 0.06) * S);
   return {
     S,
     pad,

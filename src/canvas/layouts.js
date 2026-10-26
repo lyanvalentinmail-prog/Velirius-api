@@ -20,7 +20,8 @@ const LAYOUTS = {
       text: {
         box: { x0: 0.04, y0: 0.06, x1: 0.96, y1: 0.94 },
         font: { family: 'sans', weight: 700, maxFont: 78, lineHeight: 1.08, maxLines: 8, spacing: -0.5, align: 'start' },
-        fill: '#000000'
+        fill: '#000000',
+        pad: 0.06
       }
     }
   },
@@ -58,14 +59,18 @@ const LAYOUTS = {
     parts: {
       canvas: { width: 736, height: 736, bg: '#ffffff' },
       text: {
-        box: { x0: 0.05, y0: 0.06, x1: 0.95, y1: 0.94 },
-        font: { family: 'sans', weight: 800, maxFont: 190, lineHeight: 1.16 },
-        fill: '#000000'
+        box: { x0: 0.05, y0: 0.05, x1: 0.95, y1: 0.95 },
+        font: { family: 'sans', weight: 800, maxFont: 190, lineHeight: 1.16, align: 'middle' },
+        fill: '#000000',
+        pad: 0.04,
+        maxLines: 6,
+        // aire extra para que la lente nunca recorte el texto
+        inset: 0.94
       },
       // lente esférica: `stretch` = cuánto se agranda el centro (1 = plano),
       // `aspect` = estirón vertical del texto, `radius` = tamaño del bulto
       // (1 = llega a los bordes del lado corto) e `y` = altura del centro.
-      lens: { stretch: 1.55, aspect: 1.35, radius: 1, y: 0.5 }
+      lens: { stretch: 1.18, aspect: 1.3, radius: 1.2, y: 0.5 }
     }
   },
 
@@ -130,8 +135,8 @@ const LAYOUTS = {
         bar: '#e8848c',
         barWidth: 0.0054,
         padX: 0.0380,
-        name: { x: 0.0870, y: 0.4570, font: { family: 'sans', weight: 600, size: 29 }, fill: '#e8848c' },
-        text: { x: 0.0856, y: 0.4955, font: { family: 'sans', weight: 400, size: 30 }, fill: '#e9edef' }
+        name: { x: 0.0870, y: 0.4670, font: { family: 'sans', weight: 600, size: 24 }, fill: '#e8848c' },
+        text: { x: 0.0856, y: 0.4985, font: { family: 'sans', weight: 400, size: 27 }, fill: '#e9edef' }
       },
       // mensaje y hora
       msg: { x: 0.0679, y: 0.5474, font: { family: 'sans', weight: 400, size: 30, lineHeight: 1.36 }, fill: '#e9edef' },
@@ -155,7 +160,7 @@ const LAYOUTS = {
     label: 'Replied to your story',
     parts: {
       template: 'storyreply.jpg',
-      photo: { box: { x0: 0.060, y0: 0.125, x1: 0.360, y1: 0.700 }, radius: 0.16 },
+      photo: { box: { x0: 0.060, y0: 0.155, x1: 0.360, y1: 0.695 }, radius: 0.16 },
       reply: {
         box: { x0: 0.075, y0: 0.745, x1: 0.905, y1: 0.880 },
         pad: 0.018,
@@ -199,7 +204,7 @@ const LAYOUTS = {
     label: 'Bob Esponja con hoja',
     parts: {
       template: 'bobesponja.jpg',
-      sign: { box: { x0: 0.205, y0: 0.335, x1: 0.745, y1: 0.735 } },
+      sign: { box: { x0: 0.170, y0: 0.255, x1: 0.745, y1: 0.870 } },
       text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 46, maxLines: 5 } }
     }
   },
@@ -208,7 +213,7 @@ const LAYOUTS = {
     label: 'Bob Esponja (cómic 4 paneles)',
     parts: {
       template: 'bobesponja2.jpg',
-      sign: { box: { x0: 0.125, y0: 0.085, x1: 0.405, y1: 0.335 } },
+      sign: { box: { x0: 0.075, y0: 0.105, x1: 0.410, y1: 0.395 } },
       text: { cover: false, font: { family: 'sans', weight: 700, maxFont: 32, maxLines: 4 } }
     }
   },
