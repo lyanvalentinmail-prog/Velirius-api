@@ -661,6 +661,16 @@ async function youtubePlayable(id, quality = 0) {
   throw err;
 }
 
+/**
+ * MP3 ya convertido (lo hace ffmpeg en youtube.js). Es lo que usan /play y /mp3
+ * para que el navegador siempre pueda reproducir y descargar el audio.
+ * @returns {Promise<string>} ruta del archivo temporal
+ */
+async function youtubeAudioFile(id) {
+  if (!YT.disponible()) throw new Error('youtubei.js no está disponible');
+  return YT.audioArchivo(id);
+}
+
 /** Audio reproducible (para /mp3 y /play). */
 async function youtubeAudio(id) {
   const errores = [];
@@ -811,6 +821,57 @@ async function instagramDownload(url) {
     }]
   ]);
   return value;
+}
+
+// ---------------- Preview de música (Deezer / iTunes) ----------------
+// Respaldo de /downloader/play: si YouTube no entrega el audio, estos servicios
+// públicos devuelven 30 s de la canción (sin token) y siempre suenan.
+function mapDeezer(t) {
+  return {
+    url: t.preview || null,
+    mime: 'audio/mpeg',
+    title: t.title || t.title_short || '',
+    artist: t.artist?.name || '',
+    album: t.album?.title || '',
+    cover: t.album?.cover_xl || t.album?.cover_big || null,
+    duration: t.duration || null,
+    preview: true,
+    source: 'deezer'
+  };
+}
+
+function mapItunes(t) {
+  return {
+    url: t.previewUrl || null,
+    mime: 'audio/mp4',
+    title: t.trackName || '',
+    artist: t.artistName || '',
+    album: t.collectionName || '',
+    cover: t.artworkUrl100 ? String(t.artworkUrl100).replace('100x100', '600x600') : null,
+    duration: t.trackTimeMillis ? Math.round(t.trackTimeMillis / 1000) : null,
+    preview: true,
+    source: 'itunes'
+  };
+}
+
+/** 30 segundos de una canción (Deezer → iTunes). */
+async function previewAudio(query, limit = 1) {
+  const n = clampLimit(limit, 1, 10);
+  const { value, source } = await firstSuccess([
+    ['deezer', async () => {
+      const j = await fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${n}`, { timeoutMs: 12000 });
+      const list = (j?.data || []).map(mapDeezer).filter(t => t.url);
+      if (!list.length) throw new Error('Deezer sin preview');
+      return list;
+    }],
+    ['itunes', async () => {
+      const j = await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=${n}`, { timeoutMs: 12000 });
+      const list = (j?.results || []).map(mapItunes).filter(t => t.url);
+      if (!list.length) throw new Error('iTunes sin preview');
+      return list;
+    }]
+  ]);
+  return { provider: source, count: value.length, tracks: value, ...value[0] };
 }
 
 // ---------------- Lyric (LRCLIB + lyrics.ovh) ----------------
@@ -1085,9 +1146,10 @@ module.exports = {
   // downloader
   tiktokDownload, tiktokSearch, mapTikTokVideo,
   youtubeId, youtubeSearch, youtubeStreams, resolveYoutubeTarget, pickAudio, pickVideo,
-  youtubePlayable, youtubeAudio, normalizarCalidad,
+  youtubePlayable, youtubeAudio, youtubeAudioFile, normalizarCalidad,
   facebookDownload, instagramDownload,
   lyricsSearch, lyricFor,
+  previewAudio, mapDeezer, mapItunes,
   // searcher
   googleSearch, wikipediaSearch,
   parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing

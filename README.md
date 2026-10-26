@@ -48,6 +48,10 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
 ```
 
 - `?format=text` en cualquier endpoint JSON → texto plano (útil para bots).
+- `?download=true` en **cualquier** endpoint que devuelva un archivo → lo baja como adjunto
+  (`Content-Disposition: attachment`). Sirve para canvas (PNG/MP4), anime, reactions, uploads,
+  TikTok/Facebook/Instagram y los MP4/MP3 del downloader. En los endpoints que tienen `direct`,
+  `download=true` ya implica devolver el archivo.
 - En **Downloader**, `?direct=` devuelve el archivo en streaming con `Range 206`
   (`mp4`, `mp3`, `true` según el endpoint).
 - **Canvas** devuelve la imagen (PNG) o el video (MP4/WebM) directamente.
@@ -281,10 +285,18 @@ curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
 | `GET /downloader/youtube` | `url` o `query`, `quality` (`auto` por defecto), `direct` (`mp4` / `mp3`) |
 | `GET /downloader/facebook` | `url`, `direct` (`mp4`), `quality` (`hd` / `sd`) |
 | `GET /downloader/instagram` | `url`, `direct` |
-| `GET /downloader/mp3` | `url` o `query`, `direct` |
+| `GET /downloader/mp3` | `url` o `query`, `direct`, `download` — MP3 real (ffmpeg) |
 | `GET /downloader/mp4` | `url` o `query`, `quality` (`auto` por defecto), `direct` |
-| `GET /downloader/play` | `query`, `direct` |
+| `GET /downloader/play` | `query`, `direct`, `download` — busca y devuelve el MP3 listo para sonar |
 | `GET /downloader/lyric` | `query`, `format` (`json` / `txt` / `lrc`) |
+
+**`/downloader/play` y `/downloader/mp3` devuelven un MP3 de verdad.** YouTube sólo publica
+audio en AAC/Opus dentro de un contenedor DASH (y con enlaces que caducan), así que el servidor
+lo baja y lo convierte con ffmpeg (`libmp3lame`, 160 kbps). El MP3 queda cacheado una hora en
+`os.tmpdir()/velirius-audio`: suena en cualquier navegador, se puede buscar dentro y se descarga
+como `.mp3`. Si la conversión falla, se manda el stream original del proveedor, y si YouTube no
+responde `/downloader/play` devuelve un **preview real de 30 s** de Deezer (o iTunes) — el JSON lo
+marca con `preview: true` y `source`.
 
 **El video siempre se reproduce con audio y video.** En modo automático (`quality=auto`,
 que es el valor por defecto) se busca el mejor formato **progresivo** (video + audio en el
@@ -302,6 +314,9 @@ en `hasAudio` y `video.mergedWithFfmpeg`.
 curl "https://<host>/downloader/tiktok?url=https://vt.tiktok.com/ZS43DntHW/"          # JSON
 curl "https://<host>/downloader/tiktok?url=https://vt.tiktok.com/ZS43DntHW/&direct=mp4" -o video.mp4
 curl "https://<host>/downloader/mp3?query=Twice%20I%20Cant%20Stop%20Me&direct=true"   -o cancion.mp3
+curl "https://<host>/downloader/play?query=Twice%20Feel%20Special"              # JSON con playUrl
+curl "https://<host>/downloader/play?query=Twice%20Feel%20Special&download=true" -o cancion.mp3
+curl "https://<host>/canvas/brat?text=hola&download=true" -o brat.png
 curl "https://<host>/downloader/lyric?query=Kendrick%20Lamar%20Humble&format=lrc"
 ```
 

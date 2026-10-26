@@ -18,7 +18,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
-const { UA_DESKTOP } = require('./http');
+const { UA_DESKTOP, fetchWithTimeout } = require('./http');
 
 // ---------------------------------------------------------------------------
 // Cliente (se crea una sola vez por proceso)
@@ -194,6 +194,12 @@ function ffmpegPath() {
   try { return require('@ffmpeg-installer/ffmpeg').path; } catch (_) { return 'ffmpeg'; }
 }
 
+// googlevideo rechaza peticiones sin User-Agent de navegador; `-headers` es la
+// forma portable de mandarlo (el build de ffmpeg no trae -user_agent).
+const entradaFfmpeg = url => (/^https?:/i.test(String(url))
+  ? ['-headers', `User-Agent: ${UA_DESKTOP}\r\n`]
+  : []);
+
 const MUX_DIR = path.join(os.tmpdir(), 'velirius-yt');
 const MUX_TTL = 15 * 60 * 1000;
 
@@ -215,16 +221,11 @@ function pegar(videoUrl, audioUrl, id) {
   fs.mkdirSync(MUX_DIR, { recursive: true });
   limpiarTemporales();
   const salida = path.join(MUX_DIR, `${id || 'video'}-${Date.now()}.mp4`);
-  // googlevideo rechaza peticiones sin User-Agent de navegador; `-headers` es la
-  // forma portable de mandarlo (el build de ffmpeg de Vercel no trae -user_agent).
-  const entrada = url => (/^https?:/i.test(String(url))
-    ? ['-headers', `User-Agent: ${UA_DESKTOP}\r\n`]
-    : []);
   return new Promise((resolve, reject) => {
     execFile(ffmpegPath(), [
       '-y', '-hide_banner', '-loglevel', 'error',
-      ...entrada(videoUrl), '-i', videoUrl,
-      ...entrada(audioUrl), '-i', audioUrl,
+      ...entradaFfmpeg(videoUrl), '-i', videoUrl,
+      ...entradaFfmpeg(audioUrl), '-i', audioUrl,
       '-map', '0:v:0', '-map', '1:a:0',
       '-c', 'copy', '-movflags', '+faststart',
       salida
@@ -236,6 +237,77 @@ function pegar(videoUrl, audioUrl, id) {
       resolve(salida);
     });
   });
+}
+
+/**
+ * ¿La URL de googlevideo responde? YouTube caduca los enlaces y a veces devuelve
+ * 403: pedimos los primeros 2 bytes antes de mandarle el archivo al usuario.
+ */
+async function urlViva(url) {
+  if (!url || !/^https?:/i.test(url)) return Boolean(url);
+  try {
+    const r = await fetchWithTimeout(url, {
+      headers: { 'User-Agent': UA_DESKTOP, Range: 'bytes=0-1' }
+    }, 8000);
+    return r.ok || r.status === 206;
+  } catch (_) {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Audio en MP3 (para /downloader/play y /downloader/mp3)
+// ---------------------------------------------------------------------------
+const AUDIO_DIR = path.join(os.tmpdir(), 'velirius-audio');
+const AUDIO_TTL = 60 * 60 * 1000;
+
+function limpiarAudio() {
+  try {
+    if (!fs.existsSync(AUDIO_DIR)) return;
+    const ahora = Date.now();
+    for (const f of fs.readdirSync(AUDIO_DIR)) {
+      const p = path.join(AUDIO_DIR, f);
+      try {
+        if (ahora - fs.statSync(p).mtimeMs > AUDIO_TTL) fs.unlinkSync(p);
+      } catch (_) { /* archivo en uso */ }
+    }
+  } catch (_) { /* sin permiso */ }
+}
+
+/**
+ * Baja el audio de un video y lo convierte a MP3 de verdad.
+ * Así el navegador lo reproduce siempre (y el archivo se puede descargar como
+ * .mp3), sin depender de que el enlace temporal de googlevideo siga vivo.
+ * El MP3 queda en `os.tmpdir()/velirius-audio` y se reutiliza una hora.
+ */
+async function audioArchivo(id, { bitrate = '160k' } = {}) {
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
+  limpiarAudio();
+  const seguro = String(id || 'audio').replace(/[^\w-]/g, '');
+  const salida = path.join(AUDIO_DIR, `${seguro}.mp3`);
+  try {
+    const st = fs.statSync(salida);
+    if (st.size > 2000 && Date.now() - st.mtimeMs < AUDIO_TTL) return salida;
+  } catch (_) { /* no está todavía */ }
+
+  const audio = await audioReproducible(id);
+  const parcial = `${salida}.${process.pid}-${Math.random().toString(36).slice(2, 8)}.part`;
+  await new Promise((resolve, reject) => {
+    execFile(ffmpegPath(), [
+      '-y', '-hide_banner', '-loglevel', 'error',
+      ...entradaFfmpeg(audio.url), '-i', audio.url,
+      '-vn', '-c:a', 'libmp3lame', '-b:a', bitrate, '-f', 'mp3',
+      parcial
+    ], { timeout: 150000, maxBuffer: 1024 * 1024 }, err => {
+      if (err) {
+        try { fs.unlinkSync(parcial); } catch (_) { /* nada */ }
+        return reject(new Error(`No se pudo convertir el audio a MP3: ${String(err.message).slice(-160)}`));
+      }
+      try { fs.renameSync(parcial, salida); } catch (e) { return reject(e); }
+      resolve();
+    });
+  });
+  return salida;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +323,16 @@ const PLAY_TTL = 20 * 60 * 1000;
  * @returns {Promise<{url?:string, file?:string, hasAudio:boolean, height?:number, quality?:string, muxed:boolean}>}
  */
 async function videoReproducible(id, quality = 0) {
+  try {
+    return await unIntentoDeVideo(id, quality);
+  } catch (e) {
+    // El cliente puede quedar con datos viejos: se renueva y se prueba otra vez.
+    reiniciar();
+    return unIntentoDeVideo(id, quality);
+  }
+}
+
+async function unIntentoDeVideo(id, quality = 0) {
   const key = `${id}:${quality || 'auto'}`;
   const hit = cachePlay.get(key);
   if (hit && Date.now() - hit.at < PLAY_TTL && (!hit.value.file || fs.existsSync(hit.value.file))) return hit.value;
@@ -259,10 +341,25 @@ async function videoReproducible(id, quality = 0) {
   const player = y.session?.player;
   let salida;
 
-  const prog = mejorProgresivo(progressive, quality);
+  // Se prueban los progresivos de mayor a menor hasta encontrar uno vivo.
+  const candidatos = progressive
+    .slice()
+    .sort((a, b) => (b.height || 0) - (a.height || 0));
+  const q = Number(quality) || 0;
+  const ordenados = [
+    ...candidatos.filter(f => !q || (f.height || 0) <= q),
+    ...candidatos.filter(f => q && (f.height || 0) > q)
+  ];
+  let prog = null;
+  let progUrl = null;
+  for (const f of ordenados) {
+    const url = await f.decipher(player);
+    if (await urlViva(url)) { prog = f; progUrl = url; break; }
+  }
+
   if (prog) {
     salida = {
-      url: await prog.decipher(player),
+      url: progUrl,
       height: prog.height || null,
       quality: prog.quality_label || null,
       mime: 'video/mp4',
@@ -291,20 +388,35 @@ async function videoReproducible(id, quality = 0) {
 
 /** URL del mejor audio suelto (para /mp3 y /play). */
 async function audioReproducible(id) {
+  try {
+    return await unIntentoDeAudio(id);
+  } catch (e) {
+    reiniciar();
+    return unIntentoDeAudio(id);
+  }
+}
+
+async function unIntentoDeAudio(id) {
   const { y, audioOnly, progressive } = await info(id);
-  const a = mejorAudioDash(audioOnly);
-  if (a) {
-    return {
-      url: await a.decipher(y.session?.player),
-      mime: a.mime_type || 'audio/mp4',
-      bitrate: a.bitrate || null,
-      quality: a.quality_label || null
-    };
+  const player = y.session?.player;
+  const orden = audioOnly.slice().sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+  for (const f of orden) {
+    const url = await f.decipher(player);
+    if (await urlViva(url)) {
+      return {
+        url,
+        mime: f.mime_type || 'audio/mp4',
+        bitrate: f.bitrate || null,
+        quality: f.quality_label || null
+      };
+    }
   }
   const prog = mejorProgresivo(progressive, 0);
   if (!prog) throw new Error('YouTube no ofrece audio para este video');
+  const url = await prog.decipher(player);
+  if (!(await urlViva(url))) throw new Error('El enlace de audio de YouTube caducó');
   return {
-    url: await prog.decipher(y.session?.player),
+    url,
     mime: 'video/mp4',
     bitrate: prog.bitrate || null,
     quality: prog.quality_label || null
@@ -314,6 +426,9 @@ async function audioReproducible(id) {
 module.exports = {
   disponible,
   reiniciar,
+  urlViva,
+  audioArchivo,
+  AUDIO_DIR,
   buscar,
   info,
   formatos,

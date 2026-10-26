@@ -51,6 +51,19 @@ function sendError(res, statusCode, message, hint = undefined) {
   return res.status(statusCode).json(payload);
 }
 
+/**
+ * ¿Se pidió descargar? `?download=true` (o `?dl=1`) convierte cualquier archivo
+ * en descarga: mismo endpoint, pero con `Content-Disposition: attachment`.
+ */
+function wantsDownload(req) {
+  const q = (req && req.query) || {};
+  return ['true', '1', 'yes', 'si', 'sí'].includes(String(q.download || q.dl || '').toLowerCase());
+}
+
+/** `inline` para ver en el navegador, `attachment` con ?download=true. */
+const disposicion = (req, filename, fallback) =>
+  `${wantsDownload(req) ? 'attachment' : 'inline'}; filename="${safeHeaderFilename(filename, fallback)}"`;
+
 function safeHeaderFilename(filename, fallback = 'Velirius-media') {
   return String(filename || fallback).replace(/[^\x20-\x7E]/g, '').replace(/["\\]/g, '').trim() || fallback;
 }
@@ -59,7 +72,7 @@ function sendPng(res, buffer, filename = 'Velirius.png') {
   res.setHeader('Content-Type', 'image/png');
   res.setHeader('Content-Length', String(buffer.length));
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Content-Disposition', `inline; filename="${safeHeaderFilename(filename, 'Velirius.png')}"`);
+  res.setHeader('Content-Disposition', disposicion(res.req, filename, 'Velirius.png'));
   return res.status(200).send(buffer);
 }
 
@@ -70,7 +83,7 @@ function sendMedia(res, buffer, mimeType, filename) {
   res.setHeader('Content-Type', mimeType);
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'public, max-age=300');
-  res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+  res.setHeader('Content-Disposition', disposicion(res.req, safeName, 'media.bin'));
   if (rangeHeader && /^bytes=/i.test(rangeHeader) && total > 0) {
     const parts = rangeHeader.replace(/^bytes=/i, '').split('-');
     let start = parseInt(parts[0], 10);
@@ -102,7 +115,7 @@ async function proxyStream(req, res, upstreamUrl, { filename = 'media', headers 
   res.setHeader('Content-Type', type);
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'public, max-age=300');
-  res.setHeader('Content-Disposition', `inline; filename="${safeHeaderFilename(filename)}"`);
+  res.setHeader('Content-Disposition', disposicion(req, filename, 'media'));
   for (const h of ['content-length', 'content-range']) {
     const v = up.headers.get(h); if (v) res.setHeader(h, v);
   }
@@ -127,7 +140,7 @@ function sendFile(res, filePath, { mime = 'video/mp4', filename = 'Velirius-vide
   res.setHeader('Content-Type', mime);
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', cache);
-  res.setHeader('Content-Disposition', `inline; filename="${safeHeaderFilename(filename)}"`);
+  res.setHeader('Content-Disposition', disposicion(res.req, filename, 'Velirius-video.mp4'));
   let start = 0;
   let end = total - 1;
   let status = 200;
@@ -160,8 +173,14 @@ function sendFile(res, filePath, { mime = 'video/mp4', filename = 'Velirius-vide
 function sendText(res, text, filename = null, asAttachment = false) {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-  if (filename) res.setHeader('Content-Disposition', `${asAttachment ? 'attachment' : 'inline'}; filename="${safeHeaderFilename(filename, 'archivo.txt')}"`);
+  if (filename) {
+    const baja = asAttachment || wantsDownload(res.req);
+    res.setHeader('Content-Disposition', `${baja ? 'attachment' : 'inline'}; filename="${safeHeaderFilename(filename, 'archivo.txt')}"`);
+  }
   return res.status(200).send(String(text ?? ''));
 }
 
-module.exports = { sendSuccess, sendError, sendPng, sendMedia, sendFile, sendText, proxyStream, safeHeaderFilename, formatValueClean };
+module.exports = {
+  sendSuccess, sendError, sendPng, sendMedia, sendFile, sendText, proxyStream,
+  safeHeaderFilename, formatValueClean, wantsDownload, disposicion
+};
