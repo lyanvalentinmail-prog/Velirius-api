@@ -6,6 +6,7 @@ const http = require('http');
 const app = require('../src/server');
 const { CATEGORIES, totals } = require('../src/catalog');
 const { generateCanvas, CANVAS_IDS } = require('../src/utils/canvasEngine');
+const { sharp } = require('../src/utils/image');
 const { calculate, morseEncode, morseDecode } = require('../src/routes/tools');
 const { textLayer, measure, FAMILIES, FONTS_DIR } = require('../src/utils/textEngine');
 const { REACTION_LIST } = require('../src/utils/providers');
@@ -50,6 +51,17 @@ async function main() {
     const catCss = (await get(port, '/css/style.css')).body.toString();
     ok('Botón TEST despliega el panel hacia abajo', catJs.includes('function setOpen') && catJs.includes('tester-inner') && catCss.includes('grid-template-rows: 0fr') && catCss.includes('.tester.open'));
     ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('SUBIR FOTO'));
+
+    // ---- Portada (landing) estilo Delirius, con botón al dashboard ----
+    const landing = await get(port, '/');
+    const landingHtml = landing.body.toString();
+    ok('GET / (portada con INITIALIZE DASHBOARD)', landing.status === 200 && landingHtml.includes('INITIALIZE DASHBOARD') && landingHtml.includes('href="/home"'));
+    ok('La portada no es un redirect: es la primera pantalla', !landing.type.includes('text/html') === false && landingHtml.includes('landing'));
+
+    // ---- Opciones avanzadas plegadas en el probador ----
+    const advCount = CATEGORIES.reduce((n, c) => n + c.endpoints.reduce((m, e) => m + e.params.filter(p => p.advanced).length, 0), 0);
+    ok(`Opciones avanzadas marcadas (${advCount})`, advCount > 0 && catJs.includes('adv-toggle') && catJs.includes('adv-fields') && catCss.includes('.adv-toggle'));
+    ok('El campo de texto es multilínea (texto largo)', catJs.includes('<textarea data-param') && catCss.includes('.tester textarea'));
 
     const docs = JSON.parse((await get(port, '/docs')).body.toString());
     ok('GET /docs con las 6 categorías', docs.status === true && docs.endpoints === t.endpoints && docs.categories.length === CATEGORIES.length);
@@ -112,6 +124,13 @@ async function main() {
         ok(`canvas/${ep.id}`, false, e.message);
       }
     }
+
+    // ---- iqc: la burbuja crece con el texto (como WhatsApp) ----
+    const iqcCorto = await generateCanvas('iqc', { text: 'Hola' });
+    const iqcLargo = await generateCanvas('iqc', { text: 'Mira, te voy a contar algo que nunca le dije a nadie: cuando nos conocimos en aquel viaje yo ya sabía que esto iba a pasar, pero no quería aceptarlo porque me daba miedo perderte.' });
+    const hCorto = (await sharp(iqcCorto).metadata()).height;
+    const hLargo = (await sharp(iqcLargo).metadata()).height;
+    ok(`canvas/iqc crece con el texto (${hCorto} → ${hLargo})`, isPng(iqcCorto) && isPng(iqcLargo) && hLargo > hCorto + 200);
 
     // ---- Canvas por HTTP, con parámetros de estilo ----
     const via = await get(port, '/canvas/brat?text=Hola%20Velirius&color=ff2d55&size=1.4');

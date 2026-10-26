@@ -13,6 +13,11 @@ repartidos en **6 categorías**, lista para **Vercel** o **Render**.
   modificables**: campos de texto, listas desplegables (`select`), subida de foto desde la galería,
   ejecución sin salir de la página, abrir el endpoint directo y copiar la URL final.
   Tocando `TEST` otra vez el panel se cierra (solo uno abierto a la vez).
+- **Portada** (`/`) igual a la de Delirius: presentación, aviso y botón grande
+  **`INITIALIZE DASHBOARD`** que entra al dashboard (`/home`).
+- Los parámetros de estilo (`color`, `size`, `font`, `rotate`, `zoom`…) están **plegados** detrás del botón
+  **`⚙ OPCIONES AVANZADAS`** dentro del probador: solo se ven los campos que importan y el panel no queda
+  lleno. Los campos de texto libre se escriben en un **área multilínea** (texto largo sin scroll horizontal).
 - Páginas: `/anime` · `/canvas` · `/tools` · `/downloader` · `/searcher` · `/reactions`
   (los alias antiguos `/download` y `/search` redirigen a `/downloader` y `/searcher`).
 
@@ -89,8 +94,22 @@ porque **no depende de las tipografías del sistema** (fontconfig).
 
 Los canvas con plantilla de Drive están **calibrados con las coordenadas reales de cada imagen**
 (burbuja de cita de `iqc`, fila de `cuentatiktok`, cartel del pingüino, hoja de Bob Esponja, marco de
-`sebusca`…) y el texto de ejemplo de la plantilla se limpia antes de escribir el nuevo, para que el
-resultado se vea como la imagen original y no como un textbox encima.
+`sebusca`…).
+
+**El texto nunca lleva una caja de fondo.** El texto de ejemplo de la plantilla se borra detectando su
+caja real y repintando esa zona con el color mediano del propio fondo, con bordes difuminados; después
+se escribe el texto nuevo encima. Resultado: la letra se apoya directo sobre el cartel, el papel o la
+foto, sin el recuadro que se notaba antes.
+
+### Chat con burbuja que crece (`iqc`)
+
+`iqc` está armado **por partes**: bloque de cita (nombre + texto citado), bloque de mensaje y hora.
+
+- El mensaje se mide con las fuentes del repo y se parte en líneas como WhatsApp.
+- Si el mensaje es largo se agregan líneas y la **burbuja crece** como en WhatsApp.
+- El menú de abajo (Conservar / Responder / …) **baja** lo necesario y el alto de la imagen se ajusta.
+- La hora queda abajo a la derecha, igual que en la app.
+- La cita se recorta con `…` en una sola línea, como el reply real.
 
 | Endpoint | Plantilla (Drive) | Parámetros propios |
 |---|---|---|
@@ -103,7 +122,7 @@ resultado se vea como la imagen original y no como un textbox encima.
 | `/canvas/bratpinguino` | `BratPinguino.jpg` | `text` o `image`, `mode` + estilo |
 | `/canvas/ttp` | (generado) | `text`, `color`, `bg`, `size` |
 | `/canvas/attp` | (generado, WebM) | `text`, `size` |
-| `/canvas/iqc` | `iqc.jpg` | `text`, `quote`, `username`, `time` |
+| `/canvas/iqc` | `iqc.jpg` | `text` (la burbuja crece), `quote`, `username`, `time` + estilo |
 | `/canvas/cuentatiktok` | `CuentaTiktok.jpg` | `username`, `image`, `status` |
 | `/canvas/storyreply` | `StoryReply.jpg` | `url`, `text`, `color`, `size`, `zoom` |
 | `/canvas/absolutecinema` | `AbsoluteCinema.jpg` | `text`, `subtext`, `url`, `color`, `size` |

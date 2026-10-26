@@ -46,8 +46,32 @@ function avatars(req) {
   };
 }
 
-// ---------- / y /home ----------
-router.get('/', (req, res) => res.redirect('/home'));
+// ---------- / (portada) y /home (dashboard) ----------
+// Portada igual a la de Delirius: gif + presentación + botón INITIALIZE DASHBOARD.
+router.get('/', (req, res) => {
+  const base = absoluteUrl(req, '');
+  const body = `
+    <div class="landing">
+      <div class="hero-wrap">
+        <img class="hero" src="https://64.media.tumblr.com/b23db1a71574932c7aeac88889db2e26/5c99f1f3f43b892d-32/s400x600/1c207a89903c35489d1dc06d39713bc89dd9cc02.gif" alt="Velirius" loading="lazy" onerror="this.style.display='none'">
+      </div>
+      <h1 class="title">VELIRIUS</h1>
+      <div class="sync">Stay Vibing</div>
+      <p class="lead"><strong>Velirius</strong> is a free-access API designed to optimize workflows without the friction of <strong>API Keys</strong>. What started as a personal toolset has evolved into a public resource driven by the community.</p>
+      <p class="lead">Anime, Canvas, Tools, Downloader, Searcher and Reactions routers &mdash; all in one place, <strong>100% free</strong>, with no token and no rate-limit keys. Built on <strong>Node.js + Sharp</strong> so every image and sticker is generated on the fly.</p>
+      <blockquote class="quote">If you detect third parties commercializing access to this API, report it immediately. This resource is free and open-source for all developers.</blockquote>
+      <p class="lead small">Base URL: <code>${esc(base)}</code> &middot; ${totals().endpoints} endpoints in ${totals().routers} routers</p>
+      <a class="cta" href="/home">INITIALIZE DASHBOARD</a>
+      <div class="landing-links">
+        <a href="/information">Information</a>
+        <a href="/docs">JSON Docs</a>
+        <a href="${esc(config.githubUrl)}" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <div class="footer">&copy; 2026 | ${esc(config.storeFooter)}</div>
+    </div>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.send(layout({ title: 'Velirius API', body }));
+});
 // Alias antiguos → rutas nuevas
 router.get('/download', (req, res) => res.redirect('/downloader'));
 router.get('/search', (req, res) => res.redirect('/searcher'));
@@ -150,6 +174,7 @@ router.get('/docs', (req, res) => {
         params: e.params.map(p => ({
           name: p.name,
           required: !!p.required,
+          advanced: !!p.advanced,
           description: p.desc || '',
           ...(p.options ? { options: p.options.filter(Boolean) } : {})
         })),
@@ -188,6 +213,7 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
         desc: p.desc || '',
         required: !!p.required,
         options: p.options || null,
+        advanced: !!p.advanced,
         value: p.example === '__AVATAR__' ? a1 : p.example === '__AVATAR2__' ? a2 : (p.example ?? '')
       }))
     }))
