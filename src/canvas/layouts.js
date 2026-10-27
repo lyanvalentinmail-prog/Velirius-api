@@ -11,12 +11,10 @@
 // ➕ AGREGAR UN CANVAS: 1) src/canvas/generators/<id>.js  2) un bloque acá con sus
 //    medidas  3) la ficha en src/catalog/canvas.js. Guía: CONTRIBUTING.md.
 
-// ---------- Tipografía de la familia BRAT (una sola definición) ----------
-// Inter 700, minúsculas, interlineado apretado y letras levemente juntas: así se
-// ve el sticker original de brat. TODAS las canvas brat* (`brat`, `bratcoyote`,
-// `bratanime`…) tienen que usar exactamente esta, cambiándola acá una sola vez.
-// `align` lo decide cada canvas (el cartel del coyote va centrado).
-const BRAT_TYPE = {
+// ---------- Tipografía original del formato largo de letras de canciones ----------
+// El PNG cuadrado y su video tienen su propio estilo de referencia más abajo;
+// las letras de canciones conservan el diseño previo para no alterar ese endpoint.
+const BRAT_LYRICS_TYPE = {
   family: 'sans',
   weight: 700,
   lineHeight: 1.08,
@@ -28,10 +26,29 @@ const LAYOUTS = {
   brat: {
     label: 'Brat',
     parts: {
+      // Medidas y proporciones de la imagen de referencia; el video usa 512 px.
+      canvas: { width: 736, height: 736, bg: '#ffffff' },
+      text: {
+        box: { x0: 0.055, y0: 0.055, x1: 0.995, y1: 0.945 },
+        font: {
+          family: 'sans', weight: 400, maxFont: 368, lineHeight: 1.07,
+          spacing: 0, align: 'start', uppercase: false,
+          horizontalScale: 0.74, emojiScale: 0.93, emojiImageScale: 0.87, emojiOffsetX: -0.02, emojiOffsetY: 0.72
+        },
+        fill: '#000000',
+        offsetY: 0.016
+      }
+    }
+  },
+
+  // Diseño anterior reservado para las letras de canciones: cambiar brat y
+  // bratvideo no debe alterar el formato largo de /downloader/lyrics.
+  bratlyrics: {
+    label: 'Brat de letras de canciones',
+    parts: {
       canvas: { width: 512, height: 512, bg: '#ffffff' },
       text: {
-        box: { x0: 0.04, y0: 0.06, x1: 0.96, y1: 0.94 },
-        font: { ...BRAT_TYPE, maxFont: 78, maxLines: 8, align: 'start' },
+        font: { ...BRAT_LYRICS_TYPE, maxFont: 78, maxLines: 8, align: 'start' },
         fill: '#000000',
         pad: 0.06
       }

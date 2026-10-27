@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node scripts/smoke.js && node scripts/test-endpoints.js && node scripts/test-integrations.js && node scripts/test-providers.js",
+    "test": "node scripts/smoke.js && node scripts/test-endpoints.js && node scripts/test-integrations.js && node scripts/test-providers.js && node scripts/test-brat.js",
     "check": "node scripts/validate-catalog.js",
     "test:smoke": "node scripts/smoke.js",
+    "test:brat": "node scripts/test-brat.js",
     "test:endpoints": "node scripts/test-endpoints.js",
     "test:providers": "node scripts/test-providers.js",
     "lint": "eslint src scripts api public/js eslint.config.js",

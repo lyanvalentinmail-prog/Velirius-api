@@ -203,26 +203,29 @@ queda el brat normal, plano.
 
 ### Brat y bratvideo (palabras por pantalla)
 
-`brat` y `bratvideo` usan **la misma tipografía** (`src/canvas/layouts.js` → `brat`): minúsculas,
-Inter 700, interlineado apretado, texto alineado arriba a la izquierda y grano sutil. Comparten los
-mismos parámetros, así el video se ve igual que la imagen:
+`brat` y `bratvideo` comparten el diseño de las referencias de Drive: texto negro, regular y
+condensado, alineado a la izquierda y centrado verticalmente sobre fondo blanco, con emojis Twemoji
+**a color** y un desenfoque suave. El texto se ajusta al espacio sin cortar las palabras. El PNG mide
+736 × 736 y el MP4 512 × 512 por defecto; `canvas.size` cambia el lado de ambos (en el video se
+redondea hacia arriba si es impar para mantener compatibilidad con H.264).
 
 - `text` — la frase (en el video, palabra por palabra).
-- `bg`, `color`, `size`, `uppercase`, `spacing`, `font`, `canvas.size`.
+- `bg`, `color`, `size`, `uppercase`, `spacing`, `font`, `rotate`, `x`, `y`, `canvas.size`.
+- También se pueden ajustar partes como `text.align`, `text.weight`, `text.size` y `text.fill`.
+  La escala es un máximo: si el texto ya llena el área, se reduce lo necesario para que entre.
 
 `bratvideo` además pagina el texto:
 
 - **Máximo 5 palabras por pantalla** (`?words=1..8` para cambiarlo).
-- Las palabras de la página aparecen **de a una** y, cuando la página se completa, se queda quieta un
-  instante y aparece la siguiente tanda. Nunca se ven más de 5 palabras a la vez.
-- El tamaño de letra se calcula **una sola vez** (el que entra en la página más larga), así el texto
-  no baila ni cambia de tamaño entre frames.
+- Aparece una palabra cada **0,4 s**. Al completar la página, permanece visible **1,2 s** antes de
+  pasar a la siguiente; se aceptan hasta ocho páginas y los primeros 200 grafemas del texto.
+- El tamaño y el salto de línea se recalculan en cada aparición, como en el video de referencia.
 
 | Endpoint | Plantilla (Drive) | Parámetros propios |
 |---|---|---|
 | `/canvas/quotly` | `quotly.png` | `image`, `username`, `text`, `bg` + estilo |
-| `/canvas/brat` | (generado) | `text`, `bg`, `color`, `size`, `rotate`, `uppercase` + tipografía (`text.*`) |
-| `/canvas/bratvideo` | (generado, MP4) | `text`, `words` (5 por pantalla), `size`, `bg`, `color`, `uppercase` |
+| `/canvas/brat` | `brat.png` (referencia) | `text`, `bg`, `color`, `size`, `rotate`, `uppercase` + tipografía (`text.*`) |
+| `/canvas/bratvideo` | `BratVideo.mp4` (referencia) | `text`, `words` (5 por pantalla), `size`, `bg`, `color`, `uppercase` + tipografía (`text.*`) |
 | `/canvas/bratestirado` | (generado) | `text`, `color`, `size` + lente esférica (`lens.stretch`, `lens.aspect`, `lens.radius`, `lens.y`) |
 | `/canvas/bratanime` | `bratanime.png` | `text` + estilo |
 | `/canvas/bratcoyote` | `bratcoyote.png` | `text` en letra a mano (familia `hand`) + estilo (`font=sans` para cambiarla) |
