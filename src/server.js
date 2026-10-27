@@ -27,6 +27,7 @@ app.use((req, res, next) => {
 app.use(require('./routes/pages'));
 
 // API
+app.use(require('./utils/requestContext').requestContext);
 app.use('/canvas', require('./routes/canvas'));
 app.use('/anime', require('./routes/anime'));
 app.use('/reactions', require('./routes/reactions'));
@@ -53,9 +54,16 @@ app.use((req, res) => {
 });
 
 // Errores
-app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = Number(err.status || err.statusCode);
+  if (status >= 400 && status < 500) {
+    const message = status === 413 ? 'El cuerpo de la petición es demasiado grande'
+      : status === 400 ? 'El cuerpo de la petición no es válido' : 'Petición inválida';
+    return sendError(res, status, message);
+  }
   console.error('[server]', err);
-  if (!res.headersSent) return sendError(res, 500, 'Error interno del servidor');
+  return sendError(res, 500, 'Error interno del servidor');
 });
 
 if (require.main === module) {

@@ -16,6 +16,7 @@ const COBALT = require('./cobalt');
 // YouTube "de verdad": youtubei.js resuelve firmas y n-token (los respaldos
 // Invidious/Piped quedaron casi todos con la API apagada).
 const YT = require('./youtube');
+const { selectVideoQuality } = require('./videoQuality');
 
 const clampLimit = (v, def = 10, max = 25) => {
   const n = parseInt(v, 10);
@@ -205,7 +206,11 @@ async function picre(amount = 1) {
   for (let i = 0; i < n; i++) {
     const j = await fetchJson('https://pic.re/image.json', { timeoutMs: 5000 });
     const image = httpsUrl(j?.file_url);
-    if (image && !vistos.has(image)) {
+    const rating = String(j?.rating || '').toLowerCase();
+    const tags = Array.isArray(j?.tags) ? j.tags.map(t => String(t).toLowerCase()) : [];
+    const safe = ['g', 'general', 's', 'safe'].includes(rating) || (!rating && j?.is_nsfw === false);
+    const unsafe = tags.some(t => /^(?:nsfw|explicit|nude|nudity|hentai|porn|sexual)$/i.test(t));
+    if (image && safe && !unsafe && !vistos.has(image)) {
       vistos.add(image);
       list.push({
         image,
@@ -272,7 +277,7 @@ async function animeImage(kind, { provider = null, amount = 1 } = {}) {
 
   if (provider) {
     const name = Object.keys(sources).find(k => k.toLowerCase() === String(provider).toLowerCase());
-    if (!name) throw new Error(`Proveedor no disponible para ${key}. Usa: ${Object.keys(sources).join(', ')}`);
+    if (!name) { const err = new Error(`Proveedor no disponible para ${key}. Usa: ${Object.keys(sources).join(', ')}`); err.status = 400; throw err; }
     const images = await sources[name](amount);
     return { kind: key, provider: name, count: images.length, images };
   }
@@ -379,11 +384,11 @@ const REACTION_LIST = Object.keys(REACTIONS);
  */
 async function reaction(name, { provider = null } = {}) {
   const key = String(name || '').toLowerCase();
-  if (!REACTION_LIST.includes(key)) throw new Error(`Reacción desconocida "${name}". Usa: ${REACTION_LIST.join(', ')}`);
+  if (!REACTION_LIST.includes(key)) { const err = new Error(`Reacción desconocida "${name}". Usa: ${REACTION_LIST.join(', ')}`); err.status = 404; throw err; }
 
   if (provider) {
     const fn = REACTION_PROVIDERS[String(provider).toLowerCase()];
-    if (!fn) throw new Error(`Proveedor no disponible. Usa: ${Object.keys(REACTION_PROVIDERS).join(', ')}`);
+    if (!fn) { const err = new Error(`Proveedor no disponible. Usa: ${Object.keys(REACTION_PROVIDERS).join(', ')}`); err.status = 400; throw err; }
     return { reaction: key, label: REACTIONS[key], provider: String(provider).toLowerCase(), gif: await fn(key) };
   }
 
@@ -471,10 +476,30 @@ async function tiktokSearch(query, limit) {
 }
 
 // ---------------- YouTube (InnerTube + Invidious/Piped) ----------------
+// Comprobar el hostname real, no una subcadena de la URL (puede ser engañosa).
+function hostIs(host, domain) {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+function parsePublicLink(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    return url;
+  } catch (_) { return null; }
+}
 function youtubeId(input) {
-  const s = String(input || '');
-  const m = s.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|live\/|embed\/|music\?v=))([\w-]{11})/) || s.match(/^([\w-]{11})$/);
-  return m ? m[1] : null;
+  const value = String(input || '').trim();
+  if (/^[\w-]{11}$/.test(value)) return value;
+  const url = parsePublicLink(value) || parsePublicLink(`https://${value}`);
+  if (!url) return null;
+  const host = url.hostname.toLowerCase();
+  let id = null;
+  if (hostIs(host, 'youtu.be')) id = url.pathname.split('/').filter(Boolean)[0];
+  else if (hostIs(host, 'youtube.com') || hostIs(host, 'youtube-nocookie.com')) {
+    if (/^\/(?:watch|music)\/?$/.test(url.pathname)) id = url.searchParams.get('v');
+    else id = (url.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]+)/) || [])[1];
+  }
+  return /^[\w-]{11}$/.test(id || '') ? id : null;
 }
 const INVIDIOUS_FALLBACK = ['https://yt.chocolatemoo53.com'];
 let invidiousCache = { at: 0, list: INVIDIOUS_FALLBACK };
@@ -572,10 +597,11 @@ async function youtubeSearch(query, limit) {
   return { results: value, source };
 }
 
-function pickAudio(formats) {
-  const audios = formats.filter(f => f.hasAudio && !f.hasVideo);
+function pickAudio(formats = []) {
+  const available = formats.filter(f => f.hasAudio && f.url);
+  const audios = available.filter(f => !f.hasVideo);
   return audios.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]
-    || formats.filter(f => f.hasAudio).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]
+    || available.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]
     || null;
 }
 function pickVideo(formats, quality = 720) {
@@ -585,6 +611,13 @@ function pickVideo(formats, quality = 720) {
   if (muxed[0]) return muxed.sort((a, b) => (a.height || 0) - (b.height || 0))[0];
   const vids = formats.filter(f => f.hasVideo).sort((a, b) => Math.abs((a.height || 0) - quality) - Math.abs((b.height || 0) - quality));
   return vids[0] || null;
+}
+
+/** Mejor video que realmente puede acompañarse de audio. */
+function bestPlayableVideo(formats, quality = 0, requireUrl = false) {
+  const audio = pickAudio(formats);
+  return selectVideoQuality(formats.filter(f => f.hasVideo && (!requireUrl || f.url)
+    && (f.hasAudio || audio?.url)), quality);
 }
 
 /**
@@ -713,13 +746,20 @@ async function youtubePlayable(id, quality = 0) {
   try {
     const info = await youtubeStreams(id);
     const audio = pickAudio(info.formats);
-    const video = pickVideo(info.formats, q || 720);
-    if (!video && !audio) throw new Error('sin formatos');
-    if (video?.hasAudio) {
-      return { url: video.url, hasAudio: true, height: video.height || null, quality: video.quality || null, muxed: false, source: info.source };
+    const video = bestPlayableVideo(info.formats, q, true);
+    if (!video) throw new Error('sin video con audio disponible');
+    if (video.hasAudio) {
+      return { url: video.url, hasAudio: true, height: video.height || null, quality: video.quality || null, mime: video.mime || 'video/mp4', muxed: false, source: info.source };
     }
-    // Video sin audio: se avisa (el respaldo no puede pegarlos sin ffmpeg).
-    return { url: (video || audio).url, hasAudio: Boolean(video?.hasAudio), height: video?.height || null, quality: video?.quality || null, muxed: false, source: info.source, audioUrl: audio?.url || null };
+    try {
+      const file = await YT.pegar(video.url, audio.url, id);
+      return { file, hasAudio: true, height: video.height || null, quality: video.quality || null, mime: 'video/mp4', muxed: true, source: info.source };
+    } catch (e) {
+      // La calidad inferior progresiva es preferible a un video mudo.
+      const progressive = selectVideoQuality(info.formats.filter(f => f.url && f.hasVideo && f.hasAudio), q);
+      if (progressive) return { url: progressive.url, hasAudio: true, height: progressive.height || null, quality: progressive.quality || null, mime: progressive.mime || 'video/mp4', muxed: false, source: info.source };
+      throw e;
+    }
   } catch (e) { errores.push(`respaldo: ${e.message}`); }
 
   const err = new Error('No se pudo obtener un video reproducible de YouTube.');
@@ -847,7 +887,7 @@ function parseFacebookHtml(html) {
 async function resolverFbWatch(url) {
   if (!/(?:fb\.watch|fb\.me|facebook\.com\/share)/i.test(url)) return url;
   try {
-    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_MOBILE } }, 12000);
+    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_MOBILE }, publicOnly: true }, 12000);
     await res.body?.cancel?.();
     return res.url || url;
   } catch (_) {
@@ -857,12 +897,17 @@ async function resolverFbWatch(url) {
 
 async function facebookDownload(url) {
   const original = String(url || '').trim();
-  if (!/facebook\.com|fb\.watch|fb\.me/i.test(original)) {
+  const parsed = parsePublicLink(original);
+  if (!parsed || !['facebook.com', 'fb.watch', 'fb.me'].some(domain => hostIs(parsed.hostname.toLowerCase(), domain))) {
     const err = new Error('URL de Facebook inválida (usa facebook.com/… o fb.watch/…)');
     err.status = 400;
     throw err;
   }
   const target = await resolverFbWatch(original);
+  const resolved = parsePublicLink(target);
+  if (!resolved || !['facebook.com', 'fb.watch', 'fb.me'].some(domain => hostIs(resolved.hostname.toLowerCase(), domain))) {
+    throw new Error('El enlace de Facebook redirigió a un dominio no permitido');
+  }
   const id = fbVideoId(target);
   const propio = Boolean(String(process.env.COBALT_API_URL || process.env.COBALT_API_URLS || '').trim());
   const productores = [];
@@ -880,7 +925,7 @@ async function facebookDownload(url) {
   if (propio && COBALT.disponible()) productores.push(porCobalt);
   productores.push(
     ['facebook-mobile', async () => {
-      const html = await fetchText(target, { headers: { 'User-Agent': UA_MOBILE, 'Accept-Language': 'en-US,en;q=0.9' }, timeoutMs: 20000 });
+      const html = await fetchText(target, { headers: { 'User-Agent': UA_MOBILE, 'Accept-Language': 'en-US,en;q=0.9' }, timeoutMs: 20000, publicOnly: true });
       const parsed = parseFacebookHtml(html);
       if (!parsed.hd && !parsed.sd) throw new Error('sin video público (¿es privado?)');
       return parsed;
@@ -946,8 +991,10 @@ const IG_MIRRORS = [
   'ddinstagram.com'
 ];
 
-function igShortcode(url) {
-  const m = String(url || '').match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([-A-Za-z0-9_]+)/);
+function igShortcode(input) {
+  const url = parsePublicLink(input);
+  if (!url || !hostIs(url.hostname.toLowerCase(), 'instagram.com')) return null;
+  const m = url.pathname.match(/^\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([-A-Za-z0-9_]+)/);
   return m ? m[1] : null;
 }
 function igKind(url) {
@@ -978,7 +1025,9 @@ function parseInstagramHtml(html, code = null) {
     || metaContent(texto, 'og:video:url');
   const image = metaContent(texto, 'og:image:secure_url') || metaContent(texto, 'og:image');
   if (video) add('video', video, image);
-  // carrusel / varios slides: display_url y el JSON-LD del embed
+  else if (image) add('image', image);
+  // Carrusel / varios slides: incluir también og:image y evitar duplicados.
+  // display_url y el JSON-LD del embed
   const displays = [...texto.matchAll(/"display_url":"([^"]+)"/g)].map(m => m[1]);
   const contentUrls = [...texto.matchAll(/"contentUrl":"([^"]+)"/g)].map(m => m[1]);
   const embeds = [...texto.matchAll(/<img[^>]+class="[^"]*EmbeddedMediaImage[^"]*"[^>]*src="([^"]+)"/gi)]
@@ -1063,7 +1112,9 @@ async function instagramDownload(url) {
       if (e.details) errores.push(...e.details);
     }
   }
-  const ultimo = await rapido([['instagram-embed', desdeEmbed], ['cobalt', porCobalt]]);
+  const finales = [['instagram-embed', desdeEmbed]];
+  if (COBALT.disponible()) finales.push(['cobalt', porCobalt]);
+  const ultimo = await rapido(finales);
   if (ultimo) return ultimo;
 
   const err = new Error('Ningún mirror de Instagram respondió. Prueba de nuevo o configura COBALT_API_URL.');
@@ -1197,9 +1248,15 @@ const PIN_HEADERS = {
   'X-Pinterest-PWS-Handler': 'www/index.js'
 };
 
-function pinterestPinId(url) {
-  const s = String(url || '');
-  const m = s.match(/pinterest\.[a-z.]+\/pin\/(\d+)/i) || s.match(/\/pin\/(\d+)/) || s.match(/^(\d{6,})$/);
+function pinterestHost(host) {
+  return hostIs(host, 'pin.it') || /(?:^|\.)pinterest\.(?:com|[a-z]{2}|(?:com|co)\.[a-z]{2})$/i.test(host);
+}
+function pinterestPinId(input) {
+  const value = String(input || '').trim();
+  if (/^\d{6,}$/.test(value)) return value;
+  const url = parsePublicLink(value);
+  if (!url || !pinterestHost(url.hostname.toLowerCase())) return null;
+  const m = url.pathname.match(/\/pin\/(\d+)(?:\/|$)/i);
   return m ? m[1] : null;
 }
 
@@ -1281,7 +1338,8 @@ async function pinterestSearch(query, limit = 20, page = 1) {
 /** Descarga de un pin: por ID (API interna) o por la URL del pin (og:video/og:image). */
 async function pinterestDownload(url) {
   const id = pinterestPinId(url);
-  if (!id && !/pinterest\.[a-z.]+/i.test(String(url || ''))) {
+  const parsed = parsePublicLink(url);
+  if (!id && (!parsed || !pinterestHost(parsed.hostname.toLowerCase()))) {
     const err = new Error('URL de Pinterest inválida (usa https://www.pinterest.com/pin/<id>/ o pin.it/…)');
     err.status = 400;
     throw err;
@@ -1312,7 +1370,7 @@ async function pinterestDownload(url) {
   }
   productores.push(['pinterest-html', async () => {
     const target = id ? `https://www.pinterest.com/pin/${id}/` : String(url);
-    const html = await fetchText(target, { headers: { 'User-Agent': UA_DESKTOP, 'Accept-Language': 'es-UY,es;q=0.9' }, timeoutMs: 15000 });
+    const html = await fetchText(target, { headers: { 'User-Agent': UA_DESKTOP, 'Accept-Language': 'es-UY,es;q=0.9' }, timeoutMs: 15000, publicOnly: true });
     const video = metaContent(html, 'og:video:secure_url') || metaContent(html, 'og:video')
       || (html.match(/"contentUrl":"([^"]+\.mp4[^"]*)"/) || [])[1];
     const image = metaContent(html, 'og:image:secure_url') || metaContent(html, 'og:image')
@@ -1426,6 +1484,34 @@ function parseDuckDuckGoLite(html, limit) {
     if (out.some(r => r.url === url)) continue;
     out.push({ title, url, snippet: snips[idx] || '' });
     idx++;
+  }
+  return out;
+}
+
+/** DuckDuckGo HTML: resultados en enlaces result__a y extractos result__snippet. */
+function parseDuckDuckGo(html, limit) {
+  const out = [];
+  const texto = String(html || '');
+  const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(texto)) && out.length < limit) {
+    if (!/class\s*=\s*["'][^"']*\bresult__a\b/i.test(m[1])) continue;
+    const href = (m[1].match(/href\s*=\s*["']([^"']+)["']/i) || [])[1];
+    if (!href) continue;
+    let url;
+    try {
+      const parsed = new URL(href.replace(/&amp;/gi, '&'), 'https://duckduckgo.com');
+      const redirect = /(^|\.)duckduckgo\.com$/i.test(parsed.hostname) && parsed.searchParams.get('uddg');
+      url = new URL(redirect || parsed.href);
+    } catch (_) { continue; }
+    if (!['http:', 'https:'].includes(url.protocol) || /(^|\.)duckduckgo\.com$/i.test(url.hostname)) continue;
+    const title = stripTags(m[2]);
+    if (!title || out.some(r => r.url === url.href)) continue;
+    const after = texto.slice(re.lastIndex, re.lastIndex + 4000);
+    const next = after.search(/class\s*=\s*["'][^"']*\bresult__a\b/i);
+    const section = next < 0 ? after : after.slice(0, next);
+    const snippet = section.match(/<([a-z0-9]+)\b[^>]*class\s*=\s*["'][^"']*\bresult__snippet\b[^"']*["'][^>]*>([\s\S]*?)<\/\1>/i);
+    out.push({ title, url: url.href, snippet: snippet ? stripTags(snippet[2]).slice(0, 260) : '' });
   }
   return out;
 }
@@ -1548,7 +1634,7 @@ module.exports = {
   translate,
   // downloader
   tiktokDownload, tiktokSearch, mapTikTokVideo,
-  youtubeId, youtubeSearch, youtubeStreams, resolveYoutubeTarget, pickAudio, pickVideo,
+  youtubeId, youtubeSearch, youtubeStreams, resolveYoutubeTarget, pickAudio, pickVideo, bestPlayableVideo,
   youtubePlayable, youtubeAudio, youtubeAudioFile, normalizarCalidad,
   facebookDownload, instagramDownload,
   lyricsSearch, lyricFor,
@@ -1556,5 +1642,5 @@ module.exports = {
   // searcher
   googleSearch, wikipediaSearch,
   pinterestSearch, pinterestDownload, mapPinterestPin, pinterestPinId, parseInstagramHtml, parseFacebookHtml,
-  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseBing
+  parseGoogle, parseGoogleModerno, parseDuckDuckGoLite, parseDuckDuckGo, parseBing
 };

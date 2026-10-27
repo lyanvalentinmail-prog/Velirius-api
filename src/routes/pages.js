@@ -292,7 +292,9 @@ router.get('/:category(anime|canvas|tools|downloader|searcher|reactions)', (req,
     <div class="list">${rows}</div>
     <div class="footer">© 2026 | ${esc(config.brand)}</div>`;
 
-  const script = `<script>window.VELIRIUS=${JSON.stringify(testerData)};</script><script src="/js/category.js"></script>`;
+  // JSON insertado en HTML: escapar '<' impide cerrar el script desde los datos.
+  const safeData = JSON.stringify(testerData).replace(/</g, '\\u003c');
+  const script = `<script>window.VELIRIUS=${safeData};</script><script src="/js/category.js"></script>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   return res.send(layout({ title: `${config.name} - ${cat.name}`, body, script }));
 });

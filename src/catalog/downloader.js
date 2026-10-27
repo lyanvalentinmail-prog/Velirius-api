@@ -71,7 +71,8 @@ module.exports = {
       O('bg', '', 'Sólo brat: color de fondo hex (ej. ffffff)'),
       O('color', '', 'Sólo brat: color del texto hex (ej. 000000)'),
       O('size', '1', 'Sólo brat: escala del texto (0.5 - 2)'),
-      O('width', '512', 'Sólo brat: ancho del PNG en píxeles')
+      O('width', '512', 'Sólo brat: ancho del PNG en píxeles'),
+      O('maxHeight', '6000', 'Sólo brat: alto máximo del PNG (100-12000 px)')
     ] }
   ]
 };

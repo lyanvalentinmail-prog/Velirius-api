@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const { fetchBuffer } = require('./http');
+const { currentRequest } = require('./requestContext');
 
 const ROOT = path.join(__dirname, '..', '..');
 const TEMPLATES_DIR = path.join(ROOT, 'assets', 'templates');
@@ -10,6 +11,7 @@ const DEFAULTS_DIR = path.join(ROOT, 'assets', 'defaults');
 
 const imageCache = new Map();
 const MAX_CACHE = 30;
+const CACHE_TTL = 5 * 60 * 1000;
 
 function escapeXml(s = '') {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -34,14 +36,72 @@ function wrapText(text, maxChars = 18, maxLines = 4) {
   return lines;
 }
 
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_IMAGE_PIXELS = 40 * 1000 * 1000;
+const IMAGE_FORMATS = new Set(['jpeg', 'png', 'webp', 'gif', 'heif', 'tiff']);
+
+async function validateImageBuffer(buffer) {
+  if (!buffer?.length || buffer.length > MAX_IMAGE_BYTES) throw imagenError('Imagen vacía o demasiado grande', 'Máximo 15 MB');
+  try {
+    const img = sharp(buffer, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' });
+    const meta = await img.metadata();
+    if (!IMAGE_FORMATS.has(meta.format) || !meta.width || !meta.height || meta.width * meta.height > MAX_IMAGE_PIXELS ||
+        (meta.format === 'heif' && meta.compression !== 'av1')) throw new Error('formato o dimensiones no permitidos');
+    // metadata() sólo lee la cabecera; stats() también detecta archivos truncados.
+    await img.stats();
+    return meta;
+  } catch (_) {
+    throw imagenError('El archivo no es una imagen válida o supera el límite de dimensiones', 'Usá JPEG, PNG, WebP, GIF, AVIF o TIFF (máx. 40 megapíxeles)');
+  }
+}
+
+function localImage(raw) {
+  const ctx = currentRequest();
+  if (!ctx) return null;
+  let url;
+  try { url = new URL(raw); } catch (_) { return null; }
+  if (!ctx.hosts.includes(url.host.toLowerCase())) return null;
+  const upload = url.pathname.match(/^\/upload\/([a-f0-9]+)\/?$/i);
+  if (upload) {
+    const file = require('./uploadStore').get(upload[1]);
+    if (!file) throw imagenError('Esa imagen ya no está disponible', 'Las subidas duran 30 minutos: vuelve a subirla');
+    return file.buffer;
+  }
+  if (['/img/default-avatar.jpg', '/img/default-avatar2.jpg'].includes(url.pathname)) {
+    return fs.readFileSync(path.join(ROOT, 'public', url.pathname.slice(1)));
+  }
+  return null;
+}
+
 async function loadImageBuffer(url, fallbackFile = 'avatar1.jpg') {
-  const raw = normalizeImageUrl(url);
+  // Algunos generadores usan una sola ranura. Si se mandan varias fotos,
+  // también reciben una grilla en lugar de concatenar URLs inválidas.
+  const inputs = Array.isArray(url) ? url : (typeof url === 'string' && !/^\s*data:/i.test(url) ? url.split(/[,;|\r\n]+/) : [url]);
+  const images = inputs.map(v => String(v ?? '').trim()).filter(Boolean).slice(0, 10);
+  if (images.length > 1) {
+    const buffers = await Promise.all(images.map(value => loadImageBuffer(value, fallbackFile)));
+    const cols = Math.ceil(Math.sqrt(buffers.length));
+    const rows = Math.ceil(buffers.length / cols);
+    const width = 1024, height = 1024;
+    const pieces = await Promise.all(buffers.map(async (buffer, i) => {
+      const left = Math.floor((i % cols) * width / cols), top = Math.floor(Math.floor(i / cols) * height / rows);
+      const right = Math.floor(((i % cols) + 1) * width / cols), bottom = Math.floor((Math.floor(i / cols) + 1) * height / rows);
+      return { input: await sharp(buffer).rotate().resize(right - left, bottom - top, { fit: 'cover' }).png().toBuffer(), left, top };
+    }));
+    return sharp({ create: { width, height, channels: 4, background: '#ffffff' } }).composite(pieces).png().toBuffer();
+  }
+  const raw = normalizeImageUrl(images[0] || '');
   // Sin imagen elegida → foto predeterminada (comportamiento normal del canvas).
   if (!raw) return fs.readFileSync(path.join(DEFAULTS_DIR, fallbackFile));
-  if (raw.startsWith('data:')) {
-    const b64 = raw.split(',')[1] || '';
-    const buf = Buffer.from(b64, 'base64');
-    if (!buf.length) throw imagenError('La imagen enviada está vacía', 'Revisa el archivo de tu galería');
+  if (/^data:/i.test(raw)) {
+    const match = /^data:image\/[\w.+-]+;base64,([\s\S]+)$/i.exec(raw);
+    if (!match) throw imagenError('La imagen enviada no es un data URL válido', 'Usá data:image/…;base64,…');
+    const encoded = match[1].replace(/\s+/g, '');
+    if (!/^[a-z0-9+/]*={0,2}$/i.test(encoded) || encoded.length % 4 === 1) {
+      throw imagenError('La imagen no es base64 válido', 'Revisá el archivo o volvé a subirlo');
+    }
+    const buf = Buffer.from(encoded, 'base64');
+    await validateImageBuffer(buf);
     return buf;
   }
   if (!/^https?:\/\//i.test(raw)) {
@@ -52,17 +112,24 @@ async function loadImageBuffer(url, fallbackFile = 'avatar1.jpg') {
       'Usa un link que empiece con http:// o https://, o sube la foto desde Galería'
     );
   }
-  if (imageCache.has(raw)) return imageCache.get(raw);
+  const own = localImage(raw);
+  if (own) return own;
+  // Las subidas caducan a los 30 minutos: nunca conservar una copia de ellas.
+  const isUpload = /^\/upload\/[a-f0-9]+\/?$/i.test(new URL(raw).pathname);
+  const cached = !isUpload && imageCache.get(raw);
+  if (cached && Date.now() - cached.at < CACHE_TTL) return cached.buffer;
+  imageCache.delete(raw);
   let buf;
   try {
-    buf = await fetchBuffer(raw, { timeoutMs: 15000, maxBytes: 15 * 1024 * 1024 });
+    buf = await fetchBuffer(raw, { timeoutMs: 15000, maxBytes: 15 * 1024 * 1024, publicOnly: true });
   } catch (e) {
     throw imagenError(
       `No se pudo descargar la imagen (${e.message})`,
       'Revisa que el link sea público y directo a la imagen (.jpg, .png…)'
     );
   }
-  imageCache.set(raw, buf);
+  await validateImageBuffer(buf);
+  if (!isUpload) imageCache.set(raw, { buffer: buf, at: Date.now() });
   while (imageCache.size > MAX_CACHE) imageCache.delete(imageCache.keys().next().value);
   return buf;
 }
@@ -186,7 +253,7 @@ function hexToRgb(hex, fallback = '#ffffff') {
 }
 
 module.exports = {
-  sharp, escapeXml, wrapText, loadImageBuffer, templateBuffer, templateMeta,
+  sharp, escapeXml, wrapText, loadImageBuffer, validateImageBuffer, templateBuffer, templateMeta,
   textSvg, svgBuffer, svgToPng, shapedImage, circleImage, heartImage, fitTextLines, hexToRgb,
   TEMPLATES_DIR, DEFAULTS_DIR
 };

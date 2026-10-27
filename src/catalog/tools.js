@@ -41,6 +41,7 @@ module.exports = {
       S('format', 'png', 'Formato de salida', ['png', 'jpg', 'webp', 'avif']),
       O('quality', '90', 'Calidad (1-100) para jpg/webp/avif'),
       O('bg', '', 'Color de fondo para los bordes (ej. ffffff)'),
+      O('json', 'false', 'true = metadatos y URL de la imagen'),
       O('download', 'false', 'true = baja el archivo como adjunto')
     ] },
     { id: 'tts', desc: 'TextToSpeech: convierte texto en un MP3 de voz', media: 'audio', params: [

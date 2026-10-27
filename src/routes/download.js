@@ -50,14 +50,17 @@ async function enviarVideo(req, res, playable, filename) {
  */
 async function videoConAudio(info, quality) {
   const q = P.normalizarCalidad(quality);
-  const candidato = P.pickVideo(info.formats, q || 720);
-  // El progresivo sirve si ya trae audio y, cuando se pidió una calidad concreta,
-  // si llega a esa altura. Si no, youtubePlayable arma el MP4 de esa calidad.
-  const alcanza = !q || (candidato?.height || 0) >= q;
-  if (candidato?.url && candidato.hasAudio && alcanza) {
-    return { ...candidato, hasAudio: true, muxed: false, source: info.source || null };
+  const best = P.bestPlayableVideo(info.formats, q);
+  if (best?.url && best.hasAudio) {
+    return { ...best, hasAudio: true, muxed: false, source: info.source || null };
   }
-  return P.youtubePlayable(info.id, q);
+  try {
+    return await P.youtubePlayable(info.id, q);
+  } catch (e) {
+    const fallback = P.pickVideo(info.formats, q || Number.MAX_SAFE_INTEGER);
+    if (fallback?.url && fallback.hasAudio) return { ...fallback, hasAudio: true, muxed: false, source: info.source || null };
+    throw e;
+  }
 }
 
 /**
@@ -259,7 +262,8 @@ router.get(['/mp3', '/ytmp3'], handle(async (req, res) => {
 
   const query = `url=${encodeURIComponent(`https://www.youtube.com/watch?v=${info.id}`)}`;
   const urls = urlsAudio(req, '/downloader/mp3', query);
-  const audio = await audioDe(info).catch(() => null);
+  const audio = await audioDe(info);
+  if (!audio?.url) throw new Error('No se encontró audio para este video');
   return sendSuccess(res, {
     id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
     audio: {
@@ -324,47 +328,49 @@ router.get('/play', handle(async (req, res) => {
   const query = String(req.query.query || req.query.q || req.query.text || '').trim();
   if (!query) return sendError(res, 400, 'Falta el parámetro query', 'Ejemplo: /downloader/play?query=Lisa+Money');
   const directo = wantDirect(req, ['true', 'mp3', 'audio', '1']);
-  const urls = urlsAudio(req, '/downloader/play', `query=${encodeURIComponent(query)}`);
   const errores = [];
-
-  // Cuántos resultados de YouTube se prueban (1-5, 3 por defecto): así la
-  // canción completa sale aunque el primer video tenga el audio bloqueado.
   const intentos = Math.max(1, Math.min(5, parseInt(req.query.tries ?? req.query.intentos, 10) || 3));
+  const urls = urlsAudio(req, '/downloader/play', `query=${encodeURIComponent(query)}&tries=${intentos}`);
 
-  // 1) YouTube → MP3 completo.
+  // No alcanza con conseguir la ficha del video: también debe poder obtenerse
+  // su audio. Si falla cualquiera de los dos pasos, se intenta el siguiente.
   let info = null;
+  let audio = null;
   try {
     const search = await P.youtubeSearch(query, intentos);
-    const candidatos = (search?.results || []).map(r => r.id).filter(Boolean).slice(0, intentos);
-    const ids = candidatos.length ? candidatos : [];
-    for (const id of ids) {
+    const ids = [...new Set((search?.results || []).map(r => r.id).filter(Boolean))].slice(0, intentos);
+    const candidates = ids.length ? ids : [null];
+    for (const id of candidates) {
       try {
-        info = await P.youtubeStreams(id);
-        if (info) break;
-      } catch (e) { errores.push(`youtube ${id}: ${e.message}`); info = null; }
+        const candidate = id ? await P.youtubeStreams(id) : await P.resolveYoutubeTarget({ query });
+        if (!candidate) throw new Error('sin información del video');
+        if (directo) return await enviarAudio(req, res, candidate);
+        const found = await audioDe(candidate);
+        if (!found?.url) throw new Error('sin audio reproducible');
+        info = candidate;
+        audio = found;
+        break;
+      } catch (e) {
+        if (res.headersSent) throw e;
+        errores.push(`youtube ${id || 'búsqueda'}: ${e.message}`);
+      }
     }
-    if (!info && !ids.length) {
-      // Sin buscador: se deja que el resolver de siempre elija.
-      info = await P.resolveYoutubeTarget({ query });
-    }
-    if (info && directo) return await enviarAudio(req, res, info);
   } catch (e) {
-    errores.push(`youtube: ${e.message}`);
     if (res.headersSent) throw e;
+    errores.push(`youtube: ${e.message}`);
   }
 
-  if (info && !directo) {
-    const audio = await audioDe(info).catch(() => null);
+  if (info && audio) {
     return sendSuccess(res, {
       query, id: info.id, title: info.title, author: info.author, duration: info.duration, thumbnail: info.thumbnail,
       youtubeUrl: `https://www.youtube.com/watch?v=${info.id}`,
       preview: false,
       fullSong: true,
       audio: {
-        quality: audio?.quality || null,
+        quality: audio.quality || null,
         mime: 'audio/mpeg',
-        bitrate: audio?.bitrate || null,
-        source: audio?.source || 'youtubei',
+        bitrate: audio.bitrate || null,
+        source: audio.source || audio.provider || 'youtube',
         url: urls.play,
         downloadUrl: urls.download
       },

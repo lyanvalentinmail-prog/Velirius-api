@@ -108,11 +108,25 @@ async function proxyStream(req, res, upstreamUrl, { filename = 'media', headers 
   const { fetchWithTimeout, UA_DESKTOP } = require('./http');
   const upstreamHeaders = { 'User-Agent': UA_DESKTOP, ...headers };
   if (req.headers.range) upstreamHeaders.Range = req.headers.range;
-  const up = await fetchWithTimeout(upstreamUrl, { headers: upstreamHeaders }, 30000);
-  if (!up.ok && up.status !== 206) throw new Error(`La fuente respondió HTTP ${up.status}`);
-  const type = up.headers.get('content-type') || 'application/octet-stream';
+  const up = await fetchWithTimeout(upstreamUrl, { headers: upstreamHeaders, publicOnly: true }, 30000);
+  if (up.status === 416) {
+    const range = up.headers.get('content-range');
+    if (range) res.setHeader('Content-Range', range);
+    up.body?.cancel().catch(() => {});
+    return res.status(416).end();
+  }
+  if (!up.ok && up.status !== 206) {
+    up.body?.cancel().catch(() => {});
+    throw new Error(`La fuente respondió HTTP ${up.status}`);
+  }
+  const type = (up.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  if (!/^(?:image\/(?!svg\+xml)|video\/|audio\/|application\/octet-stream$)/i.test(type)) {
+    up.body?.cancel().catch(() => {});
+    throw new Error('La fuente no devolvió un archivo multimedia válido');
+  }
   res.status(up.status === 206 ? 206 : 200);
   res.setHeader('Content-Type', type);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.setHeader('Content-Disposition', disposicion(req, filename, 'media'));
@@ -121,13 +135,24 @@ async function proxyStream(req, res, upstreamUrl, { filename = 'media', headers 
   }
   if (!up.body) return res.end();
   const reader = up.body.getReader();
-  req.on('close', () => reader.cancel().catch(() => {}));
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!res.write(Buffer.from(value))) await new Promise(r => res.once('drain', r));
+  res.on('close', () => { if (!res.writableFinished) reader.cancel().catch(() => {}); });
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || res.destroyed) break;
+      if (!res.write(Buffer.from(value))) {
+        await new Promise(resolve => {
+          const finish = () => { res.off('drain', finish); res.off('close', finish); resolve(); };
+          res.once('drain', finish);
+          res.once('close', finish);
+        });
+      }
+    }
+    if (!res.destroyed) return res.end();
+  } catch (e) {
+    if (res.headersSent) res.destroy(e);
+    else throw e;
   }
-  return res.end();
 }
 
 /**

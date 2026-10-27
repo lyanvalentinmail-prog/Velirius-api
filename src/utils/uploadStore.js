@@ -12,13 +12,28 @@ const crypto = require('crypto');
 const MAX_ITEMS = 60;
 const TTL_MS = 30 * 60 * 1000;
 const store = new Map(); // id → { buffer, mime, at, hits }
+let expiryTimer = null;
 
 function cleanup(now = Date.now()) {
   for (const [id, item] of store) {
-    if (now - item.at > TTL_MS) store.delete(id);
+    if (now - item.at >= TTL_MS) store.delete(id);
   }
   // Si sigue lleno, se van las más viejas.
   while (store.size > MAX_ITEMS) store.delete(store.keys().next().value);
+}
+
+// La limpieza también ocurre si no llegan más peticiones al proceso. Hay un
+// solo temporizador para todo el almacén, no uno por cada archivo subido.
+function scheduleCleanup() {
+  if (expiryTimer || !store.size) return;
+  const oldest = store.values().next().value;
+  const delay = Math.max(1, oldest.at + TTL_MS - Date.now());
+  expiryTimer = setTimeout(() => {
+    expiryTimer = null;
+    cleanup();
+    scheduleCleanup();
+  }, delay);
+  expiryTimer.unref?.();
 }
 
 /** Guarda un buffer de imagen y devuelve `{ id, mime }`. */
@@ -26,6 +41,8 @@ function save(buffer, mime) {
   cleanup();
   const id = crypto.randomBytes(9).toString('hex');
   store.set(id, { buffer, mime: mime || 'image/jpeg', at: Date.now(), hits: 0 });
+  cleanup();
+  scheduleCleanup();
   return { id, mime: mime || 'image/jpeg' };
 }
 
@@ -34,7 +51,7 @@ function get(id) {
   const key = String(id || '');
   const item = store.get(key);
   if (!item) return null;
-  if (Date.now() - item.at > TTL_MS) {
+  if (Date.now() - item.at >= TTL_MS) {
     store.delete(key);
     return null;
   }
@@ -43,6 +60,10 @@ function get(id) {
 }
 
 const count = () => store.size;
-const clear = () => store.clear();
+const clear = () => {
+  store.clear();
+  if (expiryTimer) clearTimeout(expiryTimer);
+  expiryTimer = null;
+};
 
 module.exports = { save, get, count, clear, TTL_MS, MAX_ITEMS };

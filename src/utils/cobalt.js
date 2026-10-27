@@ -28,11 +28,13 @@ const limpiar = u => String(u || '').trim().replace(/\/+$/, '');
 const clave = () => String(process.env.COBALT_API_KEY || '').trim();
 
 /** Lista de instancias a probar: primero las configuradas, después las públicas. */
+function instanciasPropias() {
+  return [...new Set([process.env.COBALT_API_URL, ...String(process.env.COBALT_API_URLS || '').split(',')]
+    .map(limpiar).filter(Boolean))];
+}
+
 function instancias() {
-  const propias = [process.env.COBALT_API_URL, ...String(process.env.COBALT_API_URLS || '').split(',')]
-    .map(limpiar).filter(Boolean);
-  const todas = [...new Set([...propias, ...COMUNITARIAS])];
-  return todas;
+  return [...new Set([...instanciasPropias(), ...COMUNITARIAS])];
 }
 
 const HAY_CONFIG = () => Boolean(limpiar(process.env.COBALT_API_URL) || limpiar(process.env.COBALT_API_URLS));
@@ -44,6 +46,7 @@ const HAY_CONFIG = () => Boolean(limpiar(process.env.COBALT_API_URL) || limpiar(
  * @returns {Promise<{url:string, filename:string|null, instance:string, status:string}>}
  */
 async function pedir(url, opts = {}) {
+  if (!disponible()) throw new Error('cobalt está desactivado');
   if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('cobalt necesita una URL http(s)');
   const cuerpo = {
     url: String(url),
@@ -57,14 +60,15 @@ async function pedir(url, opts = {}) {
     youtubeBetterAudio: true
   };
   const headers = { 'User-Agent': UA_DESKTOP, Accept: 'application/json' };
-  const k = clave();
-  if (k) headers['Api-Key'] = k;
-
+  const propias = new Set(instanciasPropias());
   const errores = [];
   for (const base of instancias()) {
-    for (const ruta of ['', '/']) {
+    // La clave sólo se envía a instancias explícitamente configuradas.
+    const k = clave();
+    const instanceHeaders = { ...headers, ...(k && propias.has(base) ? { 'Api-Key': k } : {}) };
+    for (const ruta of ['', '/api/json']) {
       try {
-        const j = await postJson(`${base}${ruta}`, cuerpo, { headers, timeoutMs: 25000 });
+        const j = await postJson(`${base}${ruta}`, cuerpo, { headers: instanceHeaders, timeoutMs: 25000, redirect: 'error' });
         const r = normalizar(j, base);
         if (r) return r;
         errores.push(`${new URL(base).hostname}: respuesta sin archivo`);

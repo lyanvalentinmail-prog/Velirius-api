@@ -466,9 +466,10 @@ async function main() {
       + '<script>{"display_url":"https://scontent.cdninstagram.com/v/2.jpg"}</script>'
       + '<script>{"display_url":"https://scontent.cdninstagram.com/v/3.jpg"}</script>', 'XYZ');
     ok('Instagram: un carrusel devuelve todos los slides sin repetir',
-      igCarrusel.media.length === 2
+      igCarrusel.media.length === 3
       && igCarrusel.media.every(m => m.type === 'image')
-      && igCarrusel.media[0].thumbnail === 'https://scontent.cdninstagram.com/v/1.jpg');
+      && igCarrusel.media[0].url === 'https://scontent.cdninstagram.com/v/1.jpg'
+      && igCarrusel.media[1].thumbnail === 'https://scontent.cdninstagram.com/v/1.jpg');
 
     // ---- FACEBOOK: HD/SD desde el HTML (y fb.watch) ----
     const fbHtml = '{"playable_url_quality_hd":"https:\\/\\/video.fbcdn.net\\/hd.mp4",'
@@ -569,11 +570,14 @@ async function main() {
         basic_info: { title: 'Video de prueba', author: 'Canal', duration: 62 },
         streaming_data: {
           formats: [fmt({ h: 360, url: urlVivaLocal })],
-          adaptive_formats: [fmt({ h: 1080, a: false, url: 'https://cdn.ejemplo/1080.mp4' }), fmt({ v: false, mime: 'audio/mp4', br: 128000, url: aFile })]
+          adaptive_formats: [fmt({ h: 1080, a: false, url: vFile }), fmt({ v: false, mime: 'audio/mp4', br: 128000, url: aFile })]
         }
       };
-      const progresivo = await YT.videoReproducible('abc12345678', 0);
-      ok('YouTube: en automático devuelve el progresivo con audio',
+      const alta = await YT.videoReproducible('abc12345678', 0);
+      ok('YouTube: en automático usa DASH 1080p con audio cuando mejora el progresivo',
+        alta.hasAudio === true && alta.height === 1080 && alta.muxed === true && fs.existsSync(alta.file));
+      const progresivo = await YT.videoReproducible('abc12345678', 360);
+      ok('YouTube: con quality=360 usa el progresivo con audio',
         progresivo.hasAudio === true && progresivo.url === urlVivaLocal && !progresivo.muxed);
       ok('YouTube: descarta los enlaces de googlevideo que ya no responden',
         (await YT.urlViva('https://cdn.ejemplo/no-existe.mp4')) === false);
@@ -656,6 +660,7 @@ async function main() {
         asJsonBody?.result?.hasAudio === true && Boolean(asJsonBody?.result?.video?.url));
 
       if (pegado.file) fs.unlinkSync(pegado.file);
+      if (alta.file) fs.unlinkSync(alta.file);
       try { fs.unlinkSync(mp3); } catch (_) { /* nada */ }
       fs.rmSync(dir, { recursive: true, force: true });
       if (previo) require.cache[resolver] = previo; else delete require.cache[resolver];

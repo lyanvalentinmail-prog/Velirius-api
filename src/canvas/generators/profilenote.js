@@ -8,7 +8,7 @@
 
 // Guía: README.md → "Cómo agregar o editar un endpoint".
 const {
-  sharp, loadImageBuffer, templateMeta, circleImage, textLayer, wrapLines, txt,
+  sharp, loadImageBuffer, templateMeta, circleImage, textLayer, wrapLines, txt, imgParam,
   styleOf, flat, insertRows, P, partsOf, boxOf
 } = require('./_helpers');
 const { emojiImages } = require('../../utils/emoji');
@@ -95,7 +95,7 @@ module.exports = async function profilenote(q) {
   });
 
   // ---- avatar: la foto del usuario (o el círculo verde de la plantilla) ----
-  const avatarUrl = String(q.image ?? q.url ?? q.avatar ?? '').trim();
+  const avatarUrl = imgParam(q, 'image', 'url', 'avatar');
   if (avatarUrl) {
     const ab = boxOf('profilenote', 'avatar', q);
     const d = Math.round(Math.min((ab.x1 - ab.x0) * W, (ab.y1 - ab.y0) * H));

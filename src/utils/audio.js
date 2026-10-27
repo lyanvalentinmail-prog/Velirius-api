@@ -12,7 +12,7 @@
 // `DEEPGRAM_API_KEY` o `ASSEMBLYAI_API_KEY`. Sin ninguna, el endpoint responde
 // con la explicación exacta de qué configurar.
 const crypto = require('crypto');
-const { fetchBuffer, fetchWithTimeout, UA_DESKTOP, UA_MOBILE } = require('./http');
+const { fetchBuffer, fetchJson, postJson, UA_DESKTOP, UA_MOBILE } = require('./http');
 
 // ---------------------------------------------------------------------------
 // TTS
@@ -29,9 +29,12 @@ function partirTexto(texto, max = 190) {
     let corte = Math.max(ventana.lastIndexOf('. '), ventana.lastIndexOf('? '), ventana.lastIndexOf('! '), ventana.lastIndexOf('; '));
     if (corte < max * 0.4) corte = ventana.lastIndexOf(', ');
     if (corte < max * 0.4) corte = ventana.lastIndexOf(' ');
-    if (corte <= 0) corte = max;
-    partes.push(resto.slice(0, corte + 1).trim());
-    resto = resto.slice(corte + 1).trim();
+    // Si no hay espacios, cortar exactamente en max (no max+1).
+    let end = corte > 0 ? corte + 1 : max;
+    // Evitar partir un par sustituto UTF-16 (p. ej. un emoji).
+    if (end > 1 && end < resto.length && /[\uD800-\uDBFF]/.test(resto[end - 1]) && /[\uDC00-\uDFFF]/.test(resto[end])) end--;
+    partes.push(resto.slice(0, end).trim());
+    resto = resto.slice(end).trim();
   }
   if (resto) partes.push(resto);
   return partes;
@@ -72,13 +75,7 @@ async function googleCloud(texto, lang, voice) {
     voice: { languageCode: lang, ...(voice ? { name: voice } : {}) },
     audioConfig: { audioEncoding: 'MP3', speakingRate: 1 }
   };
-  const res = await fetchWithTimeout(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(cuerpo)
-  }, 15000);
-  if (!res.ok) throw new Error(`Google Cloud TTS HTTP ${res.status}`);
-  const json = await res.json();
+  const json = await postJson(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`, cuerpo, { timeoutMs: 15000 });
   if (!json.audioContent) throw new Error('Google Cloud TTS sin audio');
   return Buffer.from(json.audioContent, 'base64');
 }
@@ -102,7 +99,7 @@ async function textoAVoz(texto, opts = {}) {
   if (ttsCache.has(clave)) return ttsCache.get(clave);
 
   const intentos = [];
-  if (process.env.GOOGLE_TTS_KEY) intentos.push(['google-cloud', () => googleCloud(chunks.join(' '), lang, voice)]);
+  if (process.env.GOOGLE_TTS_KEY && engine !== 'streamelements') intentos.push(['google-cloud', () => googleCloud(chunks.join(' '), lang, voice)]);
   if (engine !== 'streamelements') intentos.push(['google-translate', async () => Buffer.concat(await Promise.all(chunks.map(c => chunkGoogle(c, lang, opts.slow))))]);
   if (engine !== 'google') intentos.push(['streamelements', async () => Buffer.concat(await Promise.all(chunks.map(c => chunkStreamElements(c, voice || 'Brian'))))]);
 
@@ -148,20 +145,24 @@ function proveedoresSTT() {
   return listos;
 }
 
+async function transcriptionJson(url, options, provider) {
+  try { return await fetchJson(url, options); }
+  catch (e) {
+    const detail = e.json?.error?.message || e.message;
+    throw new Error(`${provider}: ${detail}`);
+  }
+}
+
 async function groqWhisper(buffer, mime, lang) {
   const form = new FormData();
   form.append('file', new Blob([buffer], { type: mime || 'audio/mpeg' }), `audio.${extensionDe(mime)}`);
   form.append('model', String(process.env.GROQ_STT_MODEL || 'whisper-large-v3-turbo'));
   form.append('response_format', 'json');
   if (lang) form.append('language', lang);
-  const res = await fetchWithTimeout('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-    body: form
-  }, 45000);
-  const json = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`Groq HTTP ${res.status}: ${(json && json.error && json.error.message) || 'sin detalle'}`);
-  return { text: String((json && json.text) || '').trim(), provider: 'groq' };
+  const json = await transcriptionJson('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST', headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: form, timeoutMs: 45000
+  }, 'Groq');
+  return { text: String(json.text || '').trim(), provider: 'groq' };
 }
 
 async function openaiWhisper(buffer, mime, lang) {
@@ -169,54 +170,41 @@ async function openaiWhisper(buffer, mime, lang) {
   form.append('file', new Blob([buffer], { type: mime || 'audio/mpeg' }), `audio.${extensionDe(mime)}`);
   form.append('model', String(process.env.OPENAI_STT_MODEL || 'whisper-1'));
   if (lang) form.append('language', lang);
-  const res = await fetchWithTimeout('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    body: form
-  }, 45000);
-  const json = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}: ${(json && json.error && json.error.message) || 'sin detalle'}`);
-  return { text: String((json && json.text) || '').trim(), provider: 'openai' };
+  const json = await transcriptionJson('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form, timeoutMs: 45000
+  }, 'OpenAI');
+  return { text: String(json.text || '').trim(), provider: 'openai' };
 }
 
 async function deepgram(buffer, mime, lang) {
   const params = new URLSearchParams({ model: process.env.DEEPGRAM_MODEL || 'nova-3', smart_format: 'true' });
   if (lang) params.set('language', lang);
-  const res = await fetchWithTimeout(`https://api.deepgram.com/v1/listen?${params}`, {
-    method: 'POST',
-    headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, 'Content-Type': mime || 'audio/mpeg' },
-    body: buffer
-  }, 45000);
-  const json = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`Deepgram HTTP ${res.status}`);
-  const alt = json && json.results && json.results.channels && json.results.channels[0]
-    && json.results.channels[0].alternatives && json.results.channels[0].alternatives[0];
-  return { text: String((alt && alt.transcript) || '').trim(), provider: 'deepgram' };
+  const json = await transcriptionJson(`https://api.deepgram.com/v1/listen?${params}`, {
+    method: 'POST', headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, 'Content-Type': mime || 'audio/mpeg' },
+    body: buffer, timeoutMs: 45000
+  }, 'Deepgram');
+  const alt = json?.results?.channels?.[0]?.alternatives?.[0];
+  return { text: String(alt?.transcript || '').trim(), provider: 'deepgram' };
 }
 
 async function assembly(buffer, mime, lang) {
-  const subida = await fetchWithTimeout('https://api.assemblyai.com/v2/upload', {
-    method: 'POST',
-    headers: { authorization: process.env.ASSEMBLYAI_API_KEY, 'Content-Type': 'application/octet-stream' },
-    body: buffer
-  }, 45000);
-  const up = await subida.json().catch(() => null);
-  if (!subida.ok || !up || !up.upload_url) throw new Error(`AssemblyAI upload HTTP ${subida.status}`);
-  const alta = await fetchWithTimeout('https://api.assemblyai.com/v2/transcript', {
-    method: 'POST',
-    headers: { authorization: process.env.ASSEMBLYAI_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audio_url: up.upload_url, ...(lang ? { language_code: lang } : {}) })
-  }, 20000);
-  const job = await alta.json().catch(() => null);
-  if (!alta.ok || !job || !job.id) throw new Error(`AssemblyAI transcript HTTP ${alta.status}`);
+  const headers = { authorization: process.env.ASSEMBLYAI_API_KEY };
+  const up = await transcriptionJson('https://api.assemblyai.com/v2/upload', {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/octet-stream' }, body: buffer, timeoutMs: 45000
+  }, 'AssemblyAI upload');
+  if (!up.upload_url) throw new Error('AssemblyAI no devolvió URL de audio');
+  const job = await transcriptionJson('https://api.assemblyai.com/v2/transcript', {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio_url: up.upload_url, ...(lang ? { language_code: lang } : {}) }), timeoutMs: 20000
+  }, 'AssemblyAI transcript');
+  if (!job.id) throw new Error('AssemblyAI no devolvió ID de transcripción');
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 1000));
-    const r = await fetchWithTimeout(`https://api.assemblyai.com/v2/transcript/${job.id}`, {
-      headers: { authorization: process.env.ASSEMBLYAI_API_KEY }
-    }, 15000);
-    const data = await r.json().catch(() => null);
-    if (data && data.status === 'completed') return { text: String(data.text || '').trim(), provider: 'assemblyai' };
-    if (data && data.status === 'error') throw new Error(`AssemblyAI: ${data.error || 'error'}`);
+    const data = await transcriptionJson(`https://api.assemblyai.com/v2/transcript/${encodeURIComponent(job.id)}`, {
+      headers, timeoutMs: 15000
+    }, 'AssemblyAI');
+    if (data.status === 'completed') return { text: String(data.text || '').trim(), provider: 'assemblyai' };
+    if (data.status === 'error') throw new Error(`AssemblyAI: ${data.error || 'error'}`);
   }
   throw new Error('AssemblyAI tardó demasiado');
 }

@@ -25,8 +25,8 @@ const FUNCS = {
   ln: x => Math.log(x), log: x => Math.log10(x), log2: x => Math.log2(x),
   abs: x => Math.abs(x), round: x => Math.round(x), floor: x => Math.floor(x), ceil: x => Math.ceil(x),
   exp: x => Math.exp(x), sign: x => Math.sign(x), fact: x => {
-    const n = Math.floor(x);
-    if (n < 0 || n > 170) throw new Error('fact() admite enteros entre 0 y 170');
+    const n = x;
+    if (!Number.isInteger(n) || n < 0 || n > 170) throw new Error('fact() admite enteros entre 0 y 170');
     let r = 1;
     for (let i = 2; i <= n; i++) r *= i;
     return r;
@@ -54,32 +54,34 @@ function calculate(input, degrees = false) {
     }
   }
   function parseTerm() {
-    let v = parseFactor();
+    let v = parseUnary();
     for (;;) {
       skip();
-      if (eat('*')) v *= parseFactor();
+      if (eat('*')) v *= parseUnary();
       else if (eat('/')) {
-        const d = parseFactor();
+        const d = parseUnary();
         if (d === 0) throw new Error('División por cero');
         v /= d;
       } else if (eat('%')) {
-        const d = parseFactor();
+        const d = parseUnary();
         if (d === 0) throw new Error('Módulo por cero');
         v %= d;
       } else return v;
     }
   }
-  function parseFactor() {
-    let base = parseUnary();
-    skip();
-    if (eat('^')) base = Math.pow(base, parseFactor());
-    return base;
-  }
+  // La potencia tiene prioridad sobre el signo y se asocia a la derecha:
+  // -2^2 = -(2^2), 2^-2 = 1/4 y 2^3^2 = 2^(3^2).
   function parseUnary() {
     skip();
     if (eat('+')) return parseUnary();
     if (eat('-')) return -parseUnary();
-    return parsePrimary();
+    return parseFactor();
+  }
+  function parseFactor() {
+    let base = parsePrimary();
+    skip();
+    if (eat('^')) base = Math.pow(base, parseUnary());
+    return base;
   }
   function parsePrimary() {
     skip();
@@ -116,7 +118,8 @@ function calculate(input, degrees = false) {
   skip();
   if (pos < src.length) throw new Error(`Sobran caracteres: "${src.slice(pos)}"`);
   if (!Number.isFinite(value)) throw new Error('El resultado no es finito');
-  return Math.round(value * 1e12) / 1e12;
+  // Multiplicar por 1e12 puede desbordar aunque el resultado sea finito.
+  return Number(value.toFixed(12));
 }
 
 router.get(['/calculator', '/calc', '/calculadora'], (req, res) => {
@@ -209,33 +212,35 @@ router.get(['/morse', '/morsecode'], (req, res) => {
 const FITS = ['cover', 'contain', 'fill', 'inside', 'outside'];
 const FORMATOS = ['png', 'jpg', 'jpeg', 'webp', 'avif'];
 
-router.get(['/resize', '/rezize', '/redimensionar'], async (req, res) => {
-  const entrada = String(req.query.url || req.query.image || req.query.img || '').trim();
+async function handleResize(req, res) {
+  const q = { ...req.query, ...(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) };
+  const entrada = String(q.url || q.image || q.img || '').trim();
   if (!entrada) {
     return sendError(res, 400, 'Falta el parámetro url',
       'Ejemplo: /tools/resize?url=https://…/foto.jpg&width=512&height=512');
   }
-  const ancho = parseInt(req.query.width ?? req.query.w ?? req.query.ancho, 10);
-  const alto = parseInt(req.query.height ?? req.query.h ?? req.query.alto, 10);
-  const escala = parseFloat(req.query.scale ?? req.query.escala);
-  const fit = FITS.includes(String(req.query.fit || '').toLowerCase()) ? String(req.query.fit).toLowerCase() : 'cover';
-  const formato = FORMATOS.includes(String(req.query.format || '').toLowerCase()) ? String(req.query.format).toLowerCase() : 'png';
-  const calidad = Math.max(1, Math.min(100, parseInt(req.query.quality ?? req.query.calidad, 10) || 90));
-  const fondo = /^#?[0-9a-f]{3,8}$/i.test(String(req.query.bg || '')) ? `#${String(req.query.bg).replace(/^#/, '')}` : null;
+  const ancho = parseInt(q.width ?? q.w ?? q.ancho, 10);
+  const alto = parseInt(q.height ?? q.h ?? q.alto, 10);
+  const escala = parseFloat(q.scale ?? q.escala);
+  const fit = FITS.includes(String(q.fit || '').toLowerCase()) ? String(q.fit).toLowerCase() : 'cover';
+  const formato = FORMATOS.includes(String(q.format || '').toLowerCase()) ? String(q.format).toLowerCase() : 'png';
+  const calidad = Math.max(1, Math.min(100, parseInt(q.quality ?? q.calidad, 10) || 90));
+  const fondo = /^#?[0-9a-f]{3,8}$/i.test(String(q.bg || '')) ? `#${String(q.bg).replace(/^#/, '')}` : null;
 
   try {
     const original = await loadImageBuffer(entrada);
     const meta = await sharp(original).metadata();
-    const baseW = meta.width || 0;
-    const baseH = meta.height || 0;
+    const girada = [5, 6, 7, 8].includes(meta.orientation);
+    const baseW = (girada ? meta.height : meta.width) || 0;
+    const baseH = (girada ? meta.width : meta.height) || 0;
     if (!baseW || !baseH) return sendError(res, 400, 'La imagen de entrada no se pudo leer', 'Probá con otra URL o subí la foto desde Galería');
 
     // Medidas finales: width/height > scale (%) > tamaño original.
     let outW = Number.isFinite(ancho) && ancho > 0 ? ancho : null;
     let outH = Number.isFinite(alto) && alto > 0 ? alto : null;
     if (!outW && !outH && Number.isFinite(escala) && escala > 0) {
-      outW = Math.round(baseW * (escala / 100));
-      outH = Math.round(baseH * (escala / 100));
+      outW = Math.max(1, Math.round(baseW * (escala / 100)));
+      outH = Math.max(1, Math.round(baseH * (escala / 100)));
     }
     if (!outW && !outH) {
       return sendError(res, 400, 'Falta width o height (o scale)',
@@ -248,24 +253,36 @@ router.get(['/resize', '/rezize', '/redimensionar'], async (req, res) => {
 
     let pipe = sharp(original).rotate();
     if (fit === 'cover' && fondo) pipe = pipe.flatten({ background: fondo });
-    pipe = pipe.resize(outW, outH, { fit, position: String(req.query.position || 'centre'), background: fondo || undefined, withoutEnlargement: false });
+    pipe = pipe.resize(outW, outH, { fit, position: String(q.position || 'centre'), background: fondo || undefined, withoutEnlargement: false });
     if (formato === 'jpg' || formato === 'jpeg') pipe = pipe.flatten({ background: fondo || '#ffffff' }).jpeg({ quality: calidad });
     else if (formato === 'webp') pipe = pipe.webp({ quality: calidad });
     else if (formato === 'avif') pipe = pipe.avif({ quality: calidad });
     else pipe = pipe.png({ compressionLevel: 9 });
 
-    const salida = await pipe.toBuffer();
+    const { data: salida, info: rendered } = await pipe.toBuffer({ resolveWithObject: true });
+    outW = rendered.width;
+    outH = rendered.height;
     const mime = formato === 'jpg' || formato === 'jpeg' ? 'image/jpeg' : `image/${formato}`;
     const nombre = `velirius-${outW}x${outH}.${formato === 'jpeg' ? 'jpg' : formato}`;
-    if (String(req.query.json || '') === 'true' || req.query.format === 'json') {
-      const self = req.originalUrl.split('?')[0];
-      const q = new URLSearchParams(req.query);
-      q.set('direct', 'true');
+    const wantsJson = String(q.json || '').toLowerCase() === 'true' || String(q.format || '').toLowerCase() === 'json';
+    if (wantsJson && !['true', '1', 'yes'].includes(String(q.direct || '').toLowerCase()) && !wantsDownload(req)) {
+      let image;
+      if (req.method === 'POST') {
+        // El cuerpo puede contener una imagen enorme que no cabe en una URL.
+        const { save } = require('../utils/uploadStore');
+        const stored = save(salida, mime);
+        image = absoluteUrl(req, `/upload/${stored.id}`);
+      } else {
+        const params = new URLSearchParams(req.query);
+        params.delete('json');
+        if (String(params.get('format') || '').toLowerCase() === 'json') params.delete('format');
+        params.set('direct', 'true');
+        image = absoluteUrl(req, `${req.originalUrl.split('?')[0]}?${params.toString()}`);
+      }
       return sendSuccess(res, {
         width: outW, height: outH,
         original: { width: baseW, height: baseH },
-        fit, format: formato, bytes: salida.length,
-        image: absoluteUrl(req, `${self}?${q.toString()}`)
+        fit, format: formato, bytes: salida.length, image
       });
     }
     return sendMedia(res, salida, mime, nombre);
@@ -273,7 +290,10 @@ router.get(['/resize', '/rezize', '/redimensionar'], async (req, res) => {
     const code = e.status && (e.status < 500 || e.status === 501) ? e.status : 502;
     return sendError(res, code, code === 502 ? 'No se pudo redimensionar la imagen' : e.message, e.hint || e.message);
   }
-});
+}
+
+router.get(['/resize', '/rezize', '/redimensionar'], handleResize);
+router.post(['/resize', '/rezize', '/redimensionar'], jsonBody, handleResize);
 
 // ==========================================================================
 // TextToSpeech — texto → MP3
@@ -317,7 +337,7 @@ router.get(['/tts', '/texttospeech', '/speech', '/voz'], async (req, res) => {
 // ==========================================================================
 // SpeechToText — audio → texto (necesita una clave configurada)
 // ==========================================================================
-router.get(['/stt', '/speechtotext', '/transcribir'], jsonBody, async (req, res) => {
+async function handleStt(req, res) {
   const cuerpo = req.body && typeof req.body === 'object' ? req.body : {};
   const fuente = String(req.query.url || req.query.audio || req.query.file || cuerpo.url || cuerpo.audio || cuerpo.file || '').trim();
   const listos = proveedoresSTT();
@@ -325,23 +345,35 @@ router.get(['/stt', '/speechtotext', '/transcribir'], jsonBody, async (req, res)
     return sendError(res, 400, 'Falta el audio',
       'Pasá ?url=https://…/audio.mp3 o hacé POST con {"audio":"data:audio/mpeg;base64,…"}');
   }
+  if (!listos.length) {
+    return sendError(res, 501, 'SpeechToText necesita una clave de transcripción configurada',
+      'Configurá GROQ_API_KEY, OPENAI_API_KEY, DEEPGRAM_API_KEY o ASSEMBLYAI_API_KEY en las variables de entorno');
+  }
   try {
     let buffer;
-    let mime = String(req.query.mime || cuerpo.mime || 'audio/mpeg');
+    let mime = String(req.query.mime || cuerpo.mime || 'audio/mpeg').toLowerCase();
+    let encoded = null;
     if (/^data:/i.test(fuente)) {
-      mime = fuente.slice(5, fuente.indexOf(';')) || mime;
-      buffer = Buffer.from(fuente.split(',')[1] || '', 'base64');
-    } else if (/^https?:/i.test(fuente)) {
+      const match = /^data:([\w.+-]+\/[\w.+-]+);base64,([\s\S]*)$/i.exec(fuente);
+      if (!match) return sendError(res, 400, 'El audio no es un data URL válido', 'Usá data:audio/…;base64,…');
+      mime = match[1].toLowerCase();
+      encoded = match[2];
+    } else if (/^https?:\/\//i.test(fuente)) {
       buffer = await fetchBuffer(fuente, {
-        headers: { 'User-Agent': UA_DESKTOP },
-        timeoutMs: 30000,
-        maxBytes: 24 * 1024 * 1024
+        headers: { 'User-Agent': UA_DESKTOP }, timeoutMs: 30000,
+        maxBytes: 24 * 1024 * 1024, publicOnly: true
       });
-      if (req.query.mime) mime = String(req.query.mime);
     } else {
-      buffer = Buffer.from(fuente, 'base64');
+      encoded = fuente;
+    }
+    if (!/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(mime)) return sendError(res, 400, 'Tipo MIME de audio inválido');
+    if (encoded !== null) {
+      const b64 = encoded.replace(/\s+/g, '');
+      if (!/^[a-z0-9+/]*={0,2}$/i.test(b64) || b64.length % 4 === 1) return sendError(res, 400, 'El audio no es base64 válido');
+      buffer = Buffer.from(b64, 'base64');
     }
     if (!buffer || !buffer.length) return sendError(res, 400, 'El audio llegó vacío', 'Revisá el link o el archivo que mandaste');
+    if (buffer.length > 24 * 1024 * 1024) return sendError(res, 413, 'El audio supera el límite de 24 MB');
     const salida = await vozATexto(buffer, { mime, language: req.query.lang || req.query.language || cuerpo.lang });
     return sendSuccess(res, {
       text: salida.text,
@@ -355,7 +387,10 @@ router.get(['/stt', '/speechtotext', '/transcribir'], jsonBody, async (req, res)
     const code = e.status && (e.status < 500 || e.status === 501) ? e.status : 502;
     return sendError(res, code, e.message, e.hint);
   }
-});
+}
+
+router.get(['/stt', '/speechtotext', '/transcribir'], jsonBody, handleStt);
+router.post(['/stt', '/speechtotext', '/transcribir'], jsonBody, handleStt);
 
 module.exports = router;
 module.exports.calculate = calculate;

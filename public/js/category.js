@@ -15,6 +15,7 @@
   const LONG_PARAMS = ['quote', 'caption', 'description', 'message'];
   const isImageParam = name => IMAGE_PARAMS.includes(String(name).toLowerCase());
   const isLongParam = name => LONG_PARAMS.includes(String(name).toLowerCase());
+  const fieldFor = (tester, name) => [...tester.querySelectorAll('[data-param]')].find(field => field.dataset.param === name);
 
   // ---------- Buscador ----------
   const searchBtn = document.querySelector('[data-search-btn]');
@@ -68,6 +69,7 @@
       URL.revokeObjectURL(objUrl);
       cb(canvas.toDataURL('image/jpeg', 0.9));
     };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); cb(null); };
     img.src = objUrl;
   }
 
@@ -117,7 +119,7 @@
     const out = {};
     tester.querySelectorAll('[data-local]').forEach(inp => {
       const url = String(inp.value || '').trim();
-      if (url && !url.startsWith('data:')) return;
+      if (url && !url.startsWith('data:') && inp.dataset.pending !== 'true') return;
       const list = localList(inp);
       if (list.length) out[inp.dataset.param] = pack(list);
     });
@@ -127,7 +129,9 @@
   // fetch del endpoint: POST si hay imagen local; si el GET falla (por ejemplo la
   // subida caducó), reintenta con la imagen de la galería en el cuerpo.
   async function callEndpoint(tester, path) {
-    const local = localImages(tester);
+    // Los datos locales son la fuente más fiable, incluso si /upload respondió:
+    // en serverless la siguiente petición puede llegar a otra instancia.
+    const local = allLocalImages(tester);
     if (Object.keys(local).length) {
       return fetch(path, {
         method: 'POST',
@@ -258,7 +262,7 @@
    * mismo como archivo. Así "Descargar" funciona en todos lados.
    */
   const esUrl = v => typeof v === 'string' && /^(https?:|\/)/.test(v);
-  const archivoDe = (json, type) => {
+  const archivoDe = (json, type, endpoint) => {
     const r = (json && json.result) || {};
     const candidatos = [
       r.downloadUrl,
@@ -278,7 +282,7 @@
     if (directo.startsWith('/') || /^(https?:)\/\/[^/]+\/(canvas|downloader|anime|searcher|reactions|tools)\//.test(directo)) {
       return { href: directo, proxy: false };
     }
-    const nombre = (r.title || r.query || tester.dataset.endpoint || 'velirius').toString();
+    const nombre = (r.title || r.query || endpoint || 'velirius').toString();
     const ext = /video|mp4/i.test(type) ? 'mp4' : /audio|mpeg|mp3/i.test(type) ? 'mp3' : (String(directo).match(/\.([a-z0-9]{2,5})(?:\?|$)/i) || [])[1] || 'jpg';
     // Enlace externo (CDN de TikTok, YouTube, Pinterest…): se abre en una pestaña
     // nueva; el navegador decide si lo muestra o lo guarda.
@@ -351,7 +355,7 @@
         const json = await res.json();
         const playable = findPlayable(json);
         const preview = findPreviewImage(json);
-        const archivo = archivoDe(json, playable ? `${playable.type}/` : 'image/');
+        const archivo = archivoDe(json, playable ? `${playable.type}/` : 'image/', tester.dataset.endpoint);
         const nombreJson = `${tester.dataset.endpoint}.json`;
         const nombreArch = `${tester.dataset.endpoint}.${playable ? (playable.type === 'audio' ? 'mp3' : 'mp4') : 'jpg'}`;
         const btn = archivo ? btnDescargar(archivo.href, nombreArch, archivo.externo) : btnDescargarTexto(nombreJson);
@@ -426,9 +430,9 @@
     if ('inert' in tester) tester.inert = true;
 
     const fieldOf = p => {
-      const gallery = isImageParam(p.name);
+      const gallery = (data.category === 'canvas' || (data.category === 'tools' && id === 'resize')) && isImageParam(p.name);
       const up = gallery
-        ? `<div class="gallery-row"><label class="upload">Galería<input type="file" accept="image/*" multiple hidden data-upload-for="${esc(p.name)}"></label><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
+        ? `<div class="gallery-row"><label class="upload"><span class="upload-label">Galería</span><input type="file" accept="image/*" multiple hidden data-upload-for="${esc(p.name)}"></label><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
         : '';
       let control;
       if (Array.isArray(p.options) && p.options.length) {
@@ -490,16 +494,21 @@
         const files = Array.from((fileInp.files || []));
         if (!files.length) return;
         const name = fileInp.dataset.uploadFor;
-        const target = tester.querySelector(`[data-param="${CSS.escape(name)}"]`);
+        const target = fieldFor(tester, name);
         const row = fileInp.closest('.gallery-row');
         const label = fileInp.closest('label');
+        const labelText = label && label.querySelector('.upload-label');
         if (!target) return;
-        const before = label ? label.textContent : '';
-        if (label) { label.textContent = files.length > 1 ? `Subiendo ${files.length}…` : 'Subiendo…'; label.classList.add('busy'); }
+        const before = labelText ? labelText.textContent : '';
+        if (labelText) labelText.textContent = files.length > 1 ? `Subiendo ${files.length}…` : 'Subiendo…';
+        if (label) label.classList.add('busy');
 
         // Se acumulan con lo que ya había (así se pueden elegir fotos de a una).
-        const urls = String(target.value || '').split(/[,;|]+/).map(v => v.trim()).filter(Boolean);
         const locales = localList(target);
+        const existing = String(target.value || '').trim();
+        // La imagen de ejemplo no se mezcla con la primera foto elegida.
+        const urls = !locales.length && existing === String(target.defaultValue || '').trim()
+          ? [] : existing.split(/[,;|]+/).map(v => v.trim()).filter(Boolean);
 
         for (const file of files) {
           const dataUrl = await new Promise(resolve => fileToDataUrl(file, resolve));
@@ -518,12 +527,14 @@
             if (res.ok && json && json.result && json.result.url) remote = json.result.url;
           } catch (_) { /* sin red: se usa el POST */ }
           if (remote) urls.push(remote);
+          else target.dataset.pending = 'true';
         }
 
         setLocalList(target, locales);
         target.value = urls.join(',');
         showThumb(row, locales, urls.length > 1 ? 'Foto subida' : 'Imagen subida');
-        if (label) { label.textContent = before || 'Galería'; label.classList.remove('busy'); }
+        if (labelText) labelText.textContent = before || 'Galería';
+        if (label) label.classList.remove('busy');
         fileInp.value = '';
         refreshUrl(tester);
       });
@@ -544,8 +555,8 @@
 
     tester.querySelectorAll('[data-clear]').forEach(clearBtn => {
       clearBtn.addEventListener('click', () => {
-        const target = tester.querySelector(`[data-param="${CSS.escape(clearBtn.dataset.clear)}"]`);
-        if (target) { target.value = ''; delete target.dataset.local; }
+        const target = fieldFor(tester, clearBtn.dataset.clear);
+        if (target) { target.value = ''; delete target.dataset.local; delete target.dataset.pending; }
         const row = clearBtn.closest('.gallery-row');
         if (row) row.querySelectorAll('.up-thumb').forEach(t => t.remove());
         clearBtn.textContent = '✕ Quitar';
