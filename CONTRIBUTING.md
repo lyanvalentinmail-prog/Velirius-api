@@ -221,7 +221,7 @@ Los MP4 pegados viven en `os.tmpdir()/velirius-yt` y se borran solos a los 15 mi
 ## 5. Agregar una categoría nueva (poco frecuente)
 
 1. `src/catalog/<id>.js` copiando otro (`id`, `name`, `endpoints`).
-2. Sumala a `CATEGORIES` en `src/catalog/index.js` (el orden define el orden en `/home`).
+2. Sumala a `CATEGORIES` en `src/catalog/index.js` (en `/home` se muestran por nombre).
 3. `src/routes/<id>.js` con su `express.Router()`.
 4. Montala en `src/server.js`: `app.use('/<id>', require('./routes/<id>'));`
 5. Agregá la categoría a `ROUTES` en `scripts/validate-catalog.js`.

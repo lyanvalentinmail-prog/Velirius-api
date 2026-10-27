@@ -1,51 +1,20 @@
 # Velirius API
 
-Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
-negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
-buscador) con **104 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+Dashboard basado en el diseño de [Apireon](https://apireon-36er.vercel.app/home), con los **104 endpoints
+REST de Velirius** en **6 categorías**, listo para **Vercel** o **Render**.
 
-- **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
-- La mayoría de endpoints no necesitan claves y usan fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
-  yande.re, pic.re, otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
-  La transcripción STT sí requiere configurar una clave de proveedor.
-- **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan rutas `/sfw/`,
-  el espejo seguro de konachan (`.net`) o los boorus con filtro de rating (`rating:g` / `rating:general`).
-- El probador sigue el diseño de las capturas: al abrir, la fila se pone **negra** con el botón TEST
-invertido, arriba aparece **CÓMO USAR EL ENDPOINT** (GET + URL + snippet `fetch`, con COPIAR URL y
-ABRIR), después **PARÁMETROS** con chip `REQUERIDO`/`OPCIONAL` por campo y el botón **TEST** grande.
-
-La pieza se muestra **sin marco**, sobre un **damero de transparencia**, con la barra de estado
-(`200 OK · Imagen HD · ms`) y el botón **DESCARGAR**.
-
-El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el probador con **parámetros
-  modificables**: campos de texto, listas desplegables (`select`), subida de foto desde la galería,
-  ejecución sin salir de la página, abrir el endpoint directo y copiar la URL final.
-  Tocando `TEST` otra vez el panel se cierra (solo uno abierto a la vez).
-- **Portada** (`/`) calcada de la referencia de Drive: hoja de papel rayado con marco negro, titular mono
-  espaciado, píldora `V. x.y.z // STATUS: ONLINE`, **video del dashboard** como hero (con sombra dura),
-  párrafos grandes, caja `SECURITY ALERT` y botón **`INITIALIZE DASHBOARD`** que entra a `/home`.
-- **Dashboard** (`/home`) copia literal de Apireon: título + `SINCRONIZACIÓN COMPLETA`, intro
-  *"Aquí están las carpetas con todas las APIS…"*, *(No Requiere Token)* + enlace a GitHub, fila de
-  iconos (monitor · apoyo · GitHub · repositorio · buscar), barra negra `ESTADO: EN LÍNEA · RUTAS ·
-  ENDPOINTS` de lado a lado y la lista de carpetas (`anime\`, `canvas\`…) con el contador de endpoints
-  y el botón **VER**.
-- **Categorías** (`/canvas`…) con la misma cabecera: título, `BASE DE DATOS SINCRONIZADA`, intro, iconos
-  (inicio · repositorio · monitor · buscar), barra `RED: EN LÍNEA · LISTA: N` y filas con viñeta negra,
-  `GET - parámetros` y botón **TEST**.
-- Las medidas (tarjeta de 552 px, tarjeta de 373 px en móvil, tipografías de 12-34 px) están tomadas
-  **píxel a píxel** de las capturas; la tipografía va **empaquetada** (`public/fonts/JetBrainsMono-*.ttf`,
-  `@font-face`), nunca se pide a Google Fonts.
-- **Parámetros con los mismos nombres que Apireon** en los canvas: `quotly` (`text, username, image, bg`),
-  `iqc` (`text, replyText, replyName, time`), `ship`/`friendship` (`name1, name2, percentage, text, image1,
-  image2`, avatares opcionales), `gaycard` (`name, percentage, url`), `bratestirado`/`bratvideo` (`bg, color`).
-- El video vive en `public/media/dashboardvid.mp4` (se sirve directo, sin depender de Drive).
-- Los parámetros de estilo (`color`, `size`, `font`, `rotate`, `zoom`…) están **plegados** detrás del botón
-  **`⚙ OPCIONES AVANZADAS`** dentro del probador: solo se ven los campos que importan y el panel no queda
-  lleno. Los campos de texto libre se escriben en un **área multilínea** (texto largo sin scroll horizontal).
-- Páginas: `/anime` · `/canvas` · `/tools` · `/downloader` · `/searcher` · `/reactions`
-  (los alias antiguos `/download` y `/search` redirigen a `/downloader` y `/searcher`).
-- **¿Agregar o editar un endpoint?** → tutorial [`Cómo agregar o editar un endpoint`](#-cómo-agregar-o-editar-un-endpoint)
-  y guía completa en [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Dashboard:** `/` o `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`.
+- La tarjeta tiene fondo punteado, tipografía **Share Tech Mono** incluida localmente, barra de estado y
+  carpetas ordenadas por nombre. El buscador encuentra tanto carpetas como endpoints.
+- Las páginas `/anime`, `/canvas`, `/downloader`, `/reactions`, `/searcher` y `/tools` conservan sus
+  endpoints y un probador desplegable con URL, ejemplo `fetch`, parámetros editables y resultado.
+  Los alias `/download` y `/search` redirigen a `/downloader` y `/searcher`.
+- Las opciones de estilo adicionales se pueden desplegar dentro del probador. Los canvas y
+  `/tools/resize` admiten imágenes desde la galería; se muestran las imágenes, videos o JSON obtenidos.
+- La portada anterior permanece disponible en `/welcome`. Los grupos de Canvas se conservan en `/docs`.
+- La mayoría de endpoints no necesitan claves y usan fuentes públicas. La transcripción STT requiere
+  configurar una clave de proveedor. No hay generación con IA ni contenido NSFW en Anime y Reactions.
+- **¿Agregar o editar un endpoint?** Consultá [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -174,11 +143,10 @@ tuviera algún emoji, se dibuja el glifo de NotoEmoji: **nunca** un cuadrado.
 | `grayscale` | `true` = foto en blanco y negro |
 | `shadow` | `true` = sombra suave bajo el texto (mejor lectura sobre fotos) |
 
-La web agrupa estas canvas por **categorías**, igual que las carpetas de Drive `CategoriaCanvas`:
-**Textos** (quotly, ttp, attp, iqc, iqcblue, iqcpink, messengerquote, profilenote, pov, x…),
-**Brats**, **Efectos**, **Porcentajes**, **Imágenes**,
-**Filtros** y **Personajes**. El orden y los nombres viven en `src/catalog/canvas.js` → `GROUPS`, y cada endpoint
-declara su carpeta con el campo `group`. Para mover una canvas de sección sólo se cambia ese campo.
+El catálogo conserva las carpetas de Drive `CategoriaCanvas`: **Textos**, **Brats**, **Efectos**,
+**Porcentajes**, **Imágenes**, **Filtros** y **Personajes**. Los nombres viven en
+`src/catalog/canvas.js` → `GROUPS`, y cada endpoint declara su carpeta mediante `group`.
+Los grupos se incluyen en `/docs`; la página `/canvas` muestra la lista de endpoints.
 
 Los canvas con plantilla de Drive están **calibrados con las coordenadas reales de cada imagen**
 (burbuja de cita de `iqc`, fila de `cuentatiktok`, cartel del pingüino, hoja de Bob Esponja, marco de
@@ -654,7 +622,7 @@ Estructura:
 ```
 src/
   catalog/                → el catálogo (home, categorías, /docs y probador TEST)
-    index.js              → junta las categorías y define el orden de /home
+    index.js              → junta las categorías del catálogo
     helpers.js            → P(), O(), S(), AV, AV2, textStyle(), photoStyle()
     anime.js canvas.js tools.js downloader.js searcher.js reactions.js
   server.js               → Express + CORS abierto + páginas + routers

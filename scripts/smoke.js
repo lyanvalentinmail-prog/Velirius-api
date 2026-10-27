@@ -45,15 +45,17 @@ async function main() {
     const homeHtml = home.body.toString();
     ok('GET /home', home.status === 200 && homeHtml.includes('Velirius API') && homeHtml.includes('Aquí están las carpetas'));
     ok('Home con la fila de iconos de Apireon', /class="icons"/.test(homeHtml) && homeHtml.includes('href="/information"')
-      && homeHtml.includes('data-search-btn') && homeHtml.includes('Sigue mi cuenta de GitHub'));
+      && homeHtml.includes('href="/docs"') && homeHtml.includes('data-search-btn') && homeHtml.includes('Sigue mi cuenta de GitHub'));
     ok('Home con barra de estado (ESTADO / RUTAS / ENDPOINTS)', /Estado:/i.test(homeHtml) && /Rutas:/i.test(homeHtml) && /Endpoints:/i.test(homeHtml));
     ok(`Home muestra ${t.routers} routers / ${t.endpoints} endpoints`, homeHtml.includes(String(t.endpoints)));
     ok('Home lista las 6 categorías como carpetas (VER)', CATEGORIES.every(c => homeHtml.includes(`/${c.id}`)) && (homeHtml.match(/class="row folder"/g) || []).length === CATEGORIES.length && homeHtml.includes('cat-ver'));
+    const folderOrder = [...homeHtml.matchAll(/class="row folder" href="\/([^"]+)"/g)].map(m => m[1]);
+    ok('Carpetas ordenadas alfabéticamente', JSON.stringify(folderOrder) === JSON.stringify([...folderOrder].sort()));
 
     for (const cat of CATEGORIES) {
       const page = await get(port, `/${cat.id}`);
       const html = page.body.toString();
-      ok(`GET /${cat.id} (${cat.endpoints.length})`, page.status === 200 && html.includes('data-test-btn=') && html.includes('>Test</button>'));
+      ok(`GET /${cat.id} (${cat.endpoints.length})`, page.status === 200 && (html.match(/data-test-btn=/g) || []).length === cat.endpoints.length && html.includes('>Test</button>'));
     }
 
     const catJs = (await get(port, '/js/category.js')).body.toString();
@@ -64,15 +66,16 @@ async function main() {
     ok('Chips REQUERIDO/OPCIONAL por parámetro', catJs.includes('chip-opt') && catJs.includes('Requerido') && catJs.includes('Opcional'));
     ok('Resultado con 200 OK, ms y DESCARGAR', catJs.includes('chip-status') && catJs.includes('res-meta') && catJs.includes('Descargar'));
 
-    // ---- Portada (landing) estilo Delirius, con botón al dashboard ----
-    const landing = await get(port, '/');
+    // El dashboard se muestra también en la raíz; la portada previa sigue disponible.
+    const root = await get(port, '/');
+    ok('GET / muestra el mismo dashboard que /home', root.status === 200 && root.type.includes('text/html') && root.body.toString() === homeHtml);
+    const landing = await get(port, '/welcome');
     const landingHtml = landing.body.toString();
-    ok('GET / (portada con Initialize dashboard)', landing.status === 200 && landingHtml.includes('Initialize dashboard') && landingHtml.includes('href="/home"'));
-    ok('La portada no es un redirect: es la primera pantalla', landing.type.includes('text/html') && landingHtml.includes('paper'));
-
-    // ---- Portada con el video y probador sin marco ----
-    ok('Portada con el video del dashboard', landingHtml.includes('/media/dashboardvid.mp4') && landingHtml.includes('class="hero"'));
-    ok('Portada con la caja SECURITY ALERT y el CTA', landingHtml.includes('alert-tag') && landingHtml.includes('Initialize dashboard'));
+    ok('Portada anterior disponible en /welcome', landing.status === 200 && landingHtml.includes('Initialize dashboard') && landingHtml.includes('href="/home"'));
+    ok('Portada anterior conserva el video', landingHtml.includes('/media/dashboardvid.mp4') && landingHtml.includes('class="hero"'));
+    ok('Diseño usa la fuente local y tarjeta de 414 × 625', catCss.includes('ShareTechMono-Regular.ttf') && catCss.includes('max-width: 414px') && catCss.includes('min(625px'));
+    const font = await get(port, '/fonts/ShareTechMono-Regular.ttf');
+    ok('Fuente Share Tech Mono disponible', font.status === 200 && font.body.length > 40000);
     ok('La pieza del canvas se ve sin marco (damero)', catCss.includes('.preview') && /\.preview img[^{]*\{[^}]*border: 0/.test(catCss));
 
     // ---- Opciones avanzadas plegadas en el probador ----

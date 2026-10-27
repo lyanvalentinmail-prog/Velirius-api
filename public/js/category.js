@@ -23,8 +23,15 @@
   const searchInput = searchBox ? searchBox.querySelector('input') : null;
   if (searchBtn && searchBox) {
     searchBtn.addEventListener('click', () => {
-      searchBox.classList.toggle('open');
-      if (searchBox.classList.contains('open') && searchInput) searchInput.focus();
+      const open = searchBox.classList.toggle('open');
+      searchBtn.setAttribute('aria-expanded', String(open));
+      searchBtn.setAttribute('aria-label', open ? 'Cerrar búsqueda' : 'Buscar');
+      if (open && searchInput) searchInput.focus();
+      if (!open && searchInput) {
+        searchInput.value = '';
+        searchInput.dispatchEvent(new Event('input'));
+        searchBtn.focus();
+      }
     });
   }
   if (searchInput) {
@@ -35,16 +42,6 @@
         // Se busca en el nombre, la descripción y los parámetros del endpoint.
         const hay = `${row.textContent} ${ep.desc || ''} ${(ep.params || []).map(p => `${p.name} ${p.desc || ''}`).join(' ')}`.toLowerCase();
         row.style.display = !term || hay.includes(term) ? '' : 'none';
-      });
-      // Ocultar las secciones (grupos) que se quedaron sin resultados.
-      document.querySelectorAll('.group').forEach(group => {
-        const visible = [...group.querySelectorAll('.row[data-endpoint]')].some(r => r.style.display !== 'none');
-        group.style.display = visible ? '' : 'none';
-      });
-      document.querySelectorAll('.chips .chip').forEach(chip => {
-        const target = chip.getAttribute('href').slice(1);
-        const group = document.getElementById(target);
-        chip.style.display = group && group.style.display === 'none' ? 'none' : '';
       });
       document.querySelectorAll('.tester.open').forEach(t => {
         const row = t.previousElementSibling;
@@ -185,8 +182,7 @@
     if (urlEl) urlEl.textContent = location.origin + path;
     const fetchEl = tester.querySelector('.code-fetch');
     if (fetchEl) {
-      const short = path.length > 96 ? path.slice(0, 93) + '…' : path;
-      fetchEl.textContent = `fetch("${short}")\n  .then(r => r.blob())\n  .then(b => URL.createObjectURL(b));`;
+      fetchEl.textContent = `fetch(${JSON.stringify(path)})`;
     }
   }
 
@@ -412,7 +408,9 @@
       btn.setAttribute('aria-expanded', String(open));
       btn.textContent = 'Test';
     }
-    if (open) setTimeout(() => tester.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 380);
+    if (open && row) setTimeout(() => {
+      if (tester.classList.contains('open')) row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 280);
   }
 
   // ---------- Construir el probador ----------
@@ -432,7 +430,10 @@
     const fieldOf = p => {
       const gallery = (data.category === 'canvas' || (data.category === 'tools' && id === 'resize')) && isImageParam(p.name);
       const up = gallery
-        ? `<div class="gallery-row"><label class="upload"><span class="upload-label">Galería</span><input type="file" accept="image/*" multiple hidden data-upload-for="${esc(p.name)}"></label><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
+        ? `<label class="upload"><span class="upload-label">Galería</span><input type="file" accept="image/*" multiple aria-label="Elegir imágenes para ${esc(p.name)}" data-upload-for="${esc(p.name)}"></label>`
+        : '';
+      const previews = gallery
+        ? `<div class="gallery-row" hidden><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
         : '';
       let control;
       if (Array.isArray(p.options) && p.options.length) {
@@ -447,11 +448,14 @@
         <div class="param-top"><b>${esc(p.name)}</b><span class="chip-opt${p.required ? ' req' : ''}">${p.required ? 'Requerido' : (gallery ? 'Opcional • URL o varias fotos' : 'Opcional')}</span></div>
         ${p.desc ? `<div class="param-desc">${esc(p.desc)}</div>` : ''}
         <div class="field-row">${control}${up}</div>
+        ${previews}
       </div>`;
     };
 
-    const basic = ep.params.filter(p => !p.advanced);
-    const adv = ep.params.filter(p => p.advanced);
+    // Los primeros campos forman parte de la ficha principal, como en la referencia;
+    // el resto de opciones de estilo permanecen plegadas.
+    const basic = ep.params.filter((p, i) => !p.advanced || i < 4);
+    const adv = ep.params.filter((p, i) => p.advanced && i >= 4);
     const advBlock = adv.length
       ? `<button type="button" class="btn small ghost adv-toggle" data-act="adv" aria-expanded="false">Opciones avanzadas (${adv.length})</button>
          <div class="adv-fields" hidden>${adv.map(fieldOf).join('')}</div>`
@@ -495,7 +499,7 @@
         if (!files.length) return;
         const name = fileInp.dataset.uploadFor;
         const target = fieldFor(tester, name);
-        const row = fileInp.closest('.gallery-row');
+        const row = fileInp.closest('.param').querySelector('.gallery-row');
         const label = fileInp.closest('label');
         const labelText = label && label.querySelector('.upload-label');
         if (!target) return;
@@ -533,6 +537,7 @@
         setLocalList(target, locales);
         target.value = urls.join(',');
         showThumb(row, locales, urls.length > 1 ? 'Foto subida' : 'Imagen subida');
+        if (row) row.hidden = locales.length === 0;
         if (labelText) labelText.textContent = before || 'Galería';
         if (label) label.classList.remove('busy');
         fileInp.value = '';
@@ -558,7 +563,7 @@
         const target = fieldFor(tester, clearBtn.dataset.clear);
         if (target) { target.value = ''; delete target.dataset.local; delete target.dataset.pending; }
         const row = clearBtn.closest('.gallery-row');
-        if (row) row.querySelectorAll('.up-thumb').forEach(t => t.remove());
+        if (row) { row.querySelectorAll('.up-thumb').forEach(t => t.remove()); row.hidden = true; }
         clearBtn.textContent = '✕ Quitar';
         refreshUrl(tester);
       });
@@ -603,8 +608,6 @@
     const input = searchInput;
     if (input && input.value) { input.value = ''; input.dispatchEvent(new Event('input')); }
     setOpen(tester, true);
-    const row = tester.previousElementSibling;
-    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   window.addEventListener('hashchange', openFromHash);
   openFromHash();

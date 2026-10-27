@@ -21,11 +21,10 @@
 // Ayudas (src/catalog/helpers.js): P, O, S, AV, AV2, textStyle(), photoStyle().
 //
 // `group` = la carpeta de Drive a la que pertenece (src/catalog/canvas.js → GROUPS).
-// La web usa ese campo para mostrar las canvas por categorías, igual que en Drive.
+// Este campo y las carpetas correspondientes se incluyen en /docs.
 const { P, O, S, AV, AV2, textStyle, photoStyle } = require('./helpers');
 
-// Las carpetas de Drive (`CategoriaCanvas/<nombre>`), en el orden en que se
-// muestran en la web. Un endpoint sin `group` cae en la primera.
+// Las carpetas de Drive (`CategoriaCanvas/<nombre>`), conservadas en el catálogo.
 const GROUPS = [
   { id: 'textos', name: 'Textos', desc: 'Stickers y capturas de chat' },
   { id: 'brats', name: 'Brats', desc: 'La familia brat: stickers, videos y carteles' },
