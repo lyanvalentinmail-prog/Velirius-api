@@ -11,9 +11,10 @@ const express = require('express');
 const { save, get } = require('../utils/uploadStore');
 const { absoluteUrl } = require('../utils/http');
 const { sendError, disposicion } = require('../utils/response');
+const { validateImageBuffer } = require('../utils/image');
 
 const router = express.Router();
-const jsonBody = express.json({ limit: '12mb' });
+const jsonBody = express.json({ limit: '21mb' });
 
 // Formatos que aceptamos (lo mismo que entiende sharp).
 const ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
@@ -24,12 +25,14 @@ function decodeDataUrl(raw) {
   if (!m) return null;
   const mime = m[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : m[1].toLowerCase();
   if (!ACCEPTED.has(mime)) return null;
-  const buffer = Buffer.from(m[2], 'base64');
+  const encoded = m[2].replace(/\s+/g, '');
+  if (!/^[a-z0-9+/]*={0,2}$/i.test(encoded) || encoded.length % 4 === 1) return null;
+  const buffer = Buffer.from(encoded, 'base64');
   if (!buffer.length) return null;
   return { buffer, mime };
 }
 
-router.post('/', jsonBody, (req, res) => {
+router.post('/', jsonBody, async (req, res) => {
   const body = req.body || {};
   const decoded = decodeDataUrl(body.image || body.url || body.data || body.file);
   if (!decoded) {
@@ -39,6 +42,13 @@ router.post('/', jsonBody, (req, res) => {
       'No se recibió ninguna imagen',
       'Manda JSON: { "image": "data:image/jpeg;base64,..." }'
     );
+  }
+  try {
+    const meta = await validateImageBuffer(decoded.buffer);
+    const actual = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heif: 'image/avif' }[meta.format];
+    if (actual !== decoded.mime) return sendError(res, 400, 'El tipo de imagen no coincide con el archivo');
+  } catch (e) {
+    return sendError(res, e.status || 400, e.message, e.hint);
   }
   const { id, mime } = save(decoded.buffer, decoded.mime);
   return res.status(201).json({
@@ -55,7 +65,8 @@ router.get('/:id', (req, res) => {
   }
   res.setHeader('Content-Type', file.mime);
   res.setHeader('Content-Length', String(file.buffer.length));
-  res.setHeader('Cache-Control', 'public, max-age=900');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Disposition', disposicion(req, `velirius-${req.params.id}.${(file.mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, 'velirius.jpg'));
   return res.status(200).send(file.buffer);

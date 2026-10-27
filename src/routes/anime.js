@@ -9,7 +9,7 @@ const router = express.Router();
 const handle = fn => async (req, res) => {
   try {
     const out = await fn(req, res);
-    if (out !== undefined) return sendSuccess(res, out);
+    if (out !== undefined && !res.headersSent) return sendSuccess(res, out);
   } catch (e) {
     console.error('[anime]', e.message);
     if (!res.headersSent) {

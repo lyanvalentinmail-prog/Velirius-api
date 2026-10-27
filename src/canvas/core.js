@@ -18,8 +18,14 @@ const txt = (q, fallback) => {
 };
 const imgParam = (q, ...names) => {
   for (const n of names) {
-    const v = String(q[n] ?? '').trim();
-    if (v) return v;
+    const value = q[n];
+    if (Array.isArray(value)) {
+      const values = value.map(v => String(v ?? '').trim()).filter(Boolean);
+      if (values.length) return values;
+    } else {
+      const v = String(value ?? '').trim();
+      if (v) return v;
+    }
   }
   return '';
 };
@@ -245,11 +251,13 @@ async function placeImageArea(W, H, area, userBuf, opts = {}) {
  */
 async function holeMask(file, bbox, opts = {}) {
   const { buf, width: W, height: H } = await templateMeta(file);
-  const x0 = Math.round(Math.max(0, bbox.x0) * W);
-  const y0 = Math.round(Math.max(0, bbox.y0) * H);
-  const x1 = Math.round(Math.min(1, bbox.x1) * W);
-  const y1 = Math.round(Math.min(1, bbox.y1) * H);
-  const bw = Math.max(4, x1 - x0), bh = Math.max(4, y1 - y0);
+  const clampX = value => Math.max(0, Math.min(W, Math.round(value * W)));
+  const clampY = value => Math.max(0, Math.min(H, Math.round(value * H)));
+  const x0 = clampX(bbox.x0), y0 = clampY(bbox.y0);
+  const x1 = clampX(bbox.x1), y1 = clampY(bbox.y1);
+  const bw = x1 - x0, bh = y1 - y0;
+  // Un desplazamiento puede sacar completamente el hueco de la plantilla.
+  if (bw < 4 || bh < 4) return null;
   const N = bw * bh;
 
   // 1) Se difumina el recorte: los hilos de pelo / brillos de 1-2 px dejan de
@@ -647,6 +655,21 @@ async function signCanvas(file, area, q, opts = {}) {
   return sharp(buf).composite(flat(layers)).png().toBuffer();
 }
 
+// Recorta una capa que sale de los bordes antes de entregarla a Sharp. Una
+// imagen totalmente fuera del lienzo no necesita componer nada.
+async function clipLayerToCanvas(input, left, top, W, H) {
+  const meta = await sharp(input).metadata();
+  const srcLeft = Math.max(0, -left), srcTop = Math.max(0, -top);
+  const destLeft = Math.max(0, left), destTop = Math.max(0, top);
+  const width = Math.min(meta.width - srcLeft, W - destLeft);
+  const height = Math.min(meta.height - srcTop, H - destTop);
+  if (width < 1 || height < 1) return null;
+  const cropped = srcLeft || srcTop || width !== meta.width || height !== meta.height
+    ? await sharp(input).extract({ left: srcLeft, top: srcTop, width, height }).png().toBuffer()
+    : input;
+  return { input: cropped, left: destLeft, top: destTop };
+}
+
 /**
  * Plantilla de personajes: la foto entra **con la forma exacta del hueco** que dejó
  * el original (detección de la zona blanca encerrada). Si una plantilla no tiene un
@@ -708,9 +731,10 @@ async function faceCanvas(file, holes, q) {
     const w = hole.rx * 2 * W * ov.zoom, h = hole.ry * 2 * H * ov.zoom;
     const piece = await ellipseImage(users[i], w, h, { zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale });
     const cx = (hole.cx + ov.dx) * W, cy = (hole.cy + ov.dy) * H;
-    layers.push({ input: piece, left: Math.round(cx - w / 2), top: Math.round(cy - h / 2) });
+    const clipped = await clipLayerToCanvas(piece, Math.round(cx - w / 2), Math.round(cy - h / 2), W, H);
+    if (clipped) layers.push(clipped);
   }
-  return sharp(buf).composite(flat(layers)).png().toBuffer();
+  return layers.length ? sharp(buf).composite(flat(layers)).png().toBuffer() : buf;
 }
 
 // ---------- utilidades ----------

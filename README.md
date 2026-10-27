@@ -5,8 +5,9 @@ negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`
 buscador) con **104 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
-- Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
+- La mayoría de endpoints no necesitan claves y usan fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
   yande.re, pic.re, otakugifs, PokeAPI, TikWM, YouTube InnerTube/Invidious/Piped, LRCLIB, Wikipedia, Google…).
+  La transcripción STT sí requiere configurar una clave de proveedor.
 - **Sin IA** (no hay generación con modelos) y **sin contenido NSFW**: Anime y Reactions usan rutas `/sfw/`,
   el espejo seguro de konachan (`.net`) o los boorus con filtro de rating (`rating:g` / `rating:general`).
 - El probador sigue el diseño de las capturas: al abrir, la fila se pone **negra** con el botón TEST
@@ -84,7 +85,7 @@ El botón **`TEST`** de cada endpoint **se despliega hacia abajo** mostrando el 
 
 **Todo SFW, filtrado en la propia consulta**: `danbooru` pide `rating:g`, `safebooru` es la copia
 segura de danbooru (`rating:general`), `konachan` usa el espejo `.net` (`rating:safe`) y `yande.re`
-filtra con `rating:s` (y no está detrás de Cloudflare, así que responde también desde el servidor).
+filtra con `rating:s`. `pic.re` sólo devuelve elementos con clasificación explícitamente segura y sin tags inseguros; si no puede comprobarlo, se descarta el resultado.
 
 > Fuentes retiradas: `waifu.pics` (servicio apagado), `waifu.im` (cierre definitivo el 17/10/2026) y
 > `nekos.life` (Cloudflare bloquea las peticiones del servidor). `nekos.best` no tiene categoría
@@ -145,8 +146,7 @@ El texto **no** se dibuja con `<text font-family="…">`. Cada letra se traduce 
 | `mono` | JetBrains Mono | 400 / 700 |
 
 `hand` es la tipografía del cartel de **`bratcoyote`**: el original de Drive está escrito a mano, así que
-la canvas usa exactamente esa letra (y `?font=` sigue funcionando para cambiarla). Las licencias están
-al lado de cada fuente (`assets/fonts/*-OFL.txt`).
+la canvas usa exactamente esa letra (y `?font=` sigue funcionando para cambiarla). Revisá las licencias correspondientes antes de redistribuir las fuentes; en el repositorio sólo se incluye el texto OFL de Caveat Brush.
 
 Los emojis y símbolos que no están en esas fuentes se dibujan con **NotoEmoji** (también incluida), así que
 tampoco aparecen cuadrados en textos como `hola 🐱🔥`. Todo el render es idéntico en local, Render o Vercel
@@ -342,9 +342,9 @@ curl "https://<host>/canvas/bratanime?text=Velirius%20API&uppercase=true&font=se
 | `GET /tools/calculator` | `expr` (`+ - * / % ^ ( ) sqrt() cbrt() sin() cos() tan() ln() log() abs() fact() pi e tau phi`), `degrees` |
 | `GET /tools/translator` | `text`, `to` (en, es, pt…), `from` (auto) |
 | `GET /tools/morse` | `text`, `mode` (`encode` / `decode`), `separator` |
-| `GET /tools/resize` | `url`, `width`, `height`, `scale` (%), `fit` (`cover`/`contain`/`fill`/`inside`/`outside`), `format` (`png`/`jpg`/`webp`/`avif`), `quality`, `bg` — **Rezize**: cambia el alto y el ancho de una imagen |
+| `GET /tools/resize` / `POST /tools/resize` | `url`, `width`, `height`, `scale` (%), `fit` (`cover`/`contain`/`fill`/`inside`/`outside`), `format` (`png`/`jpg`/`webp`/`avif`), `quality`, `bg` — **Rezize**: cambia el alto y el ancho de una imagen |
 | `GET /tools/tts` | `text`, `lang` (es, en…), `engine` (`auto`/`google`/`streamelements`), `voice`, `slow`, `direct` — **TextToSpeech**: texto → MP3 |
-| `GET /tools/stt` | `url` del audio (mp3/ogg/wav/m4a/webm), `lang`, `mime` — **SpeechToText**: audio → texto |
+| `GET /tools/stt` / `POST /tools/stt` | `url` del audio (mp3/ogg/wav/m4a/webm), `lang`, `mime` — **SpeechToText**: audio → texto |
 
 ```bash
 curl "https://<host>/tools/calculator?expr=(2+3)*4^2%2Bsqrt(81)"
@@ -364,6 +364,18 @@ solo archivo. Para voces de Google Cloud alcanza con `GOOGLE_TTS_KEY`.
 configurá `GROQ_API_KEY` (capa gratis, Whisper), `OPENAI_API_KEY`, `DEEPGRAM_API_KEY` o
 `ASSEMBLYAI_API_KEY`. Sin ninguna, el endpoint responde `501` explicando qué falta; con la clave,
 acepta `?url=` o `POST {"audio":"data:audio/mpeg;base64,…"}`.
+
+**Imágenes y seguridad:** `POST /canvas/:id` y `POST /tools/resize` aceptan imágenes
+`data:image/...;base64,...` en el JSON. El resize también admite `json=true`: devuelve metadatos
+y una URL a la imagen. Las imágenes admitidas se validan y se limitan a 15 MB y 40 megapíxeles.
+Las URLs de imágenes, audio STT y multimedia servido por proxy deben ser públicas: se rechazan
+redes privadas, localhost y redirecciones hacia ellas.
+Las subidas `/upload` duran 30 minutos, se guardan en memoria por proceso y no se comparten entre
+instancias serverless; el probador envía la foto por POST para evitar esa dependencia.
+
+> La API es pública y no tiene autenticación ni límites de frecuencia incorporados. Si habilitás
+> un proveedor STT de pago o exponés procesamiento de archivos, añadí autenticación, cuotas,
+> límites de concurrencia y restricciones de red saliente en el proxy/despliegue.
 
 ## 📥 Downloader — 9
 
@@ -389,11 +401,11 @@ defecto) antes de rendirse, porque un video con el audio bloqueado no sirve. La 
 suene **entera**, no un pedazo: si aun así todo YouTube falla, devuelve un **preview real de 30 s**
 de Deezer (o iTunes) y el JSON lo marca con `preview: true` / `fullSong: false`.
 
-**El video siempre se reproduce con audio y video.** En modo automático (`quality=auto`,
-que es el valor por defecto) se busca el mejor formato **progresivo** (video + audio en el
-mismo archivo); si YouTube sólo publicó las pistas por separado (DASH), el servidor las
-**pega con ffmpeg** (`-c copy`, sin recodificar) y entrega un MP4 con sonido. El JSON lo dice
-en `hasAudio` y `video.mergedWithFfmpeg`.
+**Video con sonido:** en modo automático (`quality=auto`) se elige la mejor resolución
+que pueda reproducirse con audio. Si una pista DASH mejora la calidad, el servidor la une con
+el audio mediante ffmpeg (`-c copy`); si el pegado falla, intenta un progresivo de menor calidad.
+Si no hay video con sonido disponible, devuelve un error en lugar de servir video mudo.
+El JSON indica el resultado en `hasAudio` y `video.mergedWithFfmpeg`.
 
 - `quality` acepta `auto` (mejor disponible), `360`, `480`, `720`, `1080`, o `hd`/`fhd`.
 - YouTube se resuelve con `youtubei.js` (InnerTube al día: firmas y `n`-token); los
@@ -424,7 +436,7 @@ cobalt dejó de servir YouTube en 2025. Por eso todos los caminos tienen respald
 - **Facebook**: móvil → embed → watch → mbasic → **cobalt** (y resuelve los enlaces `fb.watch`).
 - **Pinterest**: API interna (`BaseSearchResource` / `PinResource`) → HTML del pin → **cobalt**.
 
-Para que funcione siempre, apuntá la API a **tu propia instancia de cobalt** (gratis, 3 minutos,
+Para mejorar la disponibilidad, podés apuntar la API a **tu propia instancia de cobalt** (
 Docker o Railway: <https://github.com/imputnet/cobalt>). Se configura con variables de entorno,
 sin tocar código:
 
@@ -432,7 +444,7 @@ sin tocar código:
 |---|---|---|
 | `COBALT_API_URL` | `https://cobalt-mi-api.up.railway.app` | instancia propia: se usa **primero** |
 | `COBALT_API_URLS` | `https://a.midominio,https://b.midominio` | varias, separadas por coma |
-| `COBALT_API_KEY` | `mi-clave` | si tu instancia pide `Api-Key` |
+| `COBALT_API_KEY` | `mi-clave` | se envía sólo a las instancias configuradas explícitamente |
 | `COBALT_DISABLE` | `true` | apaga el respaldo (sólo las fuentes públicas) |
 
 Sin configurar nada se prueban instancias comunitarias; si todas fallan, el endpoint responde
@@ -616,10 +628,11 @@ curl "http://localhost:3000/canvas/brat?text.size=1.2&text.fill=ff0044&canvas.bg
 
 ```bash
 npm run check   # catálogo: ids, desc, parámetros, routers y canvas ↔ catálogo
-npm test        # smoke: web, tools, /docs y los 31 canvas
+npm run lint    # variables indefinidas, claves duplicadas y código inalcanzable
+npm test        # smoke + 104 rutas HTTP + proveedores simulados
 ```
 
-La CI (`.github/workflows/ci.yml`) corre los dos comandos en cada PR. Hay además una plantilla de
+La CI (`.github/workflows/ci.yml`) corre validación, lint y pruebas en cada PR. Las pruebas de proveedores usan respuestas simuladas y no garantizan su disponibilidad real. Hay además una plantilla de
 PR con el checklist y un formulario de *issue* para pedir endpoints nuevos.
 
 ## Desarrollo
@@ -629,7 +642,11 @@ npm install
 npm start        # http://localhost:3000/home
 npm run dev      # con --watch
 npm run check    # valida el catálogo (ids, parámetros, canvas ↔ catálogo)
-npm test         # smoke: web, catálogo, tools, /docs y los 31 canvas
+npm run lint     # análisis estático
+npm test         # smoke + rutas HTTP + proveedores simulados
+npm run test:endpoints  # todos los endpoints del catálogo
+npm run test:integrations # rutas + proveedores reales, HTTP externo simulado
+npm run test:providers  # lógica de proveedores y respaldos
 ```
 
 Estructura:
@@ -643,7 +660,7 @@ src/
   server.js               → Express + CORS abierto + páginas + routers
   routes/
     anime.js canvas.js tools.js download.js searcher.js reactions.js pages.js
-  canvas/                 → motor de las 33 plantillas
+  canvas/                 → motor de los canvas
     generators/           → un archivo por canvas (se cargan solos)
       _helpers.js         → piezas compartidas (carteles, huecos, medidores)
     layouts.js            → medidas y estilos por defecto de cada canvas
@@ -661,9 +678,12 @@ assets/
   fonts/                  → Inter, Playfair Display, JetBrains Mono y NotoEmoji
   emoji/                  → hoja de sprites de emojis a color + índice (Twemoji)
 scripts/
-  smoke.js                → npm test
+  smoke.js                → render y pruebas generales
+  test-endpoints.js       → todas las rutas del catálogo por HTTP
+  test-integrations.js    → routers y proveedores con HTTP externo simulado
+  test-providers.js       → proveedores y respaldos simulados
   validate-catalog.js     → npm run check
-.github/workflows/ci.yml  → corre check + test en cada PR
+.github/workflows/ci.yml  → corre check + lint + test en cada PR
 ```
 
 ### Despliegue
@@ -679,6 +699,6 @@ ffmpeg, y enruta todo a la función `api/index.js`.
 2. En *Settings → Git → Production Branch* selecciona **`main`** (no una rama de `arena/…`).
 3. Redeploy.
 
-> En Vercel las respuestas de una función tienen un tope de ~4.5 MB: los Canvas (PNG/MP4/WebM) caben
-> sin problema, pero los archivos grandes de `/downloader/*?direct=…` conviene servirlos desde Render.
+> En Vercel las peticiones y respuestas de funciones tienen un tope de ~4.5 MB. Para fotos de
+> galería y archivos grandes de canvas o `/downloader/*?direct=…`, conviene usar Render u otro servidor.
 

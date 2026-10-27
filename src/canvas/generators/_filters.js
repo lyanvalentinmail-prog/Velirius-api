@@ -18,14 +18,11 @@ async function loadPhoto(q, id, defMaxWidth = 1024) {
   const photo = (parts && parts.photo) || {};
   const maxWidth = Math.round(P.num(q, 'photo', 'width', photo.maxWidth || defMaxWidth, 64, 4096));
   const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
-  const img = sharp(user).rotate();
-  const meta = await img.metadata();
-  if (meta.width && meta.width > maxWidth) {
-    const buf = await img.resize(maxWidth, null, { kernel: 'lanczos3' }).png().toBuffer();
-    const m = await sharp(buf).metadata();
-    return { buf, width: m.width, height: m.height };
-  }
-  const buf = await img.png().toBuffer();
+  // Limitar también el alto: un PNG angosto y enorme no debe bloquear filtros
+  // que recorren cada píxel. Se mantiene la proporción y nunca se agranda.
+  const buf = await sharp(user).rotate().resize({
+    width: maxWidth, height: 4096, fit: 'inside', withoutEnlargement: true, kernel: 'lanczos3'
+  }).png().toBuffer();
   const m = await sharp(buf).metadata();
   return { buf, width: m.width || 1, height: m.height || 1 };
 }

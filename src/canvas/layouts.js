@@ -118,17 +118,6 @@ const LAYOUTS = {
   },
 
   /* ============================ CHATS ============================ */
-  quotly: {
-    label: 'Quotly (cita estilo Telegram)',
-    parts: {
-      canvas: { bg: '#000000' },
-      card: { padX: 24, padY: 22, gap: 20 },
-      avatar: { box: { y0: 0.5, y1: 0.5 }, size: 84, radius: 0.22 },
-      name: { font: { family: 'sans', weight: 700, size: 27 }, fill: '#f59e0b' },
-      msg: { font: { family: 'sans', weight: 400, size: 32, lineHeight: 1.34 }, fill: '#ffffff' }
-    }
-  },
-
   iqc: {
     label: 'Chat de WhatsApp (burbuja que crece)',
     parts: {

@@ -6,57 +6,98 @@ const UA_MOBILE =
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(new Error('Tiempo de espera agotado')), timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, ctrl.signal]) : ctrl.signal;
   try {
-    return await fetch(url, { ...options, signal: ctrl.signal, redirect: 'follow' });
+    const { publicOnly, ...fetchOptions } = options;
+    const doFetch = publicOnly ? require('./publicFetch').fetchPublic : fetch;
+    return await doFetch(url, { ...fetchOptions, signal, redirect: options.redirect || 'follow' });
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function fetchJson(url, { headers = {}, timeoutMs = 15000, method = 'GET', body } = {}) {
-  const res = await fetchWithTimeout(
-    url,
-    {
-      method,
-      headers: { 'User-Agent': UA_DESKTOP, Accept: 'application/json, text/plain, */*', ...headers },
-      body
-    },
-    timeoutMs
-  );
-  const text = await res.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch (_) { /* no-json */ }
-  if (!res.ok) {
-    const err = new Error(`HTTP ${res.status} en ${new URL(url).hostname}`);
-    err.status = res.status; err.body = text.slice(0, 400); err.json = json;
-    throw err;
-  }
-  if (json === null) throw new Error(`Respuesta no-JSON de ${new URL(url).hostname}`);
-  return json;
+// Deadline compartido por la conexión y todo el cuerpo, no sólo las cabeceras.
+async function withDeadline(timeoutMs, fn) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error('Tiempo de espera agotado')), timeoutMs);
+  try { return await fn(ctrl.signal); } finally { clearTimeout(timer); }
 }
 
-async function postJson(url, data, { headers = {}, timeoutMs = 15000 } = {}) {
-  return fetchJson(url, {
-    method: 'POST',
-    timeoutMs,
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(data)
+async function readLimited(res, maxBytes, signal) {
+  const length = Number(res.headers.get('content-length'));
+  if (Number.isFinite(length) && length > maxBytes) {
+    res.body?.cancel().catch(() => {});
+    throw new Error(`El archivo remoto supera el tamaño máximo (${maxBytes} bytes)`);
+  }
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  let done = false;
+  try {
+    while (!done) {
+      let onAbort;
+      const aborted = new Promise((_, reject) => {
+        onAbort = () => reject(signal.reason || new Error('Tiempo de espera agotado'));
+        if (signal.aborted) onAbort();
+        else signal.addEventListener('abort', onAbort, { once: true });
+      });
+      let part;
+      try { part = await Promise.race([reader.read(), aborted]); }
+      finally { signal.removeEventListener('abort', onAbort); }
+      done = part.done;
+      if (done) break;
+      size += part.value.byteLength;
+      if (size > maxBytes) throw new Error(`El archivo remoto supera el tamaño máximo (${maxBytes} bytes)`);
+      chunks.push(Buffer.from(part.value));
+    }
+    return Buffer.concat(chunks, size);
+  } finally {
+    if (!done) reader.cancel().catch(() => {});
+  }
+}
+
+async function fetchJson(url, { headers = {}, timeoutMs = 15000, method = 'GET', body, redirect = 'follow' } = {}) {
+  return withDeadline(timeoutMs, async signal => {
+    const res = await fetchWithTimeout(url, {
+      method, headers: { 'User-Agent': UA_DESKTOP, Accept: 'application/json, text/plain, */*', ...headers },
+      body, signal, redirect
+    }, timeoutMs);
+    const text = (await readLimited(res, 16 * 1024 * 1024, signal)).toString('utf8');
+    let json = null;
+    try { json = JSON.parse(text); } catch (_) { /* no-json */ }
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status} en ${new URL(url).hostname}`);
+      err.status = res.status; err.body = text.slice(0, 400); err.json = json;
+      throw err;
+    }
+    if (json === null) throw new Error(`Respuesta no-JSON de ${new URL(url).hostname}`);
+    return json;
   });
 }
 
-async function fetchText(url, { headers = {}, timeoutMs = 15000 } = {}) {
-  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_DESKTOP, ...headers } }, timeoutMs);
-  if (!res.ok) { const e = new Error(`HTTP ${res.status} en ${new URL(url).hostname}`); e.status = res.status; throw e; }
-  return res.text();
+async function postJson(url, data, { headers = {}, timeoutMs = 15000, redirect = 'follow' } = {}) {
+  return fetchJson(url, {
+    method: 'POST', timeoutMs, redirect,
+    headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(data)
+  });
 }
 
-async function fetchBuffer(url, { headers = {}, timeoutMs = 20000, maxBytes = 25 * 1024 * 1024 } = {}) {
-  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_DESKTOP, ...headers } }, timeoutMs);
-  if (!res.ok) { const e = new Error(`HTTP ${res.status} al descargar ${new URL(url).hostname}`); e.status = res.status; throw e; }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > maxBytes) throw new Error('El archivo remoto supera el tamaño máximo (25 MB)');
-  return buf;
+async function fetchText(url, { headers = {}, timeoutMs = 15000, publicOnly = false } = {}) {
+  return withDeadline(timeoutMs, async signal => {
+    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_DESKTOP, ...headers }, signal, publicOnly }, timeoutMs);
+    if (!res.ok) { res.body?.cancel().catch(() => {}); const e = new Error(`HTTP ${res.status} en ${new URL(url).hostname}`); e.status = res.status; throw e; }
+    return (await readLimited(res, 16 * 1024 * 1024, signal)).toString('utf8');
+  });
+}
+
+async function fetchBuffer(url, { headers = {}, timeoutMs = 20000, maxBytes = 25 * 1024 * 1024, publicOnly = false } = {}) {
+  return withDeadline(timeoutMs, async signal => {
+    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA_DESKTOP, ...headers }, signal, publicOnly }, timeoutMs);
+    if (!res.ok) { res.body?.cancel().catch(() => {}); const e = new Error(`HTTP ${res.status} al descargar ${new URL(url).hostname}`); e.status = res.status; throw e; }
+    return readLimited(res, maxBytes, signal);
+  });
 }
 
 /** Ejecuta productores en orden hasta que uno responda; acumula errores. */
@@ -129,9 +170,18 @@ function firstFast(producers, { timeoutMs = 7000 } = {}) {
   });
 }
 
+function safeHost(raw) {
+  const host = String(raw || '').split(',')[0].trim();
+  if (!host || /[\s<>"'\\/@?#]/.test(host)) return null;
+  try {
+    const url = new URL(`http://${host}`);
+    return url.username || url.password || url.pathname !== '/' || url.search || url.hash ? null : url.host;
+  } catch (_) { return null; }
+}
 function absoluteUrl(req, path) {
-  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0];
-  const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost';
+  const supplied = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim().toLowerCase();
+  const proto = supplied === 'https' ? 'https' : 'http';
+  const host = safeHost(req.headers['x-forwarded-host']) || safeHost(req.get('host')) || 'localhost';
   return `${proto}://${host}${path}`;
 }
 

@@ -19,6 +19,7 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { UA_DESKTOP, fetchWithTimeout } = require('./http');
+const { selectVideoQuality } = require('./videoQuality');
 
 // ---------------------------------------------------------------------------
 // Cliente (se crea una sola vez por proceso)
@@ -103,25 +104,14 @@ function mejorProgresivo(lista, quality = 0) {
   if (!lista.length) return null;
   const mp4 = lista.filter(esMp4);
   const pool = mp4.length ? mp4 : lista;
-  const q = Number(quality) || 0;
-  const abajo = pool
-    .filter(f => !q || (f.height || 0) <= q)
-    .sort((a, b) => (b.height || 0) - (a.height || 0));
-  return abajo[0] || pool.slice().sort((a, b) => (b.height || 0) - (a.height || 0))[0] || null;
+  return selectVideoQuality(pool, quality);
 }
 
 /** Video DASH: se prefiere mp4/avc para que el mp4 final abra en cualquier player. */
 function mejorVideoDash(lista, quality = 0) {
   if (!lista.length) return null;
-  const orden = l => l.slice().sort((a, b) => {
-    const ah = (a.height || 0), bh = (b.height || 0);
-    return bh - ah;
-  });
   const mp4 = lista.filter(esMp4);
-  const pool = mp4.length ? mp4 : lista;
-  const q = Number(quality) || 0;
-  const abajo = orden(pool.filter(f => !q || (f.height || 0) <= q));
-  return abajo[0] || orden(pool)[0] || null;
+  return selectVideoQuality(mp4.length ? mp4 : lista, quality);
 }
 
 /** Audio DASH: mp4a (AAC) primero, después lo que haya. */
@@ -240,7 +230,8 @@ function limpiarTemporales() {
 function pegar(videoUrl, audioUrl, id) {
   fs.mkdirSync(MUX_DIR, { recursive: true });
   limpiarTemporales();
-  const salida = path.join(MUX_DIR, `${id || 'video'}-${Date.now()}.mp4`);
+  const seguro = String(id || 'video').replace(/[^\w-]/g, '') || 'video';
+  const salida = path.join(MUX_DIR, `${seguro}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`);
   return new Promise((resolve, reject) => {
     execFile(ffmpegPath(), [
       '-y', '-hide_banner', '-loglevel', 'error',
@@ -269,7 +260,9 @@ async function urlViva(url) {
     const r = await fetchWithTimeout(url, {
       headers: { 'User-Agent': UA_DESKTOP, Range: 'bytes=0-1' }
     }, 8000);
-    return r.ok || r.status === 206;
+    const ok = r.ok || r.status === 206;
+    await r.body?.cancel?.();
+    return ok;
   } catch (_) {
     return false;
   }
@@ -361,46 +354,46 @@ async function unIntentoDeVideo(id, quality = 0) {
   const player = y.session?.player;
   let salida;
 
-  // Se prueban los progresivos de mayor a menor hasta encontrar uno vivo.
-  const candidatos = progressive
-    .slice()
-    .sort((a, b) => (b.height || 0) - (a.height || 0));
-  const q = Number(quality) || 0;
-  const ordenados = [
-    ...candidatos.filter(f => !q || (f.height || 0) <= q),
-    ...candidatos.filter(f => q && (f.height || 0) > q)
-  ];
+  // Se buscan progresivos vivos, pero no se elige uno de 360p si también se
+  // puede formar un 1080p con audio y el usuario pidió 1080p o automático.
+  const candidatos = progressive.slice();
+  const ordenados = [];
+  while (candidatos.length) {
+    const next = selectVideoQuality(candidatos, quality);
+    ordenados.push(next);
+    candidatos.splice(candidatos.indexOf(next), 1);
+  }
   let prog = null;
   let progUrl = null;
   for (const f of ordenados) {
-    const url = await f.decipher(player);
-    if (await urlViva(url)) { prog = f; progUrl = url; break; }
+    try {
+      const url = await f.decipher(player);
+      if (await urlViva(url)) { prog = f; progUrl = url; break; }
+    } catch (_) { /* probar el siguiente formato */ }
   }
 
-  if (prog) {
+  const v = mejorVideoDash(videoOnly, quality);
+  const a = mejorAudioDash(audioOnly) || prog;
+  const best = selectVideoQuality([prog, v && a ? v : null].filter(Boolean), quality);
+  if (best === v && v && a) {
+    try {
+      const file = await pegar(await v.decipher(player), await a.decipher(player), id);
+      salida = {
+        file, height: v.height || null, quality: v.quality_label || null,
+        mime: 'video/mp4', hasAudio: true, muxed: true
+      };
+    } catch (e) {
+      // Si el mux falla y existe un progresivo, sigue siendo reproducible.
+      if (!prog) throw e;
+    }
+  }
+  if (!salida && prog) {
     salida = {
-      url: progUrl,
-      height: prog.height || null,
-      quality: prog.quality_label || null,
-      mime: 'video/mp4',
-      hasAudio: true,
-      muxed: false
-    };
-  } else {
-    const v = mejorVideoDash(videoOnly, quality);
-    const a = mejorAudioDash(audioOnly);
-    if (!v) throw new Error('YouTube no ofrece video para este video');
-    if (!a) throw new Error('YouTube no ofrece audio para este video');
-    const file = await pegar(await v.decipher(player), await a.decipher(player), id);
-    salida = {
-      file,
-      height: v.height || null,
-      quality: v.quality_label || null,
-      mime: 'video/mp4',
-      hasAudio: true,
-      muxed: true
+      url: progUrl, height: prog.height || null, quality: prog.quality_label || null,
+      mime: String(prog.mime_type || 'video/mp4').split(';')[0], hasAudio: true, muxed: false
     };
   }
+  if (!salida) throw new Error(v ? 'YouTube no ofrece audio para este video' : 'YouTube no ofrece video para este video');
 
   cachePlay.set(key, { at: Date.now(), value: salida });
   return salida;
@@ -457,6 +450,7 @@ module.exports = {
   mejorProgresivo,
   mejorVideoDash,
   mejorAudioDash,
+  pegar,
   limpiarTemporales,
   MUX_DIR
 };

@@ -57,7 +57,7 @@ async function bratFromLyrics(song = {}, opts = {}) {
   const bg = opts.bg || parts.canvas.bg;
   const fill = opts.color || parts.text.fill;
   const scale = Math.max(0.4, Math.min(3, Number(opts.size) || 1));
-  const maxHeight = Math.round(Math.max(W, Math.min(12000, Number(opts.maxHeight) || 6000)));
+  const maxHeight = Math.round(Math.max(100, Math.min(12000, Number(opts.maxHeight) || 6000)));
   const pad = Math.round(W * (parts.text.pad ?? 0.06));
 
   const header = opts.includeHeader === false
@@ -89,7 +89,13 @@ async function bratFromLyrics(song = {}, opts = {}) {
   });
   // Alto exacto del texto (sin aire de más) para que el PNG no quede con cola.
   const widest = lines.reduce((max, line) => Math.max(max, measure(line, { family: font.family, weight: font.weight, size, letterSpacing: font.spacing || 0 })), 0);
-  const H = Math.round(lines.length * size * font.lineHeight + pad * 2);
+  const H = Math.ceil(lines.length * size * font.lineHeight + pad * 2);
+  if (H > maxHeight) {
+    const err = new Error('La letra no cabe completa en la altura máxima solicitada');
+    err.status = 400;
+    err.hint = 'Aumentá maxHeight o width, o pedí format=txt';
+    throw err;
+  }
 
   const layer = textLayer({
     text: lines.join('\n'),
