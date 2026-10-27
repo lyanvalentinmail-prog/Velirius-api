@@ -119,28 +119,28 @@ function tokensOf(text, primary) {
   return out;
 }
 
-// Los emojis ocupan siempre el mismo cuadrado (1,2 × el tamaño de letra), así
-// los compuestos (familias, banderas, 1️⃣) no quedan angostos aunque la fuente
-// no tenga la ligadura, y el texto respira igual con emoji a color o monocromo.
+// Los emojis compuestos ocupan un solo bloque, incluso si la fuente no tiene
+// el glifo: puede existir una imagen a color para él en la hoja de sprites.
 const EMOJI_RATIO = 1.2;
-const advanceFor = (font, token, size) => {
-  if (!font) return 0;
-  return token.emoji ? size * EMOJI_RATIO : advanceOf(font, token.text, size);
+const advanceFor = (font, token, size, horizontalScale = 1, emojiScale = EMOJI_RATIO) => {
+  if (token.emoji) return size * emojiScale;
+  return font ? advanceOf(font, token.text, size) * horizontalScale : 0;
 };
 
 /** Ancho real (en px) de una línea de texto, con letter-spacing y kerning. */
-function measure(text, { family = 'sans', weight = 700, size = 48, letterSpacing = 0 } = {}) {
+function measure(text, { family = 'sans', weight = 700, size = 48, letterSpacing = 0,
+  horizontalScale = 1, emojiScale = EMOJI_RATIO } = {}) {
   const primary = fontFor(family, weight);
   const tokens = tokensOf(text, primary);
   let width = 0;
   let prev = null;
   for (const token of tokens) {
     const font = token.font;
-    if (!font) continue;
-    if (prev && !prev.emoji && !token.emoji && font === prev.font) {
-      width += kerningOf(font, prev.text, token.text) * size;
+    if (!font && !token.emoji) continue;
+    if (font && prev && !prev.emoji && !token.emoji && font === prev.font) {
+      width += kerningOf(font, prev.text, token.text) * size * horizontalScale;
     }
-    width += advanceFor(font, token, size) + letterSpacing;
+    width += advanceFor(font, token, size, horizontalScale, emojiScale) + letterSpacing;
     prev = token;
   }
   return Math.max(0, width - (tokens.length ? letterSpacing : 0));
@@ -162,7 +162,7 @@ function wrapLines(text, maxWidth, opts = {}) {
       // palabra más ancha que el área: cortar por caracteres
       if (measure(word, opts) > maxWidth) {
         let piece = '';
-        for (const ch of Array.from(word)) {
+        for (const ch of graphemes(word)) {
           if (measure(piece + ch, opts) > maxWidth && piece) { lines.push(piece); piece = ch; }
           else piece += ch;
         }
@@ -186,8 +186,9 @@ function wrapLines(text, maxWidth, opts = {}) {
  * Busca el tamaño de fuente más grande con el que el texto entra en el área.
  * Devuelve { fontSize, lines }.
  */
-function fitText(text, { width, height, maxFont = 72, minFont = 14, maxLines = 6, lineHeight = 1.18, letterSpacing = 0, family = 'sans', weight = 700 } = {}) {
-  const opts = { family, weight, letterSpacing };
+function fitText(text, { width, height, maxFont = 72, minFont = 14, maxLines = 6, lineHeight = 1.18,
+  letterSpacing = 0, family = 'sans', weight = 700, horizontalScale = 1, emojiScale = EMOJI_RATIO } = {}) {
+  const opts = { family, weight, letterSpacing, horizontalScale, emojiScale };
   // las palabras no deben partirse: si la más larga no cabe, hay que reducir
   const words = String(text).split(/\s+/).filter(Boolean);
   let best = { fontSize: minFont, lines: wrapLines(text, width, { ...opts, size: minFont, maxLines }) };
@@ -209,7 +210,8 @@ function fitText(text, { width, height, maxFont = 72, minFont = 14, maxLines = 6
  * absolutas. Si la línea tiene emojis y se recibió `emojiImages`, esos emojis
  * salen como imágenes a color en `images` (en vez de un path monocromo).
  */
-function lineToPath(line, { family, weight, size, x, baselineY, letterSpacing = 0, emojiImages = null }) {
+function lineToPath(line, { family, weight, size, x, baselineY, letterSpacing = 0, emojiImages = null,
+  horizontalScale = 1, emojiScale = EMOJI_RATIO, emojiImageScale = emojiScale, emojiOffsetX = 0, emojiOffsetY = emojiScale * 0.87 }) {
   const primary = fontFor(family, weight);
   const tokens = tokensOf(line, primary);
   const parts = [];
@@ -219,26 +221,30 @@ function lineToPath(line, { family, weight, size, x, baselineY, letterSpacing = 
   let missing = 0;
   for (const token of tokens) {
     const font = token.font;
-    if (!font) { missing++; continue; }
-    if (prev && !prev.emoji && !token.emoji && font === prev.font) {
-      cursor += kerningOf(font, prev.text, token.text) * size;
+    if (!font && !token.emoji) { missing++; continue; }
+    if (font && prev && !prev.emoji && !token.emoji && font === prev.font) {
+      cursor += kerningOf(font, prev.text, token.text) * size * horizontalScale;
     }
-    const advance = advanceFor(font, token, size);
+    const advance = advanceFor(font, token, size, horizontalScale, emojiScale);
     if (token.emoji) {
       const href = emojiImages && (emojiImages.get(token.text) || emojiImages.get(token.text.replace(/\uFE0F/g, '')));
       if (href) {
-        // El emoji se apoya en la línea de base, como el resto de las letras.
-        images.push({ href, x: cursor, y: baselineY - advance * 0.87, w: advance, h: advance });
-      } else {
-        // Sin imagen: se dibuja el glifo monocromo de NotoEmoji (nunca falta).
+        // La imagen conserva sus proporciones aunque las letras sean condensadas.
+        const imageSize = size * emojiImageScale;
+        images.push({ href, x: cursor + size * emojiOffsetX, y: baselineY - size * emojiOffsetY, w: imageSize, h: imageSize });
+      } else if (font) {
+        // Sin imagen: se dibuja el glifo monocromo de NotoEmoji.
         try {
           const d = font.getPath(token.text, cursor, baselineY, size).toPathData(2);
           if (d) parts.push(d);
         } catch (_) { missing++; }
+      } else {
+        missing++;
       }
     } else if (token.text !== ' ') {
       try {
-        const p = font.getPath(token.text, cursor, baselineY, size);
+        const opts = horizontalScale === 1 ? undefined : { xScale: (size / font.unitsPerEm) * horizontalScale };
+        const p = font.getPath(token.text, cursor, baselineY, size, opts);
         const d = p.toPathData(2);
         if (d) parts.push(d);
       } catch (_) { /* glifo problemático: se omite */ }
@@ -278,6 +284,11 @@ function textLayer({
   opacity = 1,
   autoFit = true,
   emojiImages = null,
+  horizontalScale = 1,
+  emojiScale = EMOJI_RATIO,
+  emojiImageScale = emojiScale,
+  emojiOffsetX = 0,
+  emojiOffsetY = emojiScale * 0.87,
   fontSize: fixedSize = null
 }) {
   const W = Math.max(2, Math.round(width));
@@ -285,7 +296,7 @@ function textLayer({
   const value = uppercase ? String(text ?? '').toUpperCase() : String(text ?? '');
   const availW = Math.max(8, W - padding * 2);
   const availH = Math.max(8, H - padding * 2);
-  const opts = { family, weight, letterSpacing };
+  const opts = { family, weight, letterSpacing, horizontalScale, emojiScale };
 
   const fitted = autoFit
     ? fitText(value.trim() ? value : ' ', { ...opts, width: availW, height: availH, maxFont, minFont, maxLines, lineHeight })
@@ -304,7 +315,8 @@ function textLayer({
     if (align === 'middle' || align === 'center') x = padding + (availW - lineW) / 2;
     else if (align === 'end' || align === 'right') x = padding + (availW - lineW);
     x += offsetX;
-    const res = lineToPath(line, { family, weight, size: fontSize, x, baselineY: firstBaseline + i * fontSize * lineHeight, letterSpacing, emojiImages });
+    const res = lineToPath(line, { ...opts, size: fontSize, x, baselineY: firstBaseline + i * fontSize * lineHeight,
+      emojiImages, emojiImageScale, emojiOffsetX, emojiOffsetY });
     missing += res.missing;
     if (res.d) paths.push(res.d);
     if (res.images && res.images.length) images.push(...res.images);

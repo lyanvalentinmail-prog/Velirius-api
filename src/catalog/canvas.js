@@ -47,19 +47,22 @@ module.exports = {
       O('bg', '000000', 'Color hexadecimal de la burbuja'),
       ...textStyle()
     ] },
-    { id: 'brat', group: 'brats', desc: 'Texto brat real (minúsculas, desenfocado y con grano sutil)', params: [
-      P('text', 'Welcome to Velirius API', 'Texto del sticker'),
+    { id: 'brat', group: 'brats', desc: 'Sticker brat como el de Drive: texto grande y condensado, fondo blanco y emojis a color.', params: [
+      P('text', 'Welcome to Velirius API 💚✨', 'Texto del sticker'),
       O('bg', 'ffffff', 'Fondo hex sin #'),
-      O('color', '000000', 'Color del texto hex sin #'),
-      O('size', '1', 'Escala del texto (0.5 - 2)'),
-      O('rotate', '0', 'Rotar el texto en grados')
+      O('canvas.size', '736', 'Lado del PNG en píxeles (200 - 2000)'),
+      ...textStyle(),
+      S('text.align', 'start', 'Alineación del texto', ['start', 'middle', 'end']),
+      O('text.weight', '400', 'Grosor de la tipografía (400 - 900)')
     ] },
-    { id: 'bratvideo', group: 'brats', desc: 'Video MP4 estilo Brat: las palabras aparecen una por una, con un máximo de 5 por pantalla; después entran las que siguen.', media: 'video', params: [
-      P('text', 'Welcome to Velirius API', 'Frase animada palabra por palabra (admite emojis)'),
+    { id: 'bratvideo', group: 'brats', desc: 'Video MP4 como el de Drive: palabras que aparecen progresivamente y emojis a color.', media: 'video', params: [
+      P('text', 'Welcome to Velirius API 💚🔥', 'Frase animada palabra por palabra (admite emojis)'),
       O('words', '5', 'Cuántas palabras entran como máximo en cada pantalla (1 - 8)'),
       O('bg', 'ffffff', 'Color de fondo hex (ej. 8ACE00 o ffffff)'),
-      O('color', '000000', 'Color del texto hex'),
-      O('size', '1', 'Escala del texto (0.5 - 2)')
+      O('canvas.size', '512', 'Lado del video en píxeles (200 - 2000; se redondea a par)'),
+      ...textStyle(),
+      S('text.align', 'start', 'Alineación del texto', ['start', 'middle', 'end']),
+      O('text.weight', '400', 'Grosor de la tipografía (400 - 900)')
     ] },
     { id: 'bratestirado', group: 'brats', desc: 'Genera el cartel Brat con estiramiento esférico: las letras se curvan alrededor de un bulto 3D.', params: [
       P('text', 'i <3 money', 'Texto a estirar'),

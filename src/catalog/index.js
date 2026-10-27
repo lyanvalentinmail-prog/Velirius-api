@@ -40,6 +40,7 @@ const CATEGORIES = [anime, canvas, tools, downloader, searcher, reactions];
 const ADVANCED_PARAMS = new Set([
   'color', 'bg', 'size', 'font', 'uppercase', 'x', 'y', 'rotate', 'spacing',
   'zoom', 'grayscale', 'shadow', 'mode', 'align', 'opacity', 'subtext',
+  'canvas.size', 'text.align', 'text.weight',
   'lens.stretch', 'lens.aspect', 'lens.radius', 'lens.y'
 ]);
 for (const cat of CATEGORIES) {

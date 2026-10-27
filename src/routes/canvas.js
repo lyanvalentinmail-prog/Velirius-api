@@ -33,17 +33,7 @@ async function handleCanvas(req, res) {
     if (id === 'bratvideo') {
       // Mismas opciones que /canvas/brat (tipografía y colores) + `words`
       // (cuántas palabras entran por pantalla, 5 por defecto).
-      const ov = styleOf(q);
-      const buf = await bratVideo(txt(q, 'Welcome to Velirius API'), {
-        size: ov.scale,
-        bg: ov.bg,
-        color: ov.fill,
-        font: ov.font,
-        uppercase: ov.uppercase,
-        spacing: ov.spacing,
-        words: q.words,
-        canvasSize: q['canvas.size']
-      });
+      const buf = await bratVideo(txt(q, 'Welcome to Velirius API'), q);
       return sendMedia(res, buf, 'video/mp4', 'velirius-bratvideo.mp4');
     }
     if (id === 'attp') {

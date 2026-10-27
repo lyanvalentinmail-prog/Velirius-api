@@ -2,8 +2,8 @@
 //
 // Un brat normal es cuadrado, pero una canción no entra en un cuadrado: acá el
 // lienzo **crece hacia abajo** (como el chat de `iqc`) hasta que entra la letra
-// completa. Se usa la misma tipografía del brat (layouts.js → `brat`), así el
-// sticker se ve igual que `/canvas/brat`.
+// completa. Conserva su diseño largo propio (layouts.js → `bratlyrics`),
+// independientemente de los cambios al sticker cuadrado y al video.
 const { sharp } = require('./image');
 const { textLayer, wrapLines, measure } = require('./textEngine');
 const L = require('../canvas/layouts');
@@ -51,7 +51,7 @@ function plainLyricsOf(song = {}) {
  * @returns {Promise<{buffer:Buffer, width:number, height:number, fontSize:number, lines:number}>}
  */
 async function bratFromLyrics(song = {}, opts = {}) {
-  const parts = L.get('brat').parts;
+  const parts = L.get('bratlyrics').parts;
   const font = parts.text.font;
   const W = Math.round(Math.max(220, Math.min(1600, Number(opts.width) || parts.canvas.width)));
   const bg = opts.bg || parts.canvas.bg;
