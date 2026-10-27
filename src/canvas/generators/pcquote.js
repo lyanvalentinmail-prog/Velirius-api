@@ -3,7 +3,7 @@
 // Guía: README.md → "Cómo agregar o editar un endpoint".
 const {
   sharp, loadImageBuffer, templateMeta, imgParam, styleOf, flat, placeImageArea,
-  placeTextArea, P, partsOf, boxOf
+  placeTextArea, loadImages, areaLayer, P, partsOf, boxOf
 } = require('./_helpers');
 
 module.exports = async function pcquote(q) {
@@ -13,11 +13,12 @@ module.exports = async function pcquote(q) {
   const imageUrl = imgParam(q, 'url', 'image', 'img');
   const text = String(q.text ?? '').trim();
   const mode = String(q.mode || '').toLowerCase();
-  const useImage = mode === 'image' || (mode !== 'text' && imageUrl && !text);
+  const fotos = await loadImages(q, 'avatar1.jpg');
+  const useImage = mode === 'image' || (mode !== 'text' && (imageUrl || fotos.length >= 2) && !text);
   const layers = [];
   if (useImage) {
-    const user = await loadImageBuffer(imageUrl);
-    layers.push(await placeImageArea(W, H, boxOf('pcquote', 'photo', q), user, { zoom: ov.zoom }));
+    const user = fotos.length ? fotos : await loadImageBuffer(imageUrl);
+    layers.push(await areaLayer('pcquote', 'photo', q, W, H, user, { zoom: ov.zoom }));
   } else {
     const t = P.style(q, 'text', parts.text.font);
     layers.push(placeTextArea(W, H, boxOf('pcquote', 'text', q), text || 'dibujo god', {

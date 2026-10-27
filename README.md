@@ -2,7 +2,7 @@
 
 Web calcada del panel de [Apireon](https://apireon-36er.vercel.app/home) (tarjeta blanca punteada, borde
 negro, tipografía mono, píldoras de navegación, rejilla de carpetas con `VER`, barra de estado y
-buscador) con **100 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
+buscador) con **104 endpoints REST sin token** repartidos en **6 categorías**, lista para **Vercel** o **Render**.
 
 - **Home:** `/home` · **Catálogo JSON:** `/docs` · **Info:** `/information`
 - Sin claves de API: todo sale de fuentes públicas (nekos.best, purrbot, danbooru, safebooru, konachan,
@@ -96,7 +96,7 @@ curl "https://<host>/anime/maid?provider=safebooru&direct=true" -o maid.jpg
 curl "https://<host>/anime/pokemon?query=charizard&shiny=true"
 ```
 
-## 🎨 Canvas — 53 (plantillas de la carpeta `CategoriaCanvas` de Drive)
+## 🎨 Canvas — 54 (plantillas de la carpeta `CategoriaCanvas` de Drive)
 
 Todas las plantillas están en `assets/templates` (mismos archivos de Drive) y **todos los parámetros son
 modificables por query**. Sin parámetros usan los valores de ejemplo y el avatar por defecto.
@@ -117,6 +117,20 @@ pisar desde la URL** con `<parte>.<clave>`:
 
 Las fotos del usuario **siempre llenan su hueco** (recorte centrado tipo *cover*, sin deformar):
 `zoom=1` es el encuadre justo y de ahí para arriba sólo acerca.
+
+### Varias imágenes en un mismo canvas
+
+Cuando el canvas tiene un hueco de foto podés mandar **más de una imagen** y aparecen todas: se
+acomodan en grilla dentro del hueco (2 arriba / 2 abajo, y así). Se aceptan todas estas formas:
+
+```bash
+/canvas/canvaimagen?images=<url1>,<url2>,<url3>     # lista separada por comas
+/canvas/canvaimagen?image=<url1>&image2=<url2>      # numeradas (image1…image9, url1…url9)
+/canvas/pov?image=<url1>&image=<url2>               # el mismo parámetro repetido
+```
+
+En los canvas con **varios huecos** (personajes, ship, friendship) cada imagen va a un hueco
+distinto, en orden. En la web, el botón **Galería** acepta varias fotos a la vez y las acumula.
 
 ### Tipografías: nunca más cuadrados ▯▯▯
 
@@ -272,6 +286,7 @@ mismos parámetros, así el video se ve igual que la imagen:
 | `/canvas/trollface` | `TrollFace.jpg` | `url` (chroma-key: la cara va encima) + estilo |
 | `/canvas/badface` | `BadFace.jpg` | `url` (chroma-key: la cara va encima) + estilo |
 | `/canvas/pokemoncard` | `PokemonCard.jpg` | `name`, `hp`, `url`, `type`, `attack`, `damage`, `description` |
+| `/canvas/emojimix` | Emoji Kitchen de Google | `emoji1`, `emoji2`, `size` — mezcla dos emojis en un sticker |
 | `/canvas/ship` | `ship.png` | `image1`, `name1`, `image2`, `name2`, `percentage`, `text`, `color` |
 | `/canvas/friendship` | `friendship.png` | igual que `ship` (círculos + 👍) |
 | `/canvas/gaycard` | `gaycard.png` | `url`, `name`, `rank` |
@@ -320,20 +335,35 @@ curl "https://<host>/canvas/bratvideo?text=uno%20dos%20tres%20cuatro%20cinco%20s
 curl "https://<host>/canvas/bratanime?text=Velirius%20API&uppercase=true&font=serif" -o anime.png
 ```
 
-## 🛠️ Tools — 3
+## 🛠️ Tools — 6
 
 | Endpoint | Parámetros |
 |---|---|
 | `GET /tools/calculator` | `expr` (`+ - * / % ^ ( ) sqrt() cbrt() sin() cos() tan() ln() log() abs() fact() pi e tau phi`), `degrees` |
 | `GET /tools/translator` | `text`, `to` (en, es, pt…), `from` (auto) |
 | `GET /tools/morse` | `text`, `mode` (`encode` / `decode`), `separator` |
+| `GET /tools/resize` | `url`, `width`, `height`, `scale` (%), `fit` (`cover`/`contain`/`fill`/`inside`/`outside`), `format` (`png`/`jpg`/`webp`/`avif`), `quality`, `bg` — **Rezize**: cambia el alto y el ancho de una imagen |
+| `GET /tools/tts` | `text`, `lang` (es, en…), `engine` (`auto`/`google`/`streamelements`), `voice`, `slow`, `direct` — **TextToSpeech**: texto → MP3 |
+| `GET /tools/stt` | `url` del audio (mp3/ogg/wav/m4a/webm), `lang`, `mime` — **SpeechToText**: audio → texto |
 
 ```bash
 curl "https://<host>/tools/calculator?expr=(2+3)*4^2%2Bsqrt(81)"
 curl "https://<host>/tools/translator?text=Hola&to=en"
 curl "https://<host>/tools/morse?text=SOS"                 # → "... --- ..."
 curl "https://<host>/tools/morse?text=...%20---%20...&mode=decode"
+curl "https://<host>/tools/resize?url=https://…/foto.jpg&width=512&height=512" -o 512.png
+curl "https://<host>/tools/tts?text=Hola%20Velirius&lang=es&direct=true" -o voz.mp3
+curl "https://<host>/tools/stt?url=https://…/nota-de-voz.ogg"
 ```
+
+**TextToSpeech no necesita claves**: usa el endpoint público de Google Translate (el mismo de
+gTTS) y, si falla, StreamElements. El texto largo se parte en trozos y los MP3 se pegan en un
+solo archivo. Para voces de Google Cloud alcanza con `GOOGLE_TTS_KEY`.
+
+**SpeechToText sí necesita una clave** (no existe un servicio anónimo y estable que transcriba):
+configurá `GROQ_API_KEY` (capa gratis, Whisper), `OPENAI_API_KEY`, `DEEPGRAM_API_KEY` o
+`ASSEMBLYAI_API_KEY`. Sin ninguna, el endpoint responde `501` explicando qué falta; con la clave,
+acepta `?url=` o `POST {"audio":"data:audio/mpeg;base64,…"}`.
 
 ## 📥 Downloader — 9
 

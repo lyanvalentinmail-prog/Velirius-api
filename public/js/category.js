@@ -9,7 +9,7 @@
   data.endpoints.forEach(e => { byId[e.id] = e; });
 
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const IMAGE_PARAMS = ['url', 'image', 'img', 'avatar', 'image1', 'image2', 'url1', 'url2', 'url3'];
+  const IMAGE_PARAMS = ['url', 'image', 'img', 'avatar', 'images', 'image1', 'image2', 'image3', 'url1', 'url2', 'url3'];
   // Sólo las frases largas van en <textarea>; el resto (incluido `text`) es un
   // campo de una línea, como en la captura de referencia.
   const LONG_PARAMS = ['quote', 'caption', 'description', 'message'];
@@ -81,12 +81,32 @@
     return out;
   }
 
+  // Imágenes de la galería guardadas en un campo (siempre como `data:`).
+  // Se guardan como lista JSON cuando hay más de una, así se pueden elegir
+  // varias fotos para el mismo parámetro y que aparezcan todas.
+  function localList(inp) {
+    const raw = String(inp.dataset.local || '');
+    if (!raw) return [];
+    try {
+      const j = JSON.parse(raw);
+      return Array.isArray(j) ? j.filter(v => String(v).startsWith('data:')) : [];
+    } catch (_) {
+      return raw.startsWith('data:') ? [raw] : [];
+    }
+  }
+  const setLocalList = (inp, list) => {
+    if (!list.length) delete inp.dataset.local;
+    else inp.dataset.local = JSON.stringify(list);
+  };
+  // Con una sola foto se manda como texto (igual que antes); con varias, array.
+  const pack = list => (list.length === 1 ? list[0] : list);
+
   // Imágenes elegidas de la galería (siempre guardadas como data:).
   function allLocalImages(tester) {
     const out = {};
     tester.querySelectorAll('[data-local]').forEach(inp => {
-      const v = String(inp.dataset.local || '');
-      if (v.startsWith('data:')) out[inp.dataset.param] = v;
+      const list = localList(inp);
+      if (list.length) out[inp.dataset.param] = pack(list);
     });
     return out;
   }
@@ -98,8 +118,8 @@
     tester.querySelectorAll('[data-local]').forEach(inp => {
       const url = String(inp.value || '').trim();
       if (url && !url.startsWith('data:')) return;
-      const v = String(inp.dataset.local || '');
-      if (v.startsWith('data:')) out[inp.dataset.param] = v;
+      const list = localList(inp);
+      if (list.length) out[inp.dataset.param] = pack(list);
     });
     return out;
   }
@@ -127,18 +147,20 @@
     return res;
   }
 
-  // Miniatura de la imagen elegida (así se ve que quedó cargada).
-  function showThumb(row, dataUrl, title = 'Imagen') {
+  // Miniaturas de las imágenes elegidas (así se ve que quedaron cargadas).
+  // `dataUrls` puede ser una o varias: se apilan en la misma fila.
+  function showThumb(row, dataUrls, title = 'Imagen') {
     if (!row) return;
-    let img = row.querySelector('.up-thumb');
-    if (!img) {
-      img = document.createElement('img');
+    const lista = Array.isArray(dataUrls) ? dataUrls : [dataUrls];
+    row.querySelectorAll('.up-thumb').forEach(t => t.remove());
+    lista.forEach((src, i) => {
+      const img = document.createElement('img');
       img.className = 'up-thumb';
-      img.alt = 'imagen elegida';
+      img.alt = `imagen elegida ${i + 1}`;
+      img.src = src;
+      img.title = `${title} ${i + 1}`;
       row.appendChild(img);
-    }
-    img.src = dataUrl;
-    img.title = title;
+    });
   }
 
   function buildPath(tester) {
@@ -406,7 +428,7 @@
     const fieldOf = p => {
       const gallery = isImageParam(p.name);
       const up = gallery
-        ? `<div class="gallery-row"><label class="upload">Galería<input type="file" accept="image/*" hidden data-upload-for="${esc(p.name)}"></label><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
+        ? `<div class="gallery-row"><label class="upload">Galería<input type="file" accept="image/*" multiple hidden data-upload-for="${esc(p.name)}"></label><button type="button" class="chip-btn" data-clear="${esc(p.name)}">✕ Quitar</button></div>`
         : '';
       let control;
       if (Array.isArray(p.options) && p.options.length) {
@@ -418,7 +440,7 @@
         control = `<input type="text" data-param="${esc(p.name)}" value="${esc(p.value || '')}" spellcheck="false" placeholder="${esc(p.value || '')}">`;
       }
       return `<div class="param">
-        <div class="param-top"><b>${esc(p.name)}</b><span class="chip-opt${p.required ? ' req' : ''}">${p.required ? 'Requerido' : (gallery ? 'Opcional • URL o galería' : 'Opcional')}</span></div>
+        <div class="param-top"><b>${esc(p.name)}</b><span class="chip-opt${p.required ? ' req' : ''}">${p.required ? 'Requerido' : (gallery ? 'Opcional • URL o varias fotos' : 'Opcional')}</span></div>
         ${p.desc ? `<div class="param-desc">${esc(p.desc)}</div>` : ''}
         <div class="field-row">${control}${up}</div>
       </div>`;
@@ -464,20 +486,27 @@
       if (ev.key === 'Enter' && ev.target.matches('input[data-param]')) { ev.preventDefault(); executeTest(tester); }
     });
     tester.querySelectorAll('input[type="file"][data-upload-for]').forEach(fileInp => {
-      fileInp.addEventListener('change', () => {
-        const file = fileInp.files && fileInp.files[0];
-        if (!file) return;
+      fileInp.addEventListener('change', async () => {
+        const files = Array.from((fileInp.files || []));
+        if (!files.length) return;
         const name = fileInp.dataset.uploadFor;
         const target = tester.querySelector(`[data-param="${CSS.escape(name)}"]`);
         const row = fileInp.closest('.gallery-row');
         const label = fileInp.closest('label');
         if (!target) return;
         const before = label ? label.textContent : '';
-        if (label) { label.textContent = 'Subiendo…'; label.classList.add('busy'); }
-        fileToDataUrl(file, async dataUrl => {
+        if (label) { label.textContent = files.length > 1 ? `Subiendo ${files.length}…` : 'Subiendo…'; label.classList.add('busy'); }
+
+        // Se acumulan con lo que ya había (así se pueden elegir fotos de a una).
+        const urls = String(target.value || '').split(/[,;|]+/).map(v => v.trim()).filter(Boolean);
+        const locales = localList(target);
+
+        for (const file of files) {
+          const dataUrl = await new Promise(resolve => fileToDataUrl(file, resolve));
+          if (!dataUrl) continue;
+          locales.push(dataUrl);
           // La imagen queda guardada igual: si la subida falla, el test la manda
           // en el cuerpo del POST y el canvas la usa de todas formas.
-          target.dataset.local = dataUrl;
           let remote = '';
           try {
             const res = await fetch('/upload', {
@@ -488,12 +517,15 @@
             const json = await res.json().catch(() => null);
             if (res.ok && json && json.result && json.result.url) remote = json.result.url;
           } catch (_) { /* sin red: se usa el POST */ }
-          target.value = remote || '';
-          showThumb(row, dataUrl, remote ? 'Imagen subida' : 'Imagen de tu galería');
-          if (label) { label.textContent = before || 'Galería'; label.classList.remove('busy'); }
-          fileInp.value = '';
-          refreshUrl(tester);
-        });
+          if (remote) urls.push(remote);
+        }
+
+        setLocalList(target, locales);
+        target.value = urls.join(',');
+        showThumb(row, locales, urls.length > 1 ? 'Foto subida' : 'Imagen subida');
+        if (label) { label.textContent = before || 'Galería'; label.classList.remove('busy'); }
+        fileInp.value = '';
+        refreshUrl(tester);
       });
     });
 
@@ -514,8 +546,8 @@
       clearBtn.addEventListener('click', () => {
         const target = tester.querySelector(`[data-param="${CSS.escape(clearBtn.dataset.clear)}"]`);
         if (target) { target.value = ''; delete target.dataset.local; }
-        const thumb = clearBtn.closest('.gallery-row')?.querySelector('.up-thumb');
-        if (thumb) thumb.remove();
+        const row = clearBtn.closest('.gallery-row');
+        if (row) row.querySelectorAll('.up-thumb').forEach(t => t.remove());
         clearBtn.textContent = '✕ Quitar';
         refreshUrl(tester);
       });

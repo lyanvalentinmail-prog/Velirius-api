@@ -17,7 +17,7 @@
 //   }
 //
 // Ayudas (src/catalog/helpers.js): P, O, S, AV, AV2, textStyle(), photoStyle().
-const { P, O, S } = require('./helpers');
+const { P, O, S, AV } = require('./helpers');
 
 module.exports = {
   id: 'tools',
@@ -31,6 +31,30 @@ module.exports = {
       P('text', 'Hola, bienvenido a Velirius API', 'Texto a traducir'),
       O('to', 'en', 'Idioma destino (en, es, pt, fr, ja…)'),
       O('from', 'auto', 'Idioma origen o auto')
+    ] },
+    { id: 'resize', desc: 'Rezize: cambia el alto y el ancho de una imagen', media: 'image', params: [
+      P('url', AV, 'Imagen a redimensionar'),
+      O('width', '512', 'Ancho final en px'),
+      O('height', '', 'Alto final en px (si falta, se calcula solo)'),
+      O('scale', '', 'O el porcentaje: 50 = mitad de tamaño'),
+      S('fit', 'cover', 'Cómo encaja en el nuevo tamaño', ['cover', 'contain', 'fill', 'inside', 'outside']),
+      S('format', 'png', 'Formato de salida', ['png', 'jpg', 'webp', 'avif']),
+      O('quality', '90', 'Calidad (1-100) para jpg/webp/avif'),
+      O('bg', '', 'Color de fondo para los bordes (ej. ffffff)'),
+      O('download', 'false', 'true = baja el archivo como adjunto')
+    ] },
+    { id: 'tts', desc: 'TextToSpeech: convierte texto en un MP3 de voz', media: 'audio', params: [
+      P('text', 'Hola, soy Velirius API', 'Texto a leer (máx. 3000 caracteres)'),
+      O('lang', 'es', 'Idioma de la voz (es, en, pt, fr, ja…)'),
+      O('voice', '', 'Voz de StreamElements (ej. Brian) si hace falta el respaldo'),
+      S('engine', 'auto', 'Motor: auto = Google y después StreamElements', ['auto', 'google', 'streamelements']),
+      O('slow', 'false', 'true = habla más lento'),
+      O('direct', 'false', 'true = devuelve el MP3 directo')
+    ] },
+    { id: 'stt', desc: 'SpeechToText: transcribe un audio a texto (necesita GROQ_API_KEY u otra clave)', media: 'audio', params: [
+      P('url', '', 'Link del audio (mp3, ogg, wav, m4a, webm)'),
+      O('lang', '', 'Idioma del audio (es, en…) o vacío para detectarlo'),
+      O('mime', '', 'Tipo del audio si el link no lo dice (ej. audio/ogg)')
     ] },
     { id: 'morse', desc: 'Código Morse: codifica o decodifica texto', params: [
       P('text', 'SOS', 'Texto o código morse'),
