@@ -432,6 +432,59 @@ async function main() {
       } finally { P.resolveYoutubeTarget = save.resolve; P.youtubePlayable = save.playable; }
     });
 
+    // Interacciones de búsqueda, enlaces profundos y probador en el DOM real.
+    await test('buscador encuentra endpoints y descarta respuestas anteriores', async () => {
+      const page = await request('/home');
+      const docs = json(await request('/docs'));
+      const dom = new JSDOM(page.body.toString(), { url: `http://127.0.0.1:${port}/home`, runScripts: 'outside-only' });
+      try {
+        const { window } = dom;
+        let resolveDocs;
+        window.fetch = () => new Promise(resolve => { resolveDocs = () => resolve(Response.json(docs)); });
+        window.eval(fs.readFileSync(path.join(__dirname, '../public/js/home.js'), 'utf8'));
+        const button = window.document.querySelector('[data-search-btn]');
+        const input = window.document.querySelector('.searchbox input');
+        const results = window.document.querySelector('.search-results');
+        button.click();
+        assert.equal(button.getAttribute('aria-expanded'), 'true');
+        input.value = 'quotly'; input.dispatchEvent(new window.Event('input'));
+        input.value = ''; input.dispatchEvent(new window.Event('input'));
+        resolveDocs();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(results.textContent, '', 'una búsqueda vieja no debe reaparecer');
+        input.value = 'quotly'; input.dispatchEvent(new window.Event('input'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert(results.querySelector('a[href="/canvas#row-quotly"]'));
+        button.click();
+        assert.equal(button.getAttribute('aria-expanded'), 'false');
+        assert.equal(input.value, '');
+        assert([...window.document.querySelectorAll('.row.folder')].every(row => row.style.display !== 'none'));
+      } finally { dom.window.close(); }
+    });
+    await test('enlace a endpoint abre el probador y conserva parámetros principales', async () => {
+      const page = await request('/canvas');
+      const dom = new JSDOM(page.body.toString(), { url: `http://127.0.0.1:${port}/canvas#row-quotly`, runScripts: 'outside-only' });
+      try {
+        const { window } = dom;
+        window.Element.prototype.scrollIntoView = () => {};
+        window.eval([...window.document.scripts].find(s => s.textContent.includes('window.VELIRIUS')).textContent);
+        window.eval(fs.readFileSync(path.join(__dirname, '../public/js/category.js'), 'utf8'));
+        const tester = window.document.getElementById('tester-quotly');
+        const button = window.document.querySelector('[data-test-btn="quotly"]');
+        assert.equal(button.getAttribute('aria-expanded'), 'true');
+        assert(tester.classList.contains('open'));
+        const bg = tester.querySelector('[data-param="bg"]');
+        assert(bg && !bg.closest('.adv-fields'), 'los cuatro primeros parámetros deben ser visibles');
+        const text = tester.querySelector('[data-param="text"]');
+        text.value = 'Hola Velirius'; text.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.match(tester.querySelector('.code-url').textContent, /text=Hola\+Velirius/);
+        assert.match(tester.querySelector('.code-fetch').textContent, /^fetch\("\/canvas\/quotly\?/);
+        window.document.querySelector('[data-test-btn="brat"]').click();
+        assert.equal(button.getAttribute('aria-expanded'), 'false');
+        assert(window.document.getElementById('tester-brat').classList.contains('open'));
+      } finally { dom.window.close(); }
+    });
+
     // Probador web real en un DOM, incluyendo selección repetida de galería.
     await test('probador web muestra respuesta JSON de anime sin error de red', async () => {
       const page = await request('/anime');

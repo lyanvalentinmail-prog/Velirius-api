@@ -1,33 +1,44 @@
-// public/js/home.js — Buscador global del home: filtra categorías y encuentra endpoints vía /docs
+// Buscador de carpetas y endpoints del catálogo propio.
 (function () {
   const btn = document.querySelector('[data-search-btn]');
   const box = document.querySelector('.searchbox');
   const input = box ? box.querySelector('input') : null;
   const results = box ? box.querySelector('.search-results') : null;
-  if (!btn || !box || !input) return;
+  if (!btn || !box || !input || !results) return;
 
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   btn.addEventListener('click', () => {
-    box.classList.toggle('open');
-    if (box.classList.contains('open')) input.focus();
+    const open = box.classList.toggle('open');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-label', open ? 'Cerrar búsqueda' : 'Buscar');
+    if (open) input.focus();
+    else {
+      input.value = '';
+      input.dispatchEvent(new Event('input'));
+      btn.focus();
+    }
   });
 
   let docsCache = null;
+  let searchVersion = 0;
   async function getDocs() {
     if (docsCache) return docsCache;
     const res = await fetch('/docs');
+    if (!res.ok) throw new Error('No se pudo cargar el catálogo');
     docsCache = await res.json();
     return docsCache;
   }
 
   input.addEventListener('input', async () => {
+    const version = ++searchVersion;
     const term = input.value.trim().toLowerCase();
     document.querySelectorAll('.list .row').forEach(row => {
       row.style.display = !term || row.textContent.toLowerCase().includes(term) ? '' : 'none';
     });
-    if (!results) return;
-    if (!term || term.length < 2) { results.innerHTML = ''; return; }
+    if (term.length < 2) { results.innerHTML = ''; return; }
     try {
       const docs = await getDocs();
+      if (version !== searchVersion) return;
       const matches = [];
       (docs.categories || []).forEach(cat => {
         (cat.endpoints || []).forEach(ep => {
@@ -37,8 +48,10 @@
         });
       });
       results.innerHTML = matches.slice(0, 12).map(m =>
-        `<a href="/${m.cat}#row-${m.ep.id}">GET /${m.cat}/${m.ep.id} — ${(m.ep.description || '').replace(/</g, '&lt;')}</a>`
-      ).join('') || '<a href="#">Sin resultados…</a>';
-    } catch (_) { results.innerHTML = ''; }
+        `<a href="/${esc(m.cat)}#row-${esc(m.ep.id)}">GET /${esc(m.cat)}/${esc(m.ep.id)} — ${esc(m.ep.description || '')}</a>`
+      ).join('') || '<div class="empty">Sin resultados…</div>';
+    } catch (_) {
+      if (version === searchVersion) results.innerHTML = '<div class="empty">No se pudo cargar el catálogo.</div>';
+    }
   });
 })();

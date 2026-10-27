@@ -31,7 +31,7 @@ const searcher = require('./searcher');
 const reactions = require('./reactions');
 const { P, O, S, AV, AV2, textStyle, photoStyle } = require('./helpers');
 
-// El orden de este array es el orden de las carpetas en /home.
+// /home ordena las carpetas por nombre; este orden se conserva en /docs.
 const CATEGORIES = [anime, canvas, tools, downloader, searcher, reactions];
 
 // ---------- Parámetros "avanzados" (se ocultan tras un botón en la web) ----------
