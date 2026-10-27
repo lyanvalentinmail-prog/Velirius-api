@@ -59,7 +59,7 @@ async function main() {
     const catJs = (await get(port, '/js/category.js')).body.toString();
     const catCss = (await get(port, '/css/style.css')).body.toString();
     ok('Botón TEST despliega el panel hacia abajo', catJs.includes('function setOpen') && catJs.includes('tester-inner') && catCss.includes('grid-template-rows: 0fr') && catCss.includes('.tester.open'));
-    ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('Galería') && catJs.includes('Opcional • URL o galería'));
+    ok('Parámetros modificables (texto + select + subir foto)', catJs.includes('data-param') && catJs.includes('<select data-param') && catJs.includes('Galería') && catJs.includes('Opcional • URL o varias fotos'));
     ok('Panel con CÓMO USAR EL ENDPOINT + URL + fetch', catJs.includes('Cómo usar el endpoint') && catJs.includes('code-url') && catJs.includes('code-fetch'));
     ok('Chips REQUERIDO/OPCIONAL por parámetro', catJs.includes('chip-opt') && catJs.includes('Requerido') && catJs.includes('Opcional'));
     ok('Resultado con 200 OK, ms y DESCARGAR', catJs.includes('chip-status') && catJs.includes('res-meta') && catJs.includes('Descargar'));
@@ -92,6 +92,41 @@ async function main() {
     ok('morse decode', morseDecode('... --- ...') === 'SOS');
     const morseHttp = JSON.parse((await get(port, '/tools/morse?text=Hola&mode=encode')).body.toString());
     ok('GET /tools/morse', morseHttp.status === true && morseHttp.result.output.includes('-'));
+
+    // ---- Rezize (redimensionar una imagen) ----
+    const base = `http://127.0.0.1:${port}`;
+    const rez = await get(port, '/tools/resize?url=' + encodeURIComponent(base + '/img/default-avatar.jpg') + '&width=180&height=120');
+    ok('GET /tools/resize devuelve una imagen', rez.status === 200 && rez.type.includes('image/'));
+    const rezMeta = await sharp(rez.body).metadata();
+    ok('Rezize respeta el ancho y el alto pedidos', rezMeta.width === 180 && rezMeta.height === 120, `${rezMeta.width}x${rezMeta.height}`);
+    const rezSoloAncho = await get(port, '/tools/resize?url=' + encodeURIComponent(base + '/img/default-avatar.jpg') + '&width=92');
+    const rezMeta2 = await sharp(rezSoloAncho.body).metadata();
+    ok('Rezize con sólo width calcula el alto solo', rezMeta2.width === 92 && rezMeta2.height > 90);
+    const rezScale = await get(port, '/tools/resize?url=' + encodeURIComponent(base + '/img/default-avatar.jpg') + '&scale=50');
+    const rezMeta3 = await sharp(rezScale.body).metadata();
+    ok('Rezize con scale=50 deja la mitad', Math.abs(rezMeta3.width - 368) <= 1, String(rezMeta3.width));
+    const rezSin = await get(port, '/tools/resize');
+    ok('/tools/resize sin url → 400', rezSin.status === 400);
+    const rezSinMedidas = await get(port, '/tools/resize?url=' + encodeURIComponent(base + '/img/default-avatar.jpg'));
+    ok('/tools/resize sin width/height → 400', rezSinMedidas.status === 400);
+
+    // ---- TextToSpeech (la parte que no depende de la red) ----
+    const { partirTexto, proveedoresSTT } = require('../src/utils/audio');
+    const trozos = partirTexto('Hola mundo. '.repeat(40));
+    ok('TTS: el texto largo se parte en trozos que el servicio acepta', trozos.length > 1 && trozos.every(t => t.length <= 190));
+    ok('TTS: los trozos no pierden palabras', trozos.join(' ').split(/\s+/).length === 'Hola mundo. '.repeat(40).trim().split(/\s+/).length);
+    const ttsSin = await get(port, '/tools/tts');
+    ok('/tools/tts sin text → 400', ttsSin.status === 400);
+    const ttsLargo = await get(port, '/tools/tts?text=' + 'a'.repeat(3001));
+    ok('/tools/tts con texto enorme → 400', ttsLargo.status === 400);
+
+    // ---- SpeechToText ----
+    const sttSin = await get(port, '/tools/stt');
+    ok('/tools/stt sin audio → 400', sttSin.status === 400);
+    for (const k of ['GROQ_API_KEY', 'OPENAI_API_KEY', 'DEEPGRAM_API_KEY', 'ASSEMBLYAI_API_KEY']) delete process.env[k];
+    ok('STT: sin claves no hay proveedor', proveedoresSTT().length === 0);
+    const sttSinClave = await get(port, '/tools/stt?url=' + encodeURIComponent(base + '/img/default-avatar.jpg'));
+    ok('STT: sin clave configurada explica qué poner → 501', sttSinClave.status === 501 && /GROQ_API_KEY/.test(sttSinClave.body.toString()));
 
     // ---- Reactions (solo catálogo, sin red) ----
     const reactList = JSON.parse((await get(port, '/reactions/list')).body.toString());
@@ -248,6 +283,30 @@ async function main() {
       if (!okBase || resZoom.status >= 500) rotos.push(`${ep.cat}/${ep.id}(${res.status}/${resZoom.status})`);
     }
     ok(`canvas con imagen: ${conImagen.length} aceptan la foto del usuario`, conImagen.length > 0 && rotos.length === 0, rotos.join(' '));
+
+    // 1b) Varias imágenes: se acomodan todas (repetidas, numeradas o lista)
+    const CORE = require('../src/canvas/core');
+    const listaImgs = CORE.imageList({
+      image: ['https://x/1.jpg', 'https://x/2.jpg'],
+      url2: 'https://x/3.jpg',
+      images: 'https://x/4.jpg, https://x/5.jpg'
+    });
+    ok('varias imágenes: se juntan repetidas, numeradas y listas', listaImgs.length === 5, listaImgs.join(' '));
+    ok('varias imágenes: una foto de la galería (data:) no se parte por las comas',
+      CORE.imageList({ image: foto }).length === 1);
+    ok('varias imágenes: se ignoran vacíos y repetidas',
+      CORE.imageList({ images: ' https://x/a.jpg , ,https://x/a.jpg ' }).length === 1);
+    const solid2 = await sharp({ create: { width: 600, height: 900, channels: 3, background: '#00ff00' } }).png().toBuffer();
+    const foto2 = 'data:image/png;base64,' + solid2.toString('base64');
+    const variasEnCanvas = await post(port, '/canvas/canvaimagen', { images: [foto, foto2] });
+    const { data: px, info: pxi } = await sharp(variasEnCanvas.body).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let magenta = 0, verde = 0;
+    for (let i = 0; i < px.length; i += pxi.channels) {
+      if (px[i] > 200 && px[i + 1] < 60 && px[i + 2] > 200) magenta++;
+      if (px[i] < 60 && px[i + 1] > 200 && px[i + 2] < 60) verde++;
+    }
+    ok('varias imágenes: las dos fotos se ven en el canvas', variasEnCanvas.status === 200 && magenta > 500 && verde > 500,
+      `magenta=${magenta} verde=${verde}`);
 
     // 2) La foto tiene que ocupar el hueco de la plantilla (no quedar chica ni fuera de lugar)
     const huecos = [
@@ -707,7 +766,10 @@ async function main() {
       const r = await get(port, `${ruta}?${q}`);
       ok(`${ruta} con URL inválida → 400`, r.status === 400);
     }
-    ok('El catálogo bajó a 100 endpoints (sin wallpaper ni file)', t.endpoints === 100);
+    const idsBorrados = ['wallpaper', 'file', 'proxy'];
+    ok('El catálogo no tiene wallpaper ni el proxy file/proxy',
+      !CATEGORIES.some(c => (c.endpoints || []).some(e => idsBorrados.includes(e.id))));
+    ok(`El catálogo tiene ${t.endpoints} endpoints (canvas, downloader, searcher, tools, anime, reactions)`, t.endpoints === 104);
 
     // ---- Letra → sticker brat con la canción COMPLETA ----
     {

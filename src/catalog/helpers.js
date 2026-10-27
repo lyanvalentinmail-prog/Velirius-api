@@ -34,6 +34,8 @@ const textStyle = () => [
 ];
 
 const photoStyle = () => [
+  // Varias fotos en un mismo hueco: se acomodan en grilla y aparecen todas.
+  O('images', '', 'Más fotos separadas por coma (ej. url1,url2): se acomodan en grilla y aparecen todas'),
   O('zoom', '1', 'Zoom de la foto: 1 = llena el hueco justo, 2 = el doble de cerca'),
   O('grayscale', 'false', 'true = foto en blanco y negro'),
   O('rotate', '0', 'Rotar la foto en grados (-180 a 180)')

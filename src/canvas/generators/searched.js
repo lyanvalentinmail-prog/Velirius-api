@@ -4,16 +4,18 @@
 // Guía: README.md → "Cómo agregar o editar un endpoint".
 const {
   sharp, loadImageBuffer, templateMeta, textLayer, imgParam, styleOf, flat,
-  placeImageArea, P, partsOf, boxOf
+  placeImageArea, loadImages, areaLayer, P, partsOf, boxOf
 } = require('./_helpers');
 
 module.exports = async function searched(q) {
   const ov = styleOf(q);
   const parts = partsOf('searched');
   const { buf, width: W, height: H } = await templateMeta(parts.template);
-  const user = await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
+  // Una o varias fotos: con más de una se acomodan en grilla dentro del cartel.
+  const fotos = await loadImages(q, 'avatar1.jpg');
+  const user = fotos.length ? fotos : await loadImageBuffer(imgParam(q, 'url', 'image', 'img'));
   const layers = [
-    await placeImageArea(W, H, boxOf('searched', 'photo', q), user, {
+    await areaLayer('searched', 'photo', q, W, H, user, {
       zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate
     })
   ];

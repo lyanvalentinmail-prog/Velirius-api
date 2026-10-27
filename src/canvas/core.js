@@ -23,6 +23,45 @@ const imgParam = (q, ...names) => {
   }
   return '';
 };
+/**
+ * Todas las imágenes del pedido, en orden y sin repetir.
+ *
+ * Acepta `image`, `url`, `img`, `avatar` (si vienen repetidos en la query
+ * Express los entrega como array), los numerados `image1…image9` / `url1…` /
+ * `avatar1…`, y las listas `images`, `urls` o `imagenes` separadas por coma,
+ * punto y coma, barra vertical o salto de línea.
+ *
+ *   /canvas/canvaimagen?images=https://a.jpg,https://b.jpg
+ *   /canvas/pov?image=https://a.jpg&image=https://b.jpg&image=https://c.jpg
+ *
+ * Con una sola imagen todo funciona igual que siempre.
+ */
+function imageList(q = {}, max = 10) {
+  const out = [];
+  const push = v => {
+    if (v === undefined || v === null) return;
+    if (Array.isArray(v)) return v.forEach(push);
+    if (typeof v === 'object') return;
+    // Ojo: una imagen de la galería (`data:image/png;base64,AAA…`) lleva comas
+    // y punto y coma dentro, así que nunca se parte.
+    String(v).split(/[\n\r|]+/).forEach(trozo => {
+      const partes = /^\s*data:/i.test(trozo) ? [trozo] : trozo.split(/[,;]+/);
+      partes.forEach(pieza => {
+        const url = pieza.trim();
+        if (url) out.push(url);
+      });
+    });
+  };
+  for (const key of ['image', 'url', 'img', 'avatar', 'images', 'urls', 'imagenes']) push(q[key]);
+  for (const base of ['image', 'url', 'img', 'avatar']) {
+    for (let i = 1; i <= 9; i++) push(q[`${base}${i}`]);
+  }
+  // `photos=3` (o cualquier lista repetida) también vale.
+  const unicas = [];
+  for (const url of out) if (!unicas.includes(url)) unicas.push(url);
+  return unicas.slice(0, max);
+}
+
 const numberIn = (v, def, min, max) => {
   const n = parseFloat(v);
   if (!Number.isFinite(n)) return def;
@@ -89,7 +128,49 @@ function innerShade(w, h, shape = 'ellipse') {
  * Reemplazo por chroma-key: pinta la foto del usuario SOLO donde la plantilla es verde
  * (pantallas verdes y círculos verde/lima). Pixel-perfect con la forma original.
  */
+/**
+ * Varias fotos en un mismo hueco: se arma una grilla (cover, con un pequeño
+ * margen) para que **todas** aparezcan. Con una sola imagen devuelve null y el
+ * llamador sigue con el recorte normal.
+ */
+async function gridCollage(bufs, w, h, opts = {}) {
+  const lista = (bufs || []).filter(Boolean);
+  if (lista.length < 2) return null;
+  const W = Math.max(2, Math.round(w)), H = Math.max(2, Math.round(h));
+  const n = lista.length;
+  // Columnas: cuadradas para 2-4 fotos; en tiras largas manda el aspecto.
+  const cols = n <= 4 ? Math.ceil(Math.sqrt(n)) : Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * (W / H)))));
+  const filas = [];
+  for (let i = 0; i < n; i += cols) filas.push(Math.min(cols, n - i));
+  const gap = Math.max(0, Math.round(Math.min(W, H) * (opts.gap ?? 0.02)));
+  const alto = Math.floor((H - gap * (filas.length + 1)) / filas.length);
+  const piezas = [];
+  let y = gap;
+  for (let r = 0; r < filas.length; r++) {
+    const cuantas = filas[r];
+    // La última fila se reparte a lo ancho: nunca queda un hueco vacío.
+    const cw = Math.floor((W - gap * (cuantas + 1)) / cuantas);
+    const radius = Math.round(Math.min(cw, alto) * (opts.radius ?? 0.06));
+    for (let c = 0; c < cuantas; c++) {
+      const idx = r * cols + c;
+      const piece = await shapedImage(lista[idx], cw, alto, {
+        zoom: opts.zoom ?? 1,
+        rotate: opts.rotate ?? 0,
+        grayscale: !!opts.grayscale,
+        radius
+      });
+      piezas.push({ input: piece, left: gap + c * (cw + gap), top: y });
+    }
+    y += alto + gap;
+  }
+  const fondo = await sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .png().toBuffer();
+  return sharp(fondo).composite(piezas).png().toBuffer();
+}
+
 async function chromaInsert(file, userBuf, bbox = { x0: 0, y0: 0, x1: 1, y1: 1 }, opts = {}) {
+  // Varias fotos → grilla dentro del mismo hueco (todas aparecen).
+  const varias = Array.isArray(userBuf);
   const { buf, width: W, height: H } = await templateMeta(file);
   const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const x0 = Math.round(bbox.x0 * W), y0 = Math.round(bbox.y0 * H);
@@ -109,12 +190,16 @@ async function chromaInsert(file, userBuf, bbox = { x0: 0, y0: 0, x1: 1, y1: 1 }
   const mask = await sharp(maskRaw, { raw: { width: bw, height: bh, channels: 4 } })
     .blur(1).linear([1, 1, 1, 1.7], [0, 0, 0, 8]).png().toBuffer();
   const radius = opts.radius ? Math.round(bw * Number(opts.radius)) : 0;
-  let userPiece = await shapedImage(userBuf, bw, bh, {
-    zoom: opts.zoom ?? 1,
-    rotate: opts.rotate ?? 0,
-    grayscale: !!opts.grayscale,
-    radius
-  });
+  // En el hueco con chroma la grilla va a sangre (sin separación): cualquier
+  // borde dejaría ver el verde de la plantilla por detrás.
+  let userPiece = varias
+    ? await gridCollage(userBuf, bw, bh, { radius: 0, gap: 0, grayscale: opts.grayscale, zoom: opts.zoom })
+    : await shapedImage(userBuf, bw, bh, {
+      zoom: opts.zoom ?? 1,
+      rotate: opts.rotate ?? 0,
+      grayscale: !!opts.grayscale,
+      radius
+    });
   userPiece = await sharp(userPiece)
     .composite([{ input: innerShade(bw, bh, radius ? 'rect' : 'ellipse'), blend: 'atop' }])
     .png().toBuffer();
@@ -525,15 +610,29 @@ async function signCanvas(file, area, q, opts = {}) {
   const { buf, width: W, height: H } = await templateMeta(file);
   const ov = styleOf(q);
   const mode = String(q.mode || '').toLowerCase();
-  const imageUrl = imgParam(q, 'url', 'image', 'img');
+  const imageUrls = imageList(q);
+  const imageUrl = imageUrls[0] || imgParam(q, 'url', 'image', 'img');
   const text = String(q.text ?? '').trim();
   const useImage = mode === 'image' || (mode !== 'text' && imageUrl && !text) || (opts.preferImage && !text && imageUrl);
   const layers = [];
   if (useImage) {
-    const user = await loadImageBuffer(imageUrl);
-    layers.push(await placeImageArea(W, H, area, user, {
-      zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale, radius: opts.imageRadius ?? 0
-    }));
+    if (imageUrls.length > 1) {
+      // Varias fotos en el mismo cartel: grilla del tamaño del área.
+      const w = Math.round((area.x1 - area.x0) * W), h = Math.round((area.y1 - area.y0) * H);
+      const bufs = [];
+      for (const u of imageUrls) bufs.push(await loadImageBuffer(u));
+      const collage = await gridCollage(bufs, w, h, { radius: 0.05, grayscale: ov.grayscale, zoom: ov.zoom });
+      layers.push({
+        input: collage,
+        left: Math.round(area.x0 * W + (w - w) / 2),
+        top: Math.round(area.y0 * H + (h - h) / 2)
+      });
+    } else {
+      const user = await loadImageBuffer(imageUrl);
+      layers.push(await placeImageArea(W, H, area, user, {
+        zoom: ov.zoom, rotate: ov.rotate, grayscale: ov.grayscale, radius: opts.imageRadius ?? 0
+      }));
+    }
   } else {
     const textOpts = opts.textOpts || {};
     // sin recuadro de fondo: se borra el texto de ejemplo y se escribe encima
@@ -555,11 +654,17 @@ async function signCanvas(file, area, q, opts = {}) {
  */
 async function faceCanvas(file, holes, q) {
   const ov = styleOf(q);
-  const urls = [
-    imgParam(q, 'url', 'image', 'img', 'url1', 'image1'),
-    imgParam(q, 'url2', 'image2'),
-    imgParam(q, 'url3', 'image3')
-  ];
+  // Todas las imágenes del pedido, en orden: el hueco 1 usa la primera, el 2 la
+  // segunda… Si hay menos fotos que huecos, los que sobran repiten la primera.
+  const urls = imageList(q);
+  if (!urls.length) {
+    const uno = imgParam(q, 'url1', 'image1');
+    const dos = imgParam(q, 'url2', 'image2');
+    const tres = imgParam(q, 'url3', 'image3');
+    if (uno) urls.push(uno);
+    if (dos) urls.push(dos);
+    if (tres) urls.push(tres);
+  }
   const users = [];
   for (let i = 0; i < holes.length; i++) {
     users.push(await loadImageBuffer(urls[i] || urls[0] || '', i === 1 ? 'avatar2.jpg' : 'avatar1.jpg'));
@@ -719,8 +824,8 @@ const svgPng = async (svg, density = 1) => sharp(svg, { density: 72 * density })
 module.exports = {
   sharp, loadImageBuffer, templateMeta, shapedImage, circleImage, heartImage,
   textLayer, measure, wrapLines, fetchBuffer,
-  txt, imgParam, numberIn, flag, parsePercent, normColor, styleOf,
-  flat, expandLayer, innerShade, chromaInsert, ellipseImage, insertRows,
+  txt, imgParam, imageList, numberIn, flag, parsePercent, normColor, styleOf,
+  flat, expandLayer, innerShade, gridCollage, chromaInsert, ellipseImage, insertRows,
   placeImageArea, placeTextArea, eraseSampleText, signCanvas,
   holeMask, holeLayer, holeInsert, holeInsertMany, faceCanvas,
   twemoji, svgPng, lensWarp, fitLines

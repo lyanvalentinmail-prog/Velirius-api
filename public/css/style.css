@@ -850,3 +850,15 @@ h1.title {
   .cta { font-size: 10.5px; letter-spacing: 1.8px; padding: 13px 18px; }
   .sheet-footer { margin-top: 24px; padding-top: 13px; font-size: 9.5px; letter-spacing: 1.8px; }
 }
+
+/* ==========================================================================
+   ESCRITORIO — la web se veía enorme: todo el diseño (tarjeta, tipografía,
+   iconos y espaciados) se dibuja un 18% más chico. `zoom` escala el conjunto
+   manteniendo las proporciones exactas de las capturas, así que no hay que
+   re-medir nada. En móvil (≤560 px) manda el bloque de arriba.
+   ========================================================================== */
+@media (min-width: 561px) {
+  html { zoom: 0.82; }
+  /* los 100vh internos se compensan para que la tarjeta siga llenando la pantalla */
+  body, .wrap, .page { min-height: calc(100vh / 0.82); }
+}

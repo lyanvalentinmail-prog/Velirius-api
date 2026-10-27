@@ -185,6 +185,11 @@ module.exports = {
       O('size', '1', 'Escala del texto (0.5 - 2)'),
       O('zoom', '1', 'Zoom de la imagen')
     ] },
+    { id: 'emojimix', group: 'imagenes', desc: 'Emojimix: mezcla dos emojis en un sticker (Emoji Kitchen)', params: [
+      P('emoji1', '🐱', 'Primer emoji (o su código: 1f431)'),
+      O('emoji2', '🐶', 'Segundo emoji (o su código: 1f436)'),
+      O('size', '512', 'Tamaño del sticker en px (16-1024)')
+    ] },
     { id: 'canvaimagen', group: 'imagenes', desc: 'Wojaks señalando tu imagen (pantalla verde)', params: [
       P('url', AV, 'Tu imagen'),
       ...photoStyle()

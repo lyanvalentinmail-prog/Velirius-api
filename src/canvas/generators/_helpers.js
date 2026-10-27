@@ -8,10 +8,21 @@ const P = require('../parts');
 const L = require('../layouts');
 
 const {
-  sharp, loadImageBuffer, txt, imgParam, parsePercent, normColor, styleOf,
+  sharp, loadImageBuffer, txt, imgParam, imageList, parsePercent, normColor, styleOf,
   circleImage, heartImage, textLayer, twemoji, svgPng, chromaInsert, faceCanvas,
-  signCanvas, fitLines
+  signCanvas, fitLines, gridCollage
 } = C;
+
+/**
+ * Carga TODAS las imágenes del pedido (1 → la de siempre, N → todas).
+ * Si no hay ninguna devuelve `[]` y cada canvas usa su foto predeterminada.
+ */
+async function loadImages(q, fallbackFile, max = 10) {
+  const urls = imageList(q, max);
+  const bufs = [];
+  for (const url of urls) bufs.push(await loadImageBuffer(url, fallbackFile));
+  return bufs;
+}
 
 const partsOf = id => L.get(id).parts;
 
@@ -62,11 +73,31 @@ function signPart(id, q, opts = {}) {
   });
 }
 
+/**
+ * Capa de foto para un área de la plantilla: una imagen = recorte normal
+ * (cover), varias = grilla con todas (2 arriba / 2 abajo…). Es el atajo para
+ * los canvas que colocan la foto con `placeImageArea`.
+ */
+async function areaLayer(id, part, q, W, H, fotos, opts = {}) {
+  const area = boxOf(id, part, q);
+  if (!Array.isArray(fotos) || fotos.length < 2) {
+    const user = Array.isArray(fotos) ? fotos[0] : fotos;
+    return C.placeImageArea(W, H, area, user, opts);
+  }
+  const w = Math.round((area.x1 - area.x0) * W);
+  const h = Math.round((area.y1 - area.y0) * H);
+  let collage = await gridCollage(fotos, w, h, { radius: opts.radius ?? 0.02, grayscale: opts.grayscale, zoom: opts.zoom });
+  collage = await sharp(collage).flatten({ background: opts.background || '#ffffff' }).png().toBuffer();
+  return { input: collage, left: Math.round(area.x0 * W), top: Math.round(area.y0 * H) };
+}
+
 /** Foto dentro de un hueco con chroma (arándano, pan, PC, pantalla verde…). */
 async function chromaPart(id, q) {
   const parts = partsOf(id);
   const ov = C.styleOf(q);
-  const user = await C.loadImageBuffer(C.imgParam(q, 'url', 'image', 'img'));
+  // Una o varias fotos: con más de una se arman en grilla dentro del hueco.
+  const fotos = await loadImages(q, 'avatar1.jpg');
+  const user = fotos.length > 1 ? fotos : (fotos[0] || await C.loadImageBuffer(C.imgParam(q, 'url', 'image', 'img')));
   return C.chromaInsert(parts.template, user, boxOf(id, 'photo', q), {
     zoom: ov.zoom, grayscale: ov.grayscale, rotate: ov.rotate,
     radius: P.num(q, 'photo', 'radius', parts.photo.radius || 0)
@@ -109,8 +140,10 @@ async function meter(kind, q) {
   const scoreFill = P.color(q, 'percentage', 'fill', parts.percentage.fill);
   const phraseFill = P.color(q, 'phrase', 'fill', parts.phrase.fill);
 
-  const img1 = await loadImageBuffer(imgParam(q, 'image1', 'url1', 'image', 'url'), 'avatar1.jpg');
-  const img2 = await loadImageBuffer(imgParam(q, 'image2', 'url2'), 'avatar2.jpg');
+  // Dos fotos: `image1`/`image2`, o la lista (`?images=a,b`) en orden.
+  const urls = C.imageList(q);
+  const img1 = await loadImageBuffer(imgParam(q, 'image1', 'url1') || urls[0] || '', 'avatar1.jpg');
+  const img2 = await loadImageBuffer(imgParam(q, 'image2', 'url2') || urls[1] || '', 'avatar2.jpg');
 
   const a1 = boxOf(kind, 'avatar1', q);
   const a2 = boxOf(kind, 'avatar2', q);
@@ -196,7 +229,15 @@ async function captionPart(id, q, prefix) {
   const ov = styleOf(q);
   const maxW = Math.round(P.num(q, 'canvas', 'width', parts.canvas.maxWidth, 200, 2048));
   const maxH = Math.round(P.num(q, 'canvas', 'height', parts.canvas.maxHeight, 200, 2600));
-  const raw = await loadImageBuffer(imgParam(q, 'image', 'url', 'img'));
+  const fotos = await loadImages(q, 'avatar1.jpg');
+  // Con varias fotos se arma una grilla (2 arriba, 2 abajo…) antes del texto.
+  let raw;
+  if (fotos.length > 1) {
+    raw = await gridCollage(fotos, maxW, Math.round(maxW * 0.75), { radius: 0.02 });
+    raw = await sharp(raw).flatten({ background: '#ffffff' }).png().toBuffer();
+  } else {
+    raw = fotos[0] || await loadImageBuffer(imgParam(q, 'image', 'url', 'img'));
+  }
   const base = await sharp(raw)
     .rotate()
     .resize({ width: maxW, height: maxH, fit: 'inside', withoutEnlargement: false })
@@ -271,5 +312,6 @@ async function captionPart(id, q, prefix) {
 
 module.exports = {
   ...C,
-  P, L, partsOf, boxOf, fillOf, signPart, chromaPart, facePart, meter, captionPart
+  P, L, partsOf, boxOf, fillOf, signPart, chromaPart, facePart, meter, captionPart,
+  loadImages, areaLayer
 };

@@ -19,7 +19,7 @@ const ALIASES = {
 const resolveId = id => ALIASES[id] || id;
 // Las imágenes de la galería llegan en el cuerpo (JSON) para no meter un
 // `data:` enorme en la URL: POST /canvas/quotly  { "text": "...", "image": "data:..." }
-const jsonBody = express.json({ limit: '12mb' });
+const jsonBody = express.json({ limit: '24mb' });
 
 async function handleCanvas(req, res) {
   const pedido = String(req.params.id || '').toLowerCase();
